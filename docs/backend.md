@@ -14,12 +14,14 @@ For API-only development, start a local PostgreSQL instance yourself, set `Conne
 dotnet run --project src/OpenBudget.Api --urls http://127.0.0.1:5080
 ```
 
-The API creates its tables through EF Core migrations at startup. Each month is stored independently. The initial sample plan is currently used to initialize unseen months; month carry-forward and ledger semantics are planned work.
+The API applies EF Core migrations at startup. A single default budget identity owns independent monthly snapshots. The first requested month initializes a blank starter category structure; later months carry forward category available balances and prior Ready to Assign exactly once. Activity remains a legacy baseline until the transaction ledger is implemented.
 
 ## API
 
 - `GET /health` checks database connectivity.
 - `GET /api/budget/{YYYY-MM}` loads or initializes that month's plan.
-- `PUT /api/budget/{YYYY-MM}` atomically replaces that month's group and category plan.
+- `PUT /api/budget/{YYYY-MM}` saves that month's editable snapshot using optimistic concurrency and server-calculated totals.
+- `GET /api/budget` reads the default budget identity.
+- `PUT /api/budget` renames the default budget using optimistic concurrency.
 
-The current API stores a monthly plan snapshot. It is not yet an account transaction ledger, multi-user service, or concurrency-safe collaborative API.
+The API is not yet an account transaction ledger or authenticated multi-user service. Monthly and budget-name edits reject stale versions, but authorization and shared membership are planned for Milestone 8.

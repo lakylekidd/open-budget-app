@@ -1,6 +1,18 @@
 # Milestone 1 — Reliable budget core and month lifecycle
 
-**Status:** Planned
+**Status:** Implemented (initial vertical slice)
+
+## Delivered in this slice
+
+- PostgreSQL now stores an explicit default budget identity, name, currency, and version. The name can be changed from the budget picker.
+- Each month is an independent persisted snapshot with a version token. Existing installations are upgraded by a forward migration that preserves category available balances and the prior zero ready-to-assign state.
+- The first requested month initializes a small blank category structure. Later months carry forward each category's available balance and the previous month's unassigned amount; subsequent reads do not create duplicate carry-forward rows.
+- The API computes category available amounts and Ready to Assign from persisted opening values, assignments, and the current legacy activity baseline. The browser cannot submit calculated activity or available totals.
+- Group/category additions, renames, ordering and archive state persist. Historical records are retained by archiving instead of deletion.
+- Stale month and budget-name edits return the latest version; the UI offers a reload or reapply path for monthly conflicts.
+- The Plan screen supports assignments, moving money, monthly notes, adding funds, month browsing, undo/redo in the current browser session, and save/offline/conflict feedback.
+
+Known scope boundary: this milestone does not include accounts or a transaction ledger. Existing activity is retained as a legacy month baseline. The current implementation exposes one default budget; multi-budget ownership belongs to Milestone 8. Assignment/move updates are persisted as a single atomic monthly snapshot write.
 
 ## Goal
 

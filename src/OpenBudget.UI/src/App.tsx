@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Category = {
   id: string;
+  isArchived?: boolean;
+  sortOrder?: number;
   name: string;
   assigned: number;
   activity: number;
@@ -11,11 +13,12 @@ type Category = {
   snoozed?: boolean;
 };
 
-type CategoryGroup = { id: string; name: string; categories: Category[] };
-type Filter = 'All' | 'Overspent' | 'Underfunded' | 'Overfunded' | 'Money available' | 'Snoozed';
-type BudgetState = { month: string; groups: CategoryGroup[]; note?: string };
+type CategoryGroup = { id: string; name: string; categories: Category[]; isArchived?: boolean; sortOrder?: number };
+type Filter = 'All' | 'Overspent' | 'Underfunded' | 'Overfunded' | 'Money available' | 'Snoozed' | 'Archived';
+type BudgetState = { month: string; groups: CategoryGroup[]; note?: string; version: number; openingReadyToAssign: number; fundsAdded: number; readyToAssign: number };
+type BudgetPlan = { id: string; name: string; currency: string; version: number };
 
-const filters: Filter[] = ['All', 'Overspent', 'Underfunded', 'Overfunded', 'Money available', 'Snoozed'];
+const filters: Filter[] = ['All', 'Overspent', 'Underfunded', 'Overfunded', 'Money available', 'Snoozed', 'Archived'];
 
 const initialGroups: CategoryGroup[] = [
   {
@@ -90,15 +93,18 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
 }
 
 function App() {
-  const [data, setData] = useState<BudgetState>({ month: '2026-10', groups: initialGroups, note: '' });
-  const [saveState, setSaveState] = useState<'loading' | 'saved' | 'saving' | 'offline'>('loading');
+  const [plan, setPlan] = useState<BudgetPlan>({ id: 'default', name: 'My Budget', currency: 'EUR', version: 1 });
+  const [data, setData] = useState<BudgetState>({ month: '2026-10', groups: initialGroups, note: '', version: 1, openingReadyToAssign: 0, fundsAdded: 0, readyToAssign: 0 });
+  const [saveState, setSaveState] = useState<'loading' | 'saved' | 'saving' | 'offline' | 'conflict'>('loading');
   const loadedMonth = useRef<string | null>(null);
+  const lastSaved = useRef<string | null>(null);
   const saveController = useRef<AbortController | null>(null);
   const [filter, setFilter] = useState<Filter>('All');
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [moveOpen, setMoveOpen] = useState(false);
+  const [conflictBudget, setConflictBudget] = useState<BudgetState | null>(null);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [activePage, setActivePage] = useState('Plan');
   const [toast, setToast] = useState('');
@@ -114,6 +120,17 @@ function App() {
 
   useEffect(() => {
     const controller = new AbortController();
+    fetch('/api/budget', { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error(`Budget plan load failed (${response.status})`);
+        setPlan(await response.json() as BudgetPlan);
+      })
+      .catch(error => { if (error.name !== 'AbortError') setToast('Could not load budget details.'); });
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
     loadedMonth.current = null;
     setSaveState('loading');
     fetch(`/api/budget/${data.month}`, { signal: controller.signal })
@@ -123,6 +140,8 @@ function App() {
       })
       .then(budget => {
         loadedMonth.current = budget.month;
+        lastSaved.current = JSON.stringify(budget);
+        setConflictBudget(null);
         setData(budget);
         setSaveState('saved');
       })
@@ -136,30 +155,50 @@ function App() {
   }, [data.month]);
 
   useEffect(() => {
-    if (loadedMonth.current !== data.month) return;
+    if (loadedMonth.current !== data.month || conflictBudget) return;
+    if (lastSaved.current === JSON.stringify(data)) return;
     const controller = new AbortController();
-    const timer = window.setTimeout(() => {
+    const timer = window.setTimeout(async () => {
       saveController.current?.abort();
       saveController.current = controller;
       setSaveState('saving');
-      fetch(`/api/budget/${data.month}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...data, groups: data.groups.map((group, sortOrder) => ({
-          ...group, sortOrder,
-          categories: group.categories.map((category, categoryOrder) => ({ ...category, sortOrder: categoryOrder })),
-        })) }), signal: controller.signal,
-      }).then(response => {
+      const request = {
+        month: data.month,
+        note: data.note ?? '',
+        version: data.version,
+        fundsAdded: data.fundsAdded,
+        groups: data.groups.map((group, groupOrder) => ({
+          id: group.id, name: group.name, sortOrder: groupOrder, isArchived: Boolean(group.isArchived),
+          categories: group.categories.map((category, categoryOrder) => ({
+            id: category.id, name: category.name, assigned: category.assigned, target: category.target,
+            icon: category.icon ?? null, snoozed: Boolean(category.snoozed), sortOrder: categoryOrder,
+            isArchived: Boolean(category.isArchived),
+          })),
+        })),
+      };
+      try {
+        const response = await fetch(`/api/budget/${data.month}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request), signal: controller.signal });
+        if (response.status === 409) {
+          const problem = await response.json();
+          setConflictBudget(problem.current as BudgetState);
+          setSaveState('conflict');
+          setToast('This month changed in another session. Choose which version to keep.');
+          return;
+        }
         if (!response.ok) throw new Error(`Budget save failed (${response.status})`);
+        const saved = await response.json() as BudgetState;
+        lastSaved.current = JSON.stringify(saved);
+        setData(saved);
         setSaveState('saved');
-      }).catch(error => {
-        if (error.name !== 'AbortError') {
+      } catch (error) {
+        if (error instanceof Error && error.name !== 'AbortError') {
           setSaveState('offline');
           setToast('Changes could not be saved. Check the backend connection.');
         }
-      });
+      }
     }, 450);
     return () => window.clearTimeout(timer);
-  }, [data]);
+  }, [data, conflictBudget]);
 
   const allCategories = useMemo(() => data.groups.flatMap(group => group.categories), [data.groups]);
   const totals = useMemo(() => {
@@ -169,8 +208,10 @@ function App() {
     return { assigned, activity, available };
   }, [allCategories]);
   const targetSum = allCategories.reduce((sum, item) => sum + item.target, 0);
-  const leftOver = totals.available - totals.assigned - totals.activity;
   const overspentCount = allCategories.filter(item => item.available < 0).length;
+  const visibleCategories = data.groups.flatMap(group => group.categories.map(category => ({ ...category, isArchived: Boolean(category.isArchived || group.isArchived) })));
+  const moveCategories = data.groups.filter(group => !group.isArchived).flatMap(group => group.categories.filter(category => !category.isArchived));
+  const matchingCategoryCount = visibleCategories.filter(matchesFilter).length;
 
   function updateCategory(id: string, updater: (category: Category) => Category) {
     setData(current => { setHistory(stack => [...stack.slice(-49), current]); setFuture([]); return { ...current, groups: current.groups.map(group => ({ ...group, categories: group.categories.map(category => category.id === id ? updater(category) : category) })) }; });
@@ -193,16 +234,17 @@ function App() {
 
   function saveEdit(category: Category) {
     const next = amountFromInput(editValue);
-    const delta = next - category.assigned;
-    updateCategory(category.id, item => ({ ...item, assigned: next, available: item.available + delta }));
+    updateCategory(category.id, item => ({ ...item, assigned: next }));
     setEditingId(null);
     setToast('Assignment updated');
     window.setTimeout(() => setToast(''), 2200);
   }
 
   function addCategory(groupId: string) {
-    const id = `new-${Date.now()}`;
-    setData(current => { setHistory(stack => [...stack.slice(-49), current]); setFuture([]); return { ...current, groups: current.groups.map(group => group.id === groupId ? { ...group, categories: [...group.categories, { id, name: 'New category', assigned: 0, activity: 0, available: 0, target: 0, icon: '＋' }] } : group) }; });
+    const name = window.prompt('Category name')?.trim();
+    if (!name) return;
+    const id = `category-${crypto.randomUUID()}`;
+    setData(current => { setHistory(stack => [...stack.slice(-49), current]); setFuture([]); return { ...current, groups: current.groups.map(group => group.id === groupId ? { ...group, categories: [...group.categories, { id, name, assigned: 0, activity: 0, available: 0, target: 0, icon: '＋', isArchived: false }] } : group) }; });
     setToast('Category added');
     window.setTimeout(() => setToast(''), 2200);
   }
@@ -211,13 +253,13 @@ function App() {
     event.preventDefault();
     const amount = amountFromInput(moveAmount);
     if (moveFrom === moveTo || amount <= 0) return;
-    const source = allCategories.find(category => category.id === moveFrom);
+    const source = moveCategories.find(category => category.id === moveFrom);
     if (!source || amount > source.available) {
       setToast('Choose an amount available to move');
       window.setTimeout(() => setToast(''), 2400);
       return;
     }
-    setData(current => { setHistory(stack => [...stack.slice(-49), current]); setFuture([]); return { ...current, groups: current.groups.map(group => ({ ...group, categories: group.categories.map(category => category.id === moveFrom ? { ...category, assigned: category.assigned - amount, available: category.available - amount } : category.id === moveTo ? { ...category, assigned: category.assigned + amount, available: category.available + amount } : category) })) }; });
+    setData(current => { setHistory(stack => [...stack.slice(-49), current]); setFuture([]); return { ...current, groups: current.groups.map(group => ({ ...group, categories: group.categories.map(category => category.id === moveFrom ? { ...category, assigned: category.assigned - amount } : category.id === moveTo ? { ...category, assigned: category.assigned + amount } : category) })) }; });
     setMoveOpen(false);
     setToast(`${money(amount)} moved`);
     window.setTimeout(() => setToast(''), 2400);
@@ -236,8 +278,65 @@ function App() {
   }
 
   function addGroup() {
-    const id = `group-${Date.now()}`;
-    setData(current => { setHistory(stack => [...stack.slice(-49), current]); setFuture([]); return { ...current, groups: [...current.groups, { id, name: 'New group', categories: [] }] }; });
+    const name = window.prompt('Category group name')?.trim();
+    if (!name) return;
+    const id = `group-${crypto.randomUUID()}`;
+    setData(current => { setHistory(stack => [...stack.slice(-49), current]); setFuture([]); return { ...current, groups: [...current.groups, { id, name, categories: [], isArchived: false }] }; });
+  }
+
+  function toggleCategoryArchived(id: string) {
+    setData(current => ({ ...current, groups: current.groups.map(group => ({ ...group, categories: group.categories.map(category => category.id === id ? { ...category, isArchived: !category.isArchived } : category) })) }));
+  }
+
+  function toggleGroupArchived(id: string) {
+    setData(current => ({ ...current, groups: current.groups.map(group => group.id === id ? { ...group, isArchived: !group.isArchived } : group) }));
+  }
+
+  function moveGroup(id: string, direction: -1 | 1) {
+    setData(current => { const groups = [...current.groups]; const index = groups.findIndex(group => group.id === id); const target = index + direction; if (target < 0 || target >= groups.length) return current; [groups[index], groups[target]] = [groups[target], groups[index]]; return { ...current, groups }; });
+  }
+
+  function moveCategory(groupId: string, id: string, direction: -1 | 1) {
+    setData(current => ({ ...current, groups: current.groups.map(group => { if (group.id !== groupId) return group; const categories = [...group.categories]; const index = categories.findIndex(category => category.id === id); const target = index + direction; if (target < 0 || target >= categories.length) return group; [categories[index], categories[target]] = [categories[target], categories[index]]; return { ...group, categories }; }) }));
+  }
+
+  function addFunds() {
+    const raw = window.prompt('Amount of new money available to assign');
+    if (raw === null) return;
+    const amount = amountFromInput(raw);
+    if (amount <= 0) { setToast('Enter an amount greater than zero'); return; }
+    setData(current => ({ ...current, fundsAdded: current.fundsAdded + amount }));
+    setToast(`${money(amount)} added to this month’s available funds`);
+  }
+
+  async function renamePlan() {
+    const name = window.prompt('Budget name', plan.name)?.trim();
+    if (!name || name === plan.name) return;
+    try {
+      const response = await fetch('/api/budget', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, version: plan.version }) });
+      const result = await response.json();
+      if (response.status === 409) {
+        setPlan(result.current as BudgetPlan);
+        setToast('Budget name changed in another session. Please try again.');
+        return;
+      }
+      if (!response.ok) throw new Error(result.error ?? 'Budget name could not be saved.');
+      setPlan(result as BudgetPlan);
+      setToast('Budget name saved');
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Budget name could not be saved.');
+    }
+  }
+
+  function resolveConflict(reapply: boolean) {
+    if (!conflictBudget) return;
+    const latest = conflictBudget;
+    lastSaved.current = JSON.stringify(latest);
+    if (reapply) setData(current => ({ ...current, version: latest.version }));
+    else { setData(latest); setHistory([]); setFuture([]); }
+    setConflictBudget(null);
+    setSaveState('saved');
+    setToast(reapply ? 'Your changes will be reapplied to the latest version.' : 'Loaded the latest saved plan.');
   }
 
   function matchesFilter(category: Category) {
@@ -249,6 +348,7 @@ function App() {
       case 'Overfunded': return category.target > 0 && category.available > category.target;
       case 'Money available': return category.available > 0;
       case 'Snoozed': return Boolean(category.snoozed);
+      case 'Archived': return Boolean(category.isArchived);
       default: return true;
     }
   }
@@ -266,12 +366,12 @@ function App() {
         <div className="toolbar-actions"><button className="shared-button" onClick={() => setToast('Sharing is not connected in this local demo')}><Icon name="users" size={18} /> Shared</button><button className="icon-button mobile-menu-trigger" aria-label="Open menu" onClick={() => setMobileMenu(value => !value)}><Icon name="menu" /></button></div>
       </div>
 
-      <section className="ready-card" aria-label="Ready to assign">
+      <section className={`ready-card ${data.readyToAssign < 0 ? 'assigned-over' : 'funds-ready'}`} aria-label="Ready to assign">
         <div className="ready-copy">
-          <strong>−{money(Math.abs(3670 - totals.assigned))}</strong>
-          <span className="ready-hint">You assigned more than you have</span>
+          <strong>{money(data.readyToAssign)}</strong>
+          <span className="ready-hint">{data.readyToAssign < 0 ? 'Assigned more than available' : data.readyToAssign > 0 ? 'Ready to assign' : 'Every available dollar is assigned'}</span>
         </div>
-        <button className="ready-link" onClick={() => setMoveOpen(true)}>Fix This</button>
+        <button className="ready-link" onClick={addFunds}>Add funds</button>
       </section>
 
       <div className="filter-bar">
@@ -306,23 +406,24 @@ function App() {
             </div>
             {data.groups.map(group => {
               const groupTotal = group.categories.reduce((sum, category) => sum + category.available, 0);
-              const shownCategories = group.categories.filter(matchesFilter);
-              if (filter !== 'All' && shownCategories.length === 0) return null;
+              const groupVisible = filter === 'Archived' ? Boolean(group.isArchived || group.categories.some(category => category.isArchived)) : !group.isArchived;
+              const shownCategories = group.categories.filter(category => filter === 'Archived' ? Boolean(group.isArchived || category.isArchived) : !category.isArchived && matchesFilter(category));
+              if (!groupVisible || (filter !== 'All' && shownCategories.length === 0 && !group.isArchived)) return null;
               const isCollapsed = collapsed.includes(group.id);
               return <div className="category-group" key={group.id}>
                 <div className="group-row">
-                  <div className="group-name"><button className="group-collapse" aria-label={`Toggle ${group.name}`} aria-expanded={!isCollapsed} onClick={() => toggleGroup(group.id)}><span className={`group-chevron ${isCollapsed ? 'closed' : ''}`}><Icon name="chevron" size={12} /></span></button><input type="checkbox" aria-label={`Select ${group.name}`} checked={group.categories.length > 0 && group.categories.every(category => selectedIds.includes(category.id))} onChange={event => setSelectedIds(current => event.target.checked ? [...new Set([...current, ...group.categories.map(category => category.id)])] : current.filter(id => !group.categories.some(category => category.id === id)))} /><button className="group-label" onDoubleClick={() => { const name = window.prompt('Rename category group', group.name)?.trim(); if(name) setData(current => ({...current,groups:current.groups.map(item => item.id === group.id ? {...item,name} : item)})); }}>{group.name}</button></div>
+                  <div className="group-name"><button className="group-collapse" aria-label={`Toggle ${group.name}`} aria-expanded={!isCollapsed} onClick={() => toggleGroup(group.id)}><span className={`group-chevron ${isCollapsed ? 'closed' : ''}`}><Icon name="chevron" size={12} /></span></button><input type="checkbox" aria-label={`Select ${group.name}`} checked={group.categories.length > 0 && group.categories.every(category => selectedIds.includes(category.id))} onChange={event => setSelectedIds(current => event.target.checked ? [...new Set([...current, ...group.categories.map(category => category.id)])] : current.filter(id => !group.categories.some(category => category.id === id)))} /><button className="group-label" onDoubleClick={() => { const name = window.prompt('Rename category group', group.name)?.trim(); if(name) setData(current => ({...current,groups:current.groups.map(item => item.id === group.id ? {...item,name} : item)})); }}>{group.name}</button><div className="group-order-tools"><button aria-label={`Move ${group.name} up`} onClick={() => moveGroup(group.id, -1)}>↑</button><button aria-label={`Move ${group.name} down`} onClick={() => moveGroup(group.id, 1)}>↓</button></div></div>
                   <div className="group-assigned">{money(group.categories.reduce((sum, item) => sum + item.assigned, 0))}</div>
                   <div className="group-activity">{money(group.categories.reduce((sum, item) => sum + item.activity, 0))}</div>
                   <div className={`group-available ${groupTotal < 0 ? 'negative' : ''}`}>{money(groupTotal)}</div>
-                  <button className="group-add" onClick={() => addCategory(group.id)} aria-label={`Add category to ${group.name}`}><Icon name="plus" size={16} /></button>
+                  {!group.isArchived && <button className="group-add" onClick={() => addCategory(group.id)} aria-label={`Add category to ${group.name}`}><Icon name="plus" size={16} /></button>}<button className="group-archive" aria-label={`${group.isArchived ? 'Restore' : 'Archive'} group ${group.name}`} onClick={() => toggleGroupArchived(group.id)}>{group.isArchived ? 'Restore' : 'Archive'}</button>
                 </div>
                 {!isCollapsed && shownCategories.map(category => {
                   const progress = category.target > 0 ? Math.min(100, Math.max(0, Math.round(category.available / category.target * 100))) : 0;
                   return <div className={`category-row ${category.available < 0 ? 'is-overspent' : ''}`} key={category.id}>
-                    <div className="category-name-cell"><input type="checkbox" aria-label={`Select ${category.name}`} checked={selectedIds.includes(category.id)} onChange={event => setSelectedIds(current => event.target.checked ? [...current, category.id] : current.filter(id => id !== category.id))} /><div className="category-copy"><div className="category-label-line"><button className="category-name" title="Double-click to rename" onDoubleClick={() => { const name = window.prompt('Rename category', category.name)?.trim(); if(name) updateCategory(category.id, item => ({...item,name})); }}>{category.name}</button>{progressOn && <span className="category-status">{category.available < 0 ? 'Overspent' : category.snoozed ? 'Snoozed' : category.available === 0 && category.activity < 0 ? 'Fully Spent' : ''}</span>}</div>{progressOn && category.target > 0 && <div className={`progress-track ${category.available < 0 ? 'over' : category.assigned >= category.target ? 'funded' : ''}`}><span style={{width: `${category.available < 0 ? 100 : category.assigned >= category.target ? 100 : progress}%`}} /></div>}</div></div>
+                    <div className="category-name-cell"><input type="checkbox" aria-label={`Select ${category.name}`} checked={selectedIds.includes(category.id)} onChange={event => setSelectedIds(current => event.target.checked ? [...current, category.id] : current.filter(id => id !== category.id))} /><div className="category-copy"><div className="category-label-line"><button className="category-name" title="Double-click to rename" disabled={category.isArchived || group.isArchived} onDoubleClick={() => { const name = window.prompt('Rename category', category.name)?.trim(); if(name) updateCategory(category.id, item => ({...item,name})); }}>{category.name}</button>{progressOn && <span className="category-status">{category.available < 0 ? 'Overspent' : category.snoozed ? 'Snoozed' : category.available === 0 && category.activity < 0 ? 'Fully Spent' : ''}</span>}</div>{progressOn && category.target > 0 && <div className={`progress-track ${category.available < 0 ? 'over' : category.assigned >= category.target ? 'funded' : ''}`}><span style={{width: `${category.available < 0 ? 100 : category.assigned >= category.target ? 100 : progress}%`}} /></div>}</div><div className="category-order-tools"><button aria-label={`Move ${category.name} up`} disabled={category.isArchived || group.isArchived} onClick={() => moveCategory(group.id, category.id, -1)}>↑</button><button aria-label={`Move ${category.name} down`} disabled={category.isArchived || group.isArchived} onClick={() => moveCategory(group.id, category.id, 1)}>↓</button></div><button className="category-archive" disabled={group.isArchived} aria-label={`${category.isArchived ? 'Restore' : 'Archive'} category ${category.name}`} onClick={() => toggleCategoryArchived(category.id)}>{category.isArchived ? 'Restore' : 'Archive'}</button></div>
                     <div className="assigned-cell">
-                      {editingId === category.id ? <input className="amount-input" autoFocus value={editValue} onChange={event => setEditValue(event.target.value)} onBlur={() => saveEdit(category)} onKeyDown={event => { if (event.key === 'Enter') saveEdit(category); if (event.key === 'Escape') setEditingId(null); }} aria-label={`Assigned to ${category.name}`} /> : <button className="amount-button" onClick={() => startEdit(category)} aria-label={`Edit assigned for ${category.name}`}>{money(category.assigned)}</button>}
+                      {editingId === category.id ? <input className="amount-input" autoFocus value={editValue} onChange={event => setEditValue(event.target.value)} onBlur={() => saveEdit(category)} onKeyDown={event => { if (event.key === 'Enter') saveEdit(category); if (event.key === 'Escape') setEditingId(null); }} aria-label={`Assigned to ${category.name}`} /> : <button className="amount-button" disabled={category.isArchived || group.isArchived} onClick={() => startEdit(category)} aria-label={`Edit assigned for ${category.name}`}>{money(category.assigned)}</button>}
 
                     </div>
                     <div className={`activity-cell ${category.activity < 0 ? 'negative' : ''}`}>{money(category.activity)}</div>
@@ -332,14 +433,14 @@ function App() {
                 {!isCollapsed && shownCategories.length === 0 && <div className="empty-group">No categories match this filter.</div>}
               </div>;
             })}
-            {filter !== 'All' && allCategories.filter(matchesFilter).length === 0 && <div className="empty-state"><div className="empty-state-icon"><Icon name="check" /></div><strong>All clear</strong><span>There are no categories in this view.</span><button onClick={() => setFilter('All')}>Show all categories</button></div>}
+            {filter !== 'All' && matchingCategoryCount === 0 && <div className="empty-state"><div className="empty-state-icon"><Icon name="check" /></div><strong>All clear</strong><span>There are no categories in this view.</span><button onClick={() => setFilter('All')}>Show all categories</button></div>}
             <button className="add-group" onClick={addGroup}><span><Icon name="plus" size={16} /></span> Add category group</button>
           </div>
         </section>
 
         <aside className="summary-column">
           <section className="summary-card"><button className="summary-title" onClick={() => setToast('Monthly summary')}><span>{new Date(data.month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long'})}'s Summary</span><Icon name="chevron" size={15} /></button><div className="summary-body">
-            <div className="summary-line"><span>Left Over from Last Month</span><strong>{money(leftOver)}</strong></div><div className="summary-line"><span>Assigned in {new Date(data.month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long'})}</span><strong>{money(totals.assigned)}</strong></div><div className="summary-line"><span>Activity</span><strong>{money(totals.activity)}</strong></div><div className="summary-line summary-total"><span>Available</span><strong>{money(totals.available)}</strong></div>
+            <div className="summary-line"><span>Ready to Assign</span><strong>{money(data.readyToAssign)}</strong></div><div className="summary-line"><span>Assigned in {new Date(data.month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long'})}</span><strong>{money(totals.assigned)}</strong></div><div className="summary-line"><span>Activity</span><strong>{money(totals.activity)}</strong></div><div className="summary-line summary-total"><span>Available</span><strong>{money(totals.available)}</strong></div>
             <div className="summary-rule" /><div className="summary-subhead">Cost to Be Me</div><div className="summary-line"><span>{new Date(data.month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long'})}’s Targets</span><strong>{money(targetSum)}</strong></div><div className="target-progress"><span style={{width:'14%'}} /></div><div className="summary-line"><span>Expected Income</span><strong>{money(12500)} <button className="edit-income" aria-label="Edit income" onClick={() => setToast('Income settings')}>↗</button></strong></div><div className="income-progress"/><div className="summary-footnote">Next month's targets could increase your total to {money(targetSum)}</div></div></section>
           <button className="auto-assign-card" onClick={() => setToast('Auto-Assign options')}><span>ϟ</span><strong>Auto-Assign</strong><Icon name="right" size={15} /></button>
           <section className="future-card"><div className="future-header"><strong>Assigned in Future Months</strong><Icon name="chevron" size={15} /></div><button onClick={() => changeMonth(1)}><span className="future-month">◷ &nbsp; {new Date(Number(data.month.slice(0,4)),Number(data.month.slice(5)),1).toLocaleDateString('en-GB',{month:'long'})}</span><span>{money(0)}</span></button></section>
@@ -357,7 +458,7 @@ function App() {
   return <div className="app-shell">
     {mobileMenu && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMobileMenu(false)} />}
     <aside className={`sidebar ${mobileMenu ? 'mobile-open' : ''}`}>
-      <button className="budget-picker"><img src="/ynab-logo.svg" alt="" /><span className="budget-picker-copy"><strong>🏡 My Budget</strong><small>alex@example.com</small></span><Icon name="chevron" size={15} /></button>
+      <button className="budget-picker" onClick={renamePlan}><img src="/ynab-logo.svg" alt="" /><span className="budget-picker-copy"><strong>🏡 {plan.name}</strong><small>{plan.currency} · Rename budget</small></span><Icon name="chevron" size={15} /></button>
       <div className="side-nav" role="navigation" aria-label="Main navigation">
         <button className={`nav-item ${activePage === 'Plan' ? 'active' : ''}`} onClick={() => { setActivePage('Plan'); setMobileMenu(false); }}><Icon name="plan" size={22} /><span>Plan</span></button>
         <button className={`nav-item ${activePage === 'Reflect' ? 'active' : ''}`} onClick={() => setToast('Reflect is outside this demo’s scope')}><Icon name="chart" /><span>Reflect</span></button>
@@ -377,13 +478,14 @@ function App() {
     </aside>
 
     <main className="main-area">
-      <header className="topbar"><div className="breadcrumbs"><span>My Budget</span><Icon name="right" size={13} /><strong>{activePage}</strong></div><div className="topbar-right"><button className="share-button" onClick={() => setToast('Sharing is not connected in this local demo')}>Share</button><button className="top-avatar" aria-label="Profile">A</button></div></header>
+      <header className="topbar"><div className="breadcrumbs"><span>{plan.name}</span><Icon name="right" size={13} /><strong>{activePage}</strong></div><div className="topbar-right"><button className="share-button" onClick={() => setToast('Sharing is not connected in this local demo')}>Share</button><button className="top-avatar" aria-label="Profile">A</button></div></header>
       {activePage === 'Plan' ? <div className="page-content"><div className="page-heading"><div><span className="eyebrow">YOUR MONEY, WITH A PLAN</span><h1>Plan</h1></div></div>{budgetPage}</div> : <div className="page-content other-page"><div className="page-heading"><div><span className="eyebrow">MY BUDGET</span><h1>{activePage}</h1></div></div><section className="coming-card"><div className="coming-icon"><Icon name={otherPages[activePage].icon} size={24} /></div><h2>{otherPages[activePage].title}</h2><p>{otherPages[activePage].subtitle}</p><div className="coming-preview"><span /><span /><span /></div><button className="button button-primary" onClick={() => setActivePage('Plan')}>Back to your plan <Icon name="right" size={15} /></button><small>This view is queued for the next build slice.</small></section></div>}
-      <footer className="footer-note"><span>{saveState === 'loading' ? 'Loading budget…' : saveState === 'saving' ? 'Saving changes…' : saveState === 'offline' ? 'Backend unavailable' : 'Changes saved to PostgreSQL'}</span><span>OpenBudget <span className="footer-separator">·</span> Local workspace</span></footer>
+      <footer className="footer-note"><span>{saveState === 'loading' ? 'Loading budget…' : saveState === 'saving' ? 'Saving changes…' : saveState === 'conflict' ? 'Budget changed elsewhere' : saveState === 'offline' ? 'Changes not saved' : 'Changes saved to PostgreSQL'}</span><span>OpenBudget <span className="footer-separator">·</span> Local workspace</span></footer>
     </main>
 
     <button className="help-bubble" aria-label="Help" onClick={() => setToast('Local demo help: edit Assigned values, move money with Fix This, or add a Category Group.')}>?</button>
-    {moveOpen && <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMoveOpen(false); }}><section className="move-modal" role="dialog" aria-modal="true" aria-labelledby="move-title"><div className="modal-heading"><div className="modal-icon"><Icon name="transfer" /></div><button className="icon-button" aria-label="Close move money dialog" onClick={() => setMoveOpen(false)}><Icon name="close" /></button></div><span className="eyebrow">GIVE YOUR MONEY A NEW JOB</span><h2 id="move-title">Move money</h2><p className="modal-copy">Shift money between categories. Your total plan stays the same.</p><form onSubmit={applyMove}><label>Move from<select value={moveFrom} onChange={event => setMoveFrom(event.target.value)}>{allCategories.map(category => <option key={category.id} value={category.id}>{category.name} · {money(category.available)}</option>)}</select></label><div className="modal-arrow"><Icon name="arrow" /></div><label>Move to<select value={moveTo} onChange={event => setMoveTo(event.target.value)}>{allCategories.map(category => <option key={category.id} value={category.id}>{category.name} · {money(category.available)}</option>)}</select></label><label className="amount-label">Amount<div className="modal-amount"><span>€</span><input autoFocus inputMode="decimal" value={moveAmount} onChange={event => setMoveAmount(event.target.value)} aria-label="Amount to move" /></div></label><button className="button button-primary modal-submit" type="submit">Move {money(amountFromInput(moveAmount))}</button></form></section></div>}
+    {conflictBudget && <div className="modal-backdrop" role="presentation"><section className="move-modal conflict-modal" role="dialog" aria-modal="true" aria-labelledby="conflict-title"><span className="eyebrow">BUDGET UPDATED ELSEWHERE</span><h2 id="conflict-title">Choose which plan to keep</h2><p className="modal-copy">Another session saved this month while you were editing. Load that version or reapply your edits over it.</p><div className="conflict-actions"><button className="button" onClick={() => resolveConflict(false)}>Load latest</button><button className="button button-primary" onClick={() => resolveConflict(true)}>Reapply my changes</button></div></section></div>}
+    {moveOpen && <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMoveOpen(false); }}><section className="move-modal" role="dialog" aria-modal="true" aria-labelledby="move-title"><div className="modal-heading"><div className="modal-icon"><Icon name="transfer" /></div><button className="icon-button" aria-label="Close move money dialog" onClick={() => setMoveOpen(false)}><Icon name="close" /></button></div><span className="eyebrow">GIVE YOUR MONEY A NEW JOB</span><h2 id="move-title">Move money</h2><p className="modal-copy">Shift money between categories. Your total plan stays the same.</p><form onSubmit={applyMove}><label>Move from<select value={moveFrom} onChange={event => setMoveFrom(event.target.value)}>{moveCategories.map(category => <option key={category.id} value={category.id}>{category.name} · {money(category.available)}</option>)}</select></label><div className="modal-arrow"><Icon name="arrow" /></div><label>Move to<select value={moveTo} onChange={event => setMoveTo(event.target.value)}>{moveCategories.map(category => <option key={category.id} value={category.id}>{category.name} · {money(category.available)}</option>)}</select></label><label className="amount-label">Amount<div className="modal-amount"><span>€</span><input autoFocus inputMode="decimal" value={moveAmount} onChange={event => setMoveAmount(event.target.value)} aria-label="Amount to move" /></div></label><button className="button button-primary modal-submit" type="submit">Move {money(amountFromInput(moveAmount))}</button></form></section></div>}
     {toast && <div className="toast" role="status"><span className="toast-check"><Icon name="check" size={14} /></span>{toast}<button aria-label="Dismiss notification" onClick={() => setToast('')}><Icon name="close" size={14} /></button></div>}
   </div>;
 }

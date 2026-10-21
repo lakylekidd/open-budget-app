@@ -15,7 +15,7 @@ This roadmap turns product workflows documented publicly by YNAB into independen
 | # | Milestone | Short description | Status | Details |
 |---:|---|---|---|---|
 | 0 | Local application foundation | Plan UI, .NET API, PostgreSQL persistence, and Aspire development orchestration. | Current / implemented | [Milestone 0](milestones/milestone-00-foundation.md) |
-| 1 | Reliable budget core and month lifecycle | Authoritative assignments, available-to-assign calculations, month carry-forward, and conflict-safe writes. | Planned | [Milestone 1](milestones/milestone-01-budget-core.md) |
+| 1 | Reliable budget core and month lifecycle | Authoritative assignments, available-to-assign calculations, month carry-forward, and conflict-safe writes. | Current / implemented | [Milestone 1](milestones/milestone-01-budget-core.md) |
 | 2 | Accounts and transaction register | Cash accounts, transaction ledger, transfers, reconciliation, and budget activity calculations. | Planned | [Milestone 2](milestones/milestone-02-accounts-register.md) |
 | 3 | Goals, templates, and guided assignment | Targets, progress, category templates, and explainable auto-assignment. | Planned | [Milestone 3](milestones/milestone-03-goals-and-assignment.md) |
 | 4 | Scheduled transactions and cash-flow awareness | Recurring entries, upcoming/overdue review, and posting occurrences once. | Planned | [Milestone 4](milestones/milestone-04-scheduled-transactions.md) |
