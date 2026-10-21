@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OpenBudget.Api/OpenBudget.Api.csproj" />
+    <Project Path="src/OpenBudget.AppHost/OpenBudget.AppHost.csproj" />
+  </Folder>
+</Solution>

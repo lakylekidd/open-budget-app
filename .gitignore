@@ -1,0 +1,16 @@
+# JavaScript frontend
+src/OpenBudget.UI/node_modules/
+src/OpenBudget.UI/dist/
+src/OpenBudget.UI/*.tsbuildinfo
+src/OpenBudget.UI/.vite/
+
+# .NET build output
+**/bin/
+**/obj/
+
+# IDE and local-only settings
+.vs/
+.idea/
+*.user
+*.suo
+appsettings.Local.json
