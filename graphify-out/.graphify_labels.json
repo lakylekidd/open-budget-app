@@ -1,1 +1,9 @@
-{"0": "App", "1": "BudgetEntity", "2": "CategoryEntity", "3": "OpenBudget.Api", "4": "package.json", "5": "http", "6": "compilerOptions", "7": "http", "8": ".UpdateMonthAsync", "9": "OpenBudget.Api", "10": "AppHost.cs", "11": "vite-env.d.ts"}
+{
+  "0": "App",
+  "1": "BudgetEntity",
+  "5": "http",
+  "6": "compilerOptions",
+  "7": "http",
+  "10": "AppHost.cs",
+  "11": "vite-env.d.ts"
+}
