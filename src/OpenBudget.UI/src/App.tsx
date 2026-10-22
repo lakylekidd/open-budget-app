@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { AccountSidebarRow } from './ledger/AccountSidebarRow';
+import { AccountsPage } from './ledger/AccountsPage';
+import { type Accounts, requestJson } from './ledger/api';
+import { parseAssignment } from './budgetMoney';
 
 type Category = {
   id: string;
@@ -61,7 +65,6 @@ const initialGroups: CategoryGroup[] = [
 const currency = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR' });
 const money = (value: number) => currency.format(value);
 const shortMonthText = (value: string) => new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric' }).format(new Date(`${value}-01T12:00:00`));
-const amountFromInput = (value: string) => Number(value.replace(',', '.').replace(/[^\d.-]/g, '')) || 0;
 
 function Icon({ name, size = 18 }: { name: string; size?: number }) {
   if (['plan', 'bank', 'chart'].includes(name)) return <img src={`/icon-${name}.svg`} width={size} height={size} alt="" aria-hidden="true" />;
@@ -94,6 +97,13 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
 
 function App() {
   const [plan, setPlan] = useState<BudgetPlan>({ id: 'default', name: 'My Budget', currency: 'EUR', version: 1 });
+  const [accounts, setAccounts] = useState<Accounts>({ version: 1, accounts: [] });
+  const [accountError, setAccountError] = useState(false);
+  const [ledgerPending, setLedgerPending] = useState(false);
+  const [selectedAccount, setSelectedAccount] = useState('');
+  const [accountEditRequest,setAccountEditRequest]=useState<{id:string;token:number}>();
+  const [ledgerRefresh, setLedgerRefresh] = useState(0);
+  const [budgetRefresh, setBudgetRefresh] = useState(0);
   const [data, setData] = useState<BudgetState>({ month: '2026-10', groups: initialGroups, note: '', version: 1, openingReadyToAssign: 0, fundsAdded: 0, readyToAssign: 0 });
   const [saveState, setSaveState] = useState<'loading' | 'saved' | 'saving' | 'offline' | 'conflict'>('loading');
   const loadedMonth = useRef<string | null>(null);
@@ -103,6 +113,7 @@ function App() {
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [assignmentError,setAssignmentError]=useState('');
   const [moveOpen, setMoveOpen] = useState(false);
   const [conflictBudget, setConflictBudget] = useState<BudgetState | null>(null);
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -117,6 +128,22 @@ function App() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [history, setHistory] = useState<BudgetState[]>([]);
   const [future, setFuture] = useState<BudgetState[]>([]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    requestJson<Accounts>('/api/accounts', { signal: controller.signal }).then(value => { setAccounts(value); setAccountError(false); })
+      .catch(error => { if (error.name !== 'AbortError') setAccountError(true); });
+    return () => controller.abort();
+  }, [ledgerRefresh]);
+
+  function navigate(page: string, accountId = '') {
+    if (ledgerPending) { setToast('Resolve the pending ledger save before leaving accounts.'); return; }
+    if (editingId || saveState === 'saving' || conflictBudget || (loadedMonth.current === data.month && lastSaved.current !== JSON.stringify(data))) {
+      setToast('Wait for the plan to save, or resolve its save error before opening accounts.'); return;
+    }
+    setActivePage(page); setSelectedAccount(accountId); setMobileMenu(false);
+    if (page === 'Plan') setBudgetRefresh(value => value + 1);
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -143,6 +170,7 @@ function App() {
         lastSaved.current = JSON.stringify(budget);
         setConflictBudget(null);
         setData(budget);
+        setHistory([]);setFuture([]);setEditingId(null);setAssignmentError('');setSelectedIds([]);
         setSaveState('saved');
       })
       .catch(error => {
@@ -152,11 +180,12 @@ function App() {
         }
       });
     return () => controller.abort();
-  }, [data.month]);
+  }, [data.month, budgetRefresh]);
 
   useEffect(() => {
     if (loadedMonth.current !== data.month || conflictBudget) return;
     if (lastSaved.current === JSON.stringify(data)) return;
+    setSaveState('saving');
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       saveController.current?.abort();
@@ -218,6 +247,9 @@ function App() {
   }
 
   function changeMonth(delta: number) {
+    if(editingId || loadedMonth.current!==data.month || saveState==='saving' || conflictBudget || lastSaved.current!==JSON.stringify(data)){
+      setToast('Finish the assignment and wait for this month to save before changing months.');return;
+    }
     const [year, month] = data.month.split('-').map(Number);
     const date = new Date(year, month - 1 + delta, 1);
     setData(current => ({ ...current, month: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}` }));
@@ -228,12 +260,15 @@ function App() {
   }
 
   function startEdit(category: Category) {
+    setAssignmentError('');
     setEditingId(category.id);
     setEditValue(String(category.assigned));
   }
 
   function saveEdit(category: Category) {
-    const next = amountFromInput(editValue);
+    const next = parseAssignment(editValue);
+    if(next===null){setAssignmentError('Enter a valid amount with at most two decimal places.');return;}
+    setAssignmentError('');
     updateCategory(category.id, item => ({ ...item, assigned: next }));
     setEditingId(null);
     setToast('Assignment updated');
@@ -251,8 +286,8 @@ function App() {
 
   function applyMove(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const amount = amountFromInput(moveAmount);
-    if (moveFrom === moveTo || amount <= 0) return;
+    const amount = parseAssignment(moveAmount);
+    if (amount === null || moveFrom === moveTo || amount <= 0) return;
     const source = moveCategories.find(category => category.id === moveFrom);
     if (!source || amount > source.available) {
       setToast('Choose an amount available to move');
@@ -301,12 +336,8 @@ function App() {
   }
 
   function addFunds() {
-    const raw = window.prompt('Amount of new money available to assign');
-    if (raw === null) return;
-    const amount = amountFromInput(raw);
-    if (amount <= 0) { setToast('Enter an amount greater than zero'); return; }
-    setData(current => ({ ...current, fundsAdded: current.fundsAdded + amount }));
-    setToast(`${money(amount)} added to this month’s available funds`);
+    navigate('Accounts');
+    setToast('Record income as a positive cash account transaction without a category.');
   }
 
   async function renamePlan() {
@@ -366,12 +397,14 @@ function App() {
         <div className="toolbar-actions"><button className="shared-button" onClick={() => setToast('Sharing is not connected in this local demo')}><Icon name="users" size={18} /> Shared</button><button className="icon-button mobile-menu-trigger" aria-label="Open menu" onClick={() => setMobileMenu(value => !value)}><Icon name="menu" /></button></div>
       </div>
 
-      <section className={`ready-card ${data.readyToAssign < 0 ? 'assigned-over' : 'funds-ready'}`} aria-label="Ready to assign">
+      <section className={`ready-card ${data.readyToAssign === 0 ? 'all-money-assigned' : data.readyToAssign < 0 ? 'assigned-over' : 'funds-ready'}`} aria-label="Ready to assign">
         <div className="ready-copy">
           <strong>{money(data.readyToAssign)}</strong>
-          <span className="ready-hint">{data.readyToAssign < 0 ? 'Assigned more than available' : data.readyToAssign > 0 ? 'Ready to assign' : 'Every available dollar is assigned'}</span>
+          <span className="ready-hint">{data.readyToAssign < 0 ? 'Assigned more than available' : data.readyToAssign > 0 ? 'Ready to assign' : 'All Money Assigned'}</span>
         </div>
-        <button className="ready-link" onClick={addFunds}>Add funds</button>
+        {data.readyToAssign === 0
+          ? <span className="all-assigned-check" aria-hidden="true"><Icon name="check" size={26}/></span>
+          : <button className="ready-link" onClick={addFunds}>Record income</button>}
       </section>
 
       <div className="filter-bar">
@@ -422,8 +455,8 @@ function App() {
                   const progress = category.target > 0 ? Math.min(100, Math.max(0, Math.round(category.available / category.target * 100))) : 0;
                   return <div className={`category-row ${category.available < 0 ? 'is-overspent' : ''}`} key={category.id}>
                     <div className="category-name-cell"><input type="checkbox" aria-label={`Select ${category.name}`} checked={selectedIds.includes(category.id)} onChange={event => setSelectedIds(current => event.target.checked ? [...current, category.id] : current.filter(id => id !== category.id))} /><div className="category-copy"><div className="category-label-line"><button className="category-name" title="Double-click to rename" disabled={category.isArchived || group.isArchived} onDoubleClick={() => { const name = window.prompt('Rename category', category.name)?.trim(); if(name) updateCategory(category.id, item => ({...item,name})); }}>{category.name}</button>{progressOn && <span className="category-status">{category.available < 0 ? 'Overspent' : category.snoozed ? 'Snoozed' : category.available === 0 && category.activity < 0 ? 'Fully Spent' : ''}</span>}</div>{progressOn && category.target > 0 && <div className={`progress-track ${category.available < 0 ? 'over' : category.assigned >= category.target ? 'funded' : ''}`}><span style={{width: `${category.available < 0 ? 100 : category.assigned >= category.target ? 100 : progress}%`}} /></div>}</div><div className="category-order-tools"><button aria-label={`Move ${category.name} up`} disabled={category.isArchived || group.isArchived} onClick={() => moveCategory(group.id, category.id, -1)}>↑</button><button aria-label={`Move ${category.name} down`} disabled={category.isArchived || group.isArchived} onClick={() => moveCategory(group.id, category.id, 1)}>↓</button></div><button className="category-archive" disabled={group.isArchived} aria-label={`${category.isArchived ? 'Restore' : 'Archive'} category ${category.name}`} onClick={() => toggleCategoryArchived(category.id)}>{category.isArchived ? 'Restore' : 'Archive'}</button></div>
-                    <div className="assigned-cell">
-                      {editingId === category.id ? <input className="amount-input" autoFocus value={editValue} onChange={event => setEditValue(event.target.value)} onBlur={() => saveEdit(category)} onKeyDown={event => { if (event.key === 'Enter') saveEdit(category); if (event.key === 'Escape') setEditingId(null); }} aria-label={`Assigned to ${category.name}`} /> : <button className="amount-button" disabled={category.isArchived || group.isArchived} onClick={() => startEdit(category)} aria-label={`Edit assigned for ${category.name}`}>{money(category.assigned)}</button>}
+                    <div className="assigned-cell">{editingId===category.id&&assignmentError&&<span role="alert" className="assignment-error">{assignmentError}</span>}
+                      {editingId === category.id ? <input className="amount-input" autoFocus value={editValue} aria-invalid={Boolean(assignmentError)} onChange={event => {setEditValue(event.target.value);setAssignmentError('');}} onBlur={() => saveEdit(category)} onKeyDown={event => { if (event.key === 'Enter') saveEdit(category); if (event.key === 'Escape') {setEditingId(null);setAssignmentError('');} }} aria-label={`Assigned to ${category.name}`} /> : <button className="amount-button" disabled={category.isArchived || group.isArchived || saveState==='loading' || loadedMonth.current!==data.month || !!conflictBudget} onClick={() => startEdit(category)} aria-label={`Edit assigned for ${category.name}`}>{money(category.assigned)}</button>}
 
                     </div>
                     <div className={`activity-cell ${category.activity < 0 ? 'negative' : ''}`}>{money(category.activity)}</div>
@@ -460,32 +493,28 @@ function App() {
     <aside className={`sidebar ${mobileMenu ? 'mobile-open' : ''}`}>
       <button className="budget-picker" onClick={renamePlan}><img src="/ynab-logo.svg" alt="" /><span className="budget-picker-copy"><strong>🏡 {plan.name}</strong><small>{plan.currency} · Rename budget</small></span><Icon name="chevron" size={15} /></button>
       <div className="side-nav" role="navigation" aria-label="Main navigation">
-        <button className={`nav-item ${activePage === 'Plan' ? 'active' : ''}`} onClick={() => { setActivePage('Plan'); setMobileMenu(false); }}><Icon name="plan" size={22} /><span>Plan</span></button>
+        <button className={`nav-item ${activePage === 'Plan' ? 'active' : ''}`} onClick={() => navigate('Plan')}><Icon name="plan" size={22} /><span>Plan</span></button>
         <button className={`nav-item ${activePage === 'Reflect' ? 'active' : ''}`} onClick={() => setToast('Reflect is outside this demo’s scope')}><Icon name="chart" /><span>Reflect</span></button>
-        <button className={`nav-item ${activePage === 'Accounts' ? 'active' : ''}`} onClick={() => { setActivePage('Accounts'); setMobileMenu(false); }}><Icon name="bank" size={22} /><span>All Accounts</span></button>
+        <button className={`nav-item ${activePage === 'Accounts' && !selectedAccount ? 'active' : ''}`} onClick={() => navigate('Accounts')}><Icon name="bank" size={22} /><span>All Accounts</span></button>
       </div>
       <div className="account-section">
         
-        <div className="account-type"><span className="account-type-icon cash-icon">$</span><span>CASH</span><strong>{money(3640.82)}</strong></div>
-        <button className="account-row" onClick={() => setActivePage('Accounts')}><span className="account-dot checking" /><span>Everyday checking</span><strong>{money(2812.4)}</strong></button>
-        <button className="account-row" onClick={() => setActivePage('Accounts')}><span className="account-dot savings" /><span>Rainy day savings</span><strong>{money(828.42)}</strong></button>
-        <div className="account-type"><span className="account-type-icon credit-icon">↗</span><span>CREDIT</span><strong className="debt-amount">−{money(684.2)}</strong></div>
-        <button className="account-row" onClick={() => setActivePage('Accounts')}><span className="account-dot card" /><span>Everyday card</span><strong>−{money(684.2)}</strong></button>
-        <div className="account-type"><span className="account-type-icon tracking-icon">↗</span><span>LOANS</span><strong>{money(0)}</strong></div>
-        <button className="account-row" onClick={() => setActivePage('Accounts')}><span className="account-dot tracking" /><span>Long-term loan</span><strong>−{money(8400)}</strong></button>
+        <div className="account-type"><span>CASH</span><strong>{money(accounts.accounts.reduce((sum, account) => sum + account.balance, 0))}</strong></div>
+        {accounts.accounts.map(account => <AccountSidebarRow key={account.id} account={account} selected={activePage==='Accounts'&&selectedAccount===account.id} disabled={ledgerPending} onSelect={()=>navigate('Accounts',account.id)} onEdit={()=>{if(!ledgerPending){navigate('Accounts',account.id);setAccountEditRequest({id:account.id,token:Date.now()});}}}/>)}
+        {accountError ? <button className="account-row" onClick={() => setLedgerRefresh(value => value + 1)}>Retry loading accounts</button> : !accounts.accounts.length && <button className="account-row" onClick={() => navigate('Accounts')}>Add your first cash account</button>}
       </div>
       <div className="sidebar-bottom"><div className="referral-banner"><span>Give your friends 6 free weeks to try YNAB!</span><img src="/referral-heart.svg" alt="" /><button aria-label="Dismiss referral" onClick={event => {event.currentTarget.parentElement?.classList.add('dismissed');}}>×</button></div><div className="sidebar-footer"><button onClick={() => setToast('Sharing is not connected in this demo')}>▦ &nbsp; Share & Earn</button><button aria-label="Collapse sidebar" onClick={() => setMobileMenu(value => !value)}>◧</button></div></div>
     </aside>
 
     <main className="main-area">
       <header className="topbar"><div className="breadcrumbs"><span>{plan.name}</span><Icon name="right" size={13} /><strong>{activePage}</strong></div><div className="topbar-right"><button className="share-button" onClick={() => setToast('Sharing is not connected in this local demo')}>Share</button><button className="top-avatar" aria-label="Profile">A</button></div></header>
-      {activePage === 'Plan' ? <div className="page-content"><div className="page-heading"><div><span className="eyebrow">YOUR MONEY, WITH A PLAN</span><h1>Plan</h1></div></div>{budgetPage}</div> : <div className="page-content other-page"><div className="page-heading"><div><span className="eyebrow">MY BUDGET</span><h1>{activePage}</h1></div></div><section className="coming-card"><div className="coming-icon"><Icon name={otherPages[activePage].icon} size={24} /></div><h2>{otherPages[activePage].title}</h2><p>{otherPages[activePage].subtitle}</p><div className="coming-preview"><span /><span /><span /></div><button className="button button-primary" onClick={() => setActivePage('Plan')}>Back to your plan <Icon name="right" size={15} /></button><small>This view is queued for the next build slice.</small></section></div>}
+      {activePage === 'Accounts' ? <AccountsPage editAccountRequest={accountEditRequest} onPendingChange={setLedgerPending} selectedAccount={selectedAccount} onSelectAccount={setSelectedAccount} onChanged={() => setLedgerRefresh(value => value + 1)} onMenu={() => setMobileMenu(true)} /> : activePage === 'Plan' ? <div className="page-content"><div className="page-heading"><div><span className="eyebrow">YOUR MONEY, WITH A PLAN</span><h1>Plan</h1></div></div>{budgetPage}<div className="ledger-plan-status" role="status">{saveState === 'saved' ? 'Plan saved' : saveState === 'saving' ? 'Saving plan…' : saveState === 'loading' ? 'Loading plan…' : saveState === 'conflict' ? 'Resolve the conflicting plan edits' : 'Plan changes could not be saved'} {saveState === 'offline' && <button onClick={() => setBudgetRefresh(value => value + 1)}>Reload saved plan</button>}</div></div> : <div className="page-content other-page"><div className="page-heading"><div><span className="eyebrow">MY BUDGET</span><h1>{activePage}</h1></div></div><section className="coming-card"><div className="coming-icon"><Icon name={otherPages[activePage].icon} size={24} /></div><h2>{otherPages[activePage].title}</h2><p>{otherPages[activePage].subtitle}</p><div className="coming-preview"><span /><span /><span /></div><button className="button button-primary" onClick={() => setActivePage('Plan')}>Back to your plan <Icon name="right" size={15} /></button><small>This view is queued for the next build slice.</small></section></div>}
       <footer className="footer-note"><span>{saveState === 'loading' ? 'Loading budget…' : saveState === 'saving' ? 'Saving changes…' : saveState === 'conflict' ? 'Budget changed elsewhere' : saveState === 'offline' ? 'Changes not saved' : 'Changes saved to PostgreSQL'}</span><span>OpenBudget <span className="footer-separator">·</span> Local workspace</span></footer>
     </main>
 
     <button className="help-bubble" aria-label="Help" onClick={() => setToast('Local demo help: edit Assigned values, move money with Fix This, or add a Category Group.')}>?</button>
     {conflictBudget && <div className="modal-backdrop" role="presentation"><section className="move-modal conflict-modal" role="dialog" aria-modal="true" aria-labelledby="conflict-title"><span className="eyebrow">BUDGET UPDATED ELSEWHERE</span><h2 id="conflict-title">Choose which plan to keep</h2><p className="modal-copy">Another session saved this month while you were editing. Load that version or reapply your edits over it.</p><div className="conflict-actions"><button className="button" onClick={() => resolveConflict(false)}>Load latest</button><button className="button button-primary" onClick={() => resolveConflict(true)}>Reapply my changes</button></div></section></div>}
-    {moveOpen && <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMoveOpen(false); }}><section className="move-modal" role="dialog" aria-modal="true" aria-labelledby="move-title"><div className="modal-heading"><div className="modal-icon"><Icon name="transfer" /></div><button className="icon-button" aria-label="Close move money dialog" onClick={() => setMoveOpen(false)}><Icon name="close" /></button></div><span className="eyebrow">GIVE YOUR MONEY A NEW JOB</span><h2 id="move-title">Move money</h2><p className="modal-copy">Shift money between categories. Your total plan stays the same.</p><form onSubmit={applyMove}><label>Move from<select value={moveFrom} onChange={event => setMoveFrom(event.target.value)}>{moveCategories.map(category => <option key={category.id} value={category.id}>{category.name} · {money(category.available)}</option>)}</select></label><div className="modal-arrow"><Icon name="arrow" /></div><label>Move to<select value={moveTo} onChange={event => setMoveTo(event.target.value)}>{moveCategories.map(category => <option key={category.id} value={category.id}>{category.name} · {money(category.available)}</option>)}</select></label><label className="amount-label">Amount<div className="modal-amount"><span>€</span><input autoFocus inputMode="decimal" value={moveAmount} onChange={event => setMoveAmount(event.target.value)} aria-label="Amount to move" /></div></label><button className="button button-primary modal-submit" type="submit">Move {money(amountFromInput(moveAmount))}</button></form></section></div>}
+    {moveOpen && <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMoveOpen(false); }}><section className="move-modal" role="dialog" aria-modal="true" aria-labelledby="move-title"><div className="modal-heading"><div className="modal-icon"><Icon name="transfer" /></div><button className="icon-button" aria-label="Close move money dialog" onClick={() => setMoveOpen(false)}><Icon name="close" /></button></div><span className="eyebrow">GIVE YOUR MONEY A NEW JOB</span><h2 id="move-title">Move money</h2><p className="modal-copy">Shift money between categories. Your total plan stays the same.</p><form onSubmit={applyMove}><label>Move from<select value={moveFrom} onChange={event => setMoveFrom(event.target.value)}>{moveCategories.map(category => <option key={category.id} value={category.id}>{category.name} · {money(category.available)}</option>)}</select></label><div className="modal-arrow"><Icon name="arrow" /></div><label>Move to<select value={moveTo} onChange={event => setMoveTo(event.target.value)}>{moveCategories.map(category => <option key={category.id} value={category.id}>{category.name} · {money(category.available)}</option>)}</select></label><label className="amount-label">Amount<div className="modal-amount"><span>€</span><input autoFocus inputMode="decimal" value={moveAmount} onChange={event => setMoveAmount(event.target.value)} aria-label="Amount to move" /></div></label><button className="button button-primary modal-submit" type="submit">Move {money(parseAssignment(moveAmount)??0)}</button></form></section></div>}
     {toast && <div className="toast" role="status"><span className="toast-check"><Icon name="check" size={14} /></span>{toast}<button aria-label="Dismiss notification" onClick={() => setToast('')}><Icon name="close" size={14} /></button></div>}
   </div>;
 }

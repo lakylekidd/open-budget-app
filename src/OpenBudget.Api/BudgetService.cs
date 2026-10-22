@@ -51,7 +51,7 @@ public sealed class BudgetService(BudgetDbContext db)
         if (existing is not null) return existing;
 
         var previous = await db.Budgets
-            .Where(x => string.Compare(x.Month, month, StringComparison.Ordinal) < 0)
+            .Where(x => string.Compare(x.Month, month) < 0)
             .Include(x => x.Plan)
             .Include(x => x.Groups).ThenInclude(x => x.Categories)
             .OrderByDescending(x => x.Month)
@@ -83,6 +83,8 @@ public sealed class BudgetService(BudgetDbContext db)
         var budget = await GetMonthAsync(request.Month, cancellationToken);
         if (budget.Version != request.Version)
             return BudgetUpdateResult.Conflict(BudgetDto.From(budget));
+        if (budget.FundsAdded != request.FundsAdded)
+            return BudgetUpdateResult.Invalid("Funds added is a preserved legacy baseline. Record new income through a cash account transaction.");
 
         var currentGroups = budget.Groups.ToDictionary(x => x.Id, StringComparer.Ordinal);
         var currentCategories = budget.Groups.SelectMany(g => g.Categories)
@@ -93,6 +95,9 @@ public sealed class BudgetService(BudgetDbContext db)
         if (currentGroups.Keys.Any(id => request.Groups.All(g => g.Id != id)) ||
             currentCategories.Keys.Any(key => !requestedCategoryKeys.Contains(key)))
             return BudgetUpdateResult.Invalid("Existing groups and categories must be archived instead of removed.");
+
+        var previousReadyToAssign = CalculateReadyToAssign(budget);
+        var previousAvailable = budget.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.Available);
 
         foreach (var groupRequest in request.Groups)
         {
@@ -135,6 +140,17 @@ public sealed class BudgetService(BudgetDbContext db)
         budget.FundsAdded = request.FundsAdded;
         budget.Version++;
 
+        var readyDelta = CalculateReadyToAssign(budget) - previousReadyToAssign;
+        var availableDeltas = budget.Groups.SelectMany(g => g.Categories)
+            .ToDictionary(c => c.Id, c => c.Available - previousAvailable.GetValueOrDefault(c.Id));
+        if (readyDelta != 0 || availableDeltas.Values.Any(delta => delta != 0))
+        {
+            var laterMonths = await db.Budgets.Where(b => string.Compare(b.Month, budget.Month) > 0)
+                .Include(b => b.Groups).ThenInclude(g => g.Categories).OrderBy(b => b.Month).ToListAsync(cancellationToken);
+            foreach (var later in laterMonths)
+                if (BudgetCarryForward.Apply(later, readyDelta, availableDeltas, budget)) later.Version++;
+        }
+
         try
         {
             await db.SaveChangesAsync(cancellationToken);
@@ -149,7 +165,7 @@ public sealed class BudgetService(BudgetDbContext db)
     }
 
     public static decimal CalculateReadyToAssign(BudgetEntity budget) =>
-        decimal.Round(budget.OpeningReadyToAssign + budget.FundsAdded - budget.Groups.SelectMany(x => x.Categories).Sum(x => x.Assigned), 2, MidpointRounding.ToEven);
+        decimal.Round(budget.OpeningReadyToAssign + budget.FundsAdded + budget.LedgerIncome - budget.Groups.SelectMany(x => x.Categories).Sum(x => x.Assigned), 2, MidpointRounding.ToEven);
 
     private IQueryable<BudgetEntity> QueryMonth(string month) => db.Budgets
         .Include(x => x.Plan)

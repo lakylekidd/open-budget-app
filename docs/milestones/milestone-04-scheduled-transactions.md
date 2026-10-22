@@ -1,10 +1,12 @@
 # Milestone 4 — Scheduled transactions and cash-flow awareness
 
-**Status:** Planned
+**Status:** Scheduled register slice implemented
+
+Delivered: inline Repeat/calendar, all reference recurrence choices, date-only anchored rules, future one-off/recurring forecasts, projected balances, per-account/date filtering and pagination, explicit Enter Now, skip, one-day snooze, edit once/future rule, pause/resume/end, audited atomic posting/replay, account/category revalidation, and server persistence. End date/count are supported by the API; dedicated UI controls for those bounds and a full calendar/cash-flow report remain future enhancements. The UI lists the next occurrence per rule and reviews missed occurrences one at a time. A server-local-day worker/read catch-up posts due entries exactly once as unapproved actual transactions. Approve/Reject and clearing-as-approval complete the review path; timezone-instant recurrence is not introduced. See [API semantics](../api.md#scheduled-transactions).
 
 ## Goal
 
-Represent expected recurring activity as reviewable scheduled items and create actual ledger entries only when the user confirms an occurrence.
+Represent expected recurring activity as reviewable scheduled items and create actual ledger entries on their due day for approval, or earlier through Enter Now.
 
 ## Dependencies
 
@@ -12,7 +14,7 @@ Milestone 2 provides accounts and the transaction register. Milestone 3 may supp
 
 ## User value
 
-A person can see bills and income that are coming due, prepare for them, and decide what to do when each occurrence arrives.
+A person can see bills and income that are coming due, prepare for them, and approve or reject posted due entries when each occurrence arrives.
 
 ## Vertical slice
 

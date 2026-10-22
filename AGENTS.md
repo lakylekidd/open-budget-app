@@ -2,7 +2,8 @@
 
 ## Project - OpenBudget
 
-{{ADD SMALL DESCRIPTION OF PROJECT}}
+OpenBudget is a local budgeting application with a React/TypeScript UI, .NET API,
+and PostgreSQL persistence, orchestrated through .NET Aspire.
 
 ## Before making changes
 1. Read docs/*
@@ -53,7 +54,14 @@ In general:
 
 ## Testing
 
-{{ADD TESTING RULES}}
+- Every new feature and behavior change must ship with automated tests in the same change. A feature is not complete until its tests pass.
+- Add focused unit tests for domain calculations, validation, boundary conditions, and failure cases. Test observable behavior rather than implementation details.
+- Add integration tests for every new or changed API/persistence workflow. Exercise the real HTTP boundary, application services, EF migrations, and an isolated PostgreSQL database; do not substitute an in-memory provider for database coverage.
+- Cover successful writes and reloads, invalid input with no partial writes, stale/concurrent edits, command replay/idempotency, and transaction rollback where applicable.
+- Add UI component tests for new forms, validation, loading/empty/error states, and recovery actions. Verify the complete user path through the running application for each milestone.
+- Use deterministic synthetic data. Tests must never mutate the developer's budget database or depend on test order, external financial services, or secrets committed to the repository.
+- Add regression tests with bug fixes. Keep existing tests passing; do not remove or weaken assertions to make a change pass.
+- Run the relevant unit, integration, and UI suites before finishing, and report their results and any blocked verification explicitly. See `docs/developer-guide.md` for commands.
 
 ## Working With Other Agents
 

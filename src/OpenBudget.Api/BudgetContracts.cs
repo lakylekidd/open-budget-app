@@ -9,6 +9,7 @@ public sealed record BudgetDto(
     long Version,
     decimal OpeningReadyToAssign,
     decimal FundsAdded,
+    decimal LedgerIncome,
     decimal ReadyToAssign,
     List<CategoryGroupDto> Groups)
 {
@@ -18,6 +19,7 @@ public sealed record BudgetDto(
         budget.Version,
         budget.OpeningReadyToAssign,
         budget.FundsAdded,
+        budget.LedgerIncome,
         BudgetService.CalculateReadyToAssign(budget),
         budget.Groups.OrderBy(g => g.SortOrder).Select(g => new CategoryGroupDto(
             g.Id, g.Name, g.SortOrder, g.IsArchived,

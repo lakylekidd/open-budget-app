@@ -3,4 +3,8 @@
     <Project Path="src/OpenBudget.Api/OpenBudget.Api.csproj" />
     <Project Path="src/OpenBudget.AppHost/OpenBudget.AppHost.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OpenBudget.IntegrationTests/OpenBudget.IntegrationTests.csproj" />
+    <Project Path="tests/OpenBudget.UnitTests/OpenBudget.UnitTests.csproj" />
+  </Folder>
 </Solution>

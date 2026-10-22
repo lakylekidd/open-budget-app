@@ -7,6 +7,7 @@ src/OpenBudget.UI/.vite/
 # .NET build output
 **/bin/
 **/obj/
+**/TestResults/
 
 # IDE and local-only settings
 .vs/

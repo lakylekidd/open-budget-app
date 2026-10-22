@@ -11,6 +11,7 @@
 - Group/category additions, renames, ordering and archive state persist. Historical records are retained by archiving instead of deletion.
 - Stale month and budget-name edits return the latest version; the UI offers a reload or reapply path for monthly conflicts.
 - The Plan screen supports assignments, moving money, monthly notes, adding funds, month browsing, undo/redo in the current browser session, and save/offline/conflict feedback.
+- When Ready to Assign is exactly zero, the header shows a compact muted grey `€0.00` / `All Money Assigned` card with a circular checkmark. The income action returns for nonzero balances, retaining the positive/negative summary states.
 
 Known scope boundary: this milestone does not include accounts or a transaction ledger. Existing activity is retained as a legacy month baseline. The current implementation exposes one default budget; multi-budget ownership belongs to Milestone 8. Assignment/move updates are persisted as a single atomic monthly snapshot write.
 
@@ -52,3 +53,8 @@ A person can see how much money is ready to assign, give funds a category, move 
 ## Product references
 
 [YNAB features](https://www.ynab.com/features), [auto-assign guide](https://support.ynab.com/en_us/auto-assign-a-guide-r1gBNbBJo), [category management](https://support.ynab.com/en_us/adding-removing-and-customizing-categories-a-guide-HJFO5j909).
+
+
+### Assignment rollover correction (2026-10-21)
+
+Earlier assignment edits now update opening balances and Ready to Assign in every initialized later month, retaining later explicit assignments/activity and existing legacy baselines. Shared decimal carry rules cover assignment moves, ledger spending/refunds, amount/date/category changes, deletion, gaps/year/leap boundaries and backdated categories missing from future snapshots. Invalid/stale updates and post-write failures roll back atomically. The Plan prevents losing an unsaved assignment through month navigation and rejects malformed assignment text. See testing.md for automated and live August/September evidence.

@@ -1,6 +1,6 @@
 # Milestone 7 — File import, matching, and portable data
 
-**Status:** Planned
+**Status:** Planned; payee rule resolution and accepted normalized-row API are implemented prerequisites.
 
 ## Goal
 
@@ -40,3 +40,8 @@ A person can bring in a bank statement, review and correct parsed rows before th
 ## Product references
 
 [File-based import](https://support.ynab.com/en_us/file-based-import-a-guide-Bkj4Sszyo), [adding transactions](https://support.ynab.com/en_us/how-to-add-transactions-in-ynab-HyDwA_byi).
+
+
+## Implemented prerequisite (2026-10-21)
+
+`POST /api/transactions/import` accepts one validated normalized row with the ledger command protocol, applies persisted literal Is/Contains merchant rules and category policies, records source/result audit and creates an unapproved entry atomically. Hidden payees still match. Exact command replay prevents retry duplication; new command IDs do not perform inferred duplicate detection. This does not complete file upload, mapping, preview, statement duplicate/manual matching, batch confirmation, export or restore acceptance criteria above.

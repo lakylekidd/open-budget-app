@@ -8,9 +8,34 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) :
     public DbSet<BudgetEntity> Budgets => Set<BudgetEntity>();
     public DbSet<CategoryGroupEntity> CategoryGroups => Set<CategoryGroupEntity>();
     public DbSet<CategoryEntity> Categories => Set<CategoryEntity>();
+    public DbSet<FlagDefinitionEntity> FlagDefinitions => Set<FlagDefinitionEntity>();
+    public DbSet<ScheduleEntity> Schedules => Set<ScheduleEntity>();
+    public DbSet<ScheduleOccurrenceEntity> ScheduleOccurrences => Set<ScheduleOccurrenceEntity>();
+    public DbSet<RegisterViewEntity> RegisterViews => Set<RegisterViewEntity>();
+    public DbSet<AccountEntity> Accounts => Set<AccountEntity>();
+    public DbSet<TransactionEntity> Transactions => Set<TransactionEntity>();
+    public DbSet<PayeeEntity> Payees => Set<PayeeEntity>();
+    public DbSet<LedgerStateEntity> LedgerStates => Set<LedgerStateEntity>();
+    public DbSet<LedgerCommandEntity> LedgerCommands => Set<LedgerCommandEntity>();
+    public DbSet<ReconciliationEntity> Reconciliations => Set<ReconciliationEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        LedgerModel.Configure(modelBuilder);
+        modelBuilder.Entity<FlagDefinitionEntity>(e => {
+            e.HasKey(x=>x.Color); e.Property(x=>x.Color).HasMaxLength(10); e.Property(x=>x.Name).HasMaxLength(40);
+            e.HasData(LedgerService.FlagColors.Select(color=>new FlagDefinitionEntity{Color=color,Name=char.ToUpperInvariant(color[0])+color[1..]}));
+        });
+        modelBuilder.Entity<ScheduleEntity>(e => {
+            e.HasKey(x => x.Id); e.HasIndex(x => new { x.AccountId, x.NextDate });
+            e.HasOne<AccountEntity>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<AccountEntity>().WithMany().HasForeignKey(x => x.ToAccountId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<ScheduleOccurrenceEntity>(e => {
+            e.HasKey(x => x.Id); e.HasIndex(x => new { x.ScheduleId, x.Sequence }).IsUnique();
+            e.HasOne<ScheduleEntity>().WithMany().HasForeignKey(x => x.ScheduleId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<RegisterViewEntity>(e => { e.HasKey(x => x.Scope); e.Property(x => x.Scope).HasMaxLength(36); e.Property(x => x.Version).IsConcurrencyToken(); });
         modelBuilder.Entity<BudgetPlanEntity>(entity =>
         {
             entity.HasKey(x => x.Id);
@@ -27,6 +52,7 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) :
             entity.Property(x => x.BudgetId).HasMaxLength(100);
             entity.Property(x => x.Note).HasMaxLength(1000);
             entity.Property(x => x.FundsAdded).HasPrecision(14, 2);
+            entity.Property(x => x.LedgerIncome).HasPrecision(14, 2);
             entity.Property(x => x.OpeningReadyToAssign).HasPrecision(14, 2);
             entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasMany(x => x.Groups).WithOne().HasForeignKey(x => x.BudgetMonth).OnDelete(DeleteBehavior.Cascade);
@@ -48,6 +74,7 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) :
             entity.Property(x => x.OpeningAvailable).HasPrecision(14, 2);
             entity.Property(x => x.Assigned).HasPrecision(14, 2);
             entity.Property(x => x.Activity).HasPrecision(14, 2);
+            entity.Property(x => x.LegacyActivity).HasPrecision(14, 2);
             entity.Property(x => x.Target).HasPrecision(14, 2);
         });
     }
@@ -70,6 +97,7 @@ public sealed class BudgetEntity
     public string Note { get; set; } = "";
     public decimal OpeningReadyToAssign { get; set; }
     public decimal FundsAdded { get; set; }
+    public decimal LedgerIncome { get; set; }
     public long Version { get; set; } = 1;
     public List<CategoryGroupEntity> Groups { get; set; } = [];
 }
@@ -92,7 +120,8 @@ public sealed class CategoryEntity
     public string Name { get; set; } = "";
     public decimal OpeningAvailable { get; set; }
     public decimal Assigned { get; set; }
-    // Existing prototype activity is retained as a legacy month baseline until the transaction ledger ships.
+    public decimal LegacyActivity { get; set; }
+    // Materialized legacy baseline plus ledger activity; only the server can change it.
     public decimal Activity { get; set; }
     public decimal Target { get; set; }
     public string? Icon { get; set; }

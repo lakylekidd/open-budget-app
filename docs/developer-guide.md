@@ -53,6 +53,19 @@ The browser calls same-origin `/api/...` paths. Vite proxies those paths to the 
 ## Current development boundaries
 
 - There is no authentication or user/tenant boundary yet. Keep this local and synthetic until the roadmap's identity and authorization work is complete.
-- The Plan API accepts and stores a full monthly snapshot. It is not yet a transaction ledger or a concurrency-safe multi-user API.
-- The sidebar account balances and several screens still use hard-coded demo values.
-- No test projects have been added yet.
+- The Plan API stores versioned editable monthly snapshots. The cash ledger uses replay-safe commands and shared revisions, but there is no authenticated multi-user boundary.
+- Cash account/sidebar balances and monthly activity are ledger-backed; Reflect, credit/debt and linking remain future milestones; scheduling/approval and payee management are implemented register extensions.
+- Every feature requires unit/integration tests and UI workflow coverage, as specified in `AGENTS.md` and [testing](testing.md).
+
+## Tests
+
+```powershell
+dotnet test OpenBudget.slnx
+npm --prefix src/OpenBudget.UI test
+```
+
+`OpenBudget.UnitTests` covers domain rules/calculations. `OpenBudget.IntegrationTests` uses the real HTTP API/EF migrations and a disposable PostgreSQL 17 Testcontainers instance with a fresh database per test. Docker must be running; unavailable Docker fails tests rather than silently skipping them. No developer database connection or financial-service credential is required. Vitest/Testing Library test the ledger UI in jsdom.
+
+For focused runs, use `dotnet test tests/OpenBudget.UnitTests`, `dotnet test tests/OpenBudget.IntegrationTests`, or `npm --prefix src/OpenBudget.UI run test:watch`.
+
+After backend changes, stop the AppHost, rebuild the solution and restart before live verification. Windows running executables can lock build output; avoid building over an active API process. Preserve the named development volume. Test databases/containers are independent of it. See the [acceptance coverage map](testing.md).

@@ -28,7 +28,7 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 
 1. The Plan screen loads the budget identity from `GET /api/budget` and the selected month from `GET /api/budget/{YYYY-MM}`.
 2. The API initializes the first month with a deterministic blank starter category structure, then creates later months by carrying forward available category balances and Ready to Assign.
-3. The UI lets the user browse months, edit assignments, move money, add funds, manage groups/categories, archive items, reorder them, and record a month note.
+3. The UI lets the user browse months, edit assignments, move money, manage groups/categories, archive/reorder them, and record a month note. New income is recorded through the cash register; existing manual funds remain a read-only baseline.
 4. After a short debounce, the UI sends editable state and its version to `PUT /api/budget/{YYYY-MM}`. The API calculates available amounts and Ready to Assign and rejects stale versions with the current snapshot.
 5. The API persists each monthly snapshot atomically through EF Core/PostgreSQL. Budget naming uses a separate versioned `PUT /api/budget` endpoint.
 
@@ -47,7 +47,10 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Category filters, search, collapse, select, progress bars | UI interactions implemented; several options are view-only |
 | Undo/redo | In-memory UI history; edits are saved but no server-side audit event is recorded |
 | Month note | Persisted on the monthly snapshot |
-| Accounts, transaction register, bank linking, scheduled entries | Not implemented; visible account values are mock data |
+| Cash accounts, register, transfers, splits, reconciliation | Implemented; real ledger-backed balances, server filters/pagination and retained audit |
+| Account View Options | Server-persisted per-account presets, month range and visibility switches, independently versioned |
+| Scheduled register | Anchored recurrence rules, forecasts, idempotent due-day posting, approval and occurrence review |
+| Bank linking, credit/debt accounts | Future milestones |
 | Targets and assignment recommendations | Basic static target/progress display only |
 | Reflect reports | Not implemented; entry remains a placeholder |
 | Authentication, household sharing, multi-user conflict handling | Not implemented |
@@ -55,7 +58,26 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 ## Design limits to address
 
 - `App.tsx` currently combines navigation, state, dialogs, table rendering, and data access. Split feature UI and API client code as slices grow.
-- Activity is still a legacy persisted baseline, not transaction-derived. The account/transaction ledger is the next source-of-truth milestone.
+- Activity combines an explicit legacy baseline with ledger-derived activity. New cash flows come from account transactions; prototype manual funds are preserved read-only.
 - Monthly writes replace the editable snapshot and use optimistic concurrency; membership/authorization boundaries are not implemented.
 - The app currently supports one default budget identity. Multiple budgets and household access are planned for Milestone 8.
 - No authorization boundary protects the API. Do not connect real financial accounts or expose the API beyond the local machine until identity, tenant isolation, and security review are delivered.
+
+## Cash ledger slice
+
+The frontend ledger lives in `src/ledger/` with a typed API client, reusable accessible dialog, transaction form and account/register screen. `AccountRegister.tsx` provides the compact account header, cleared/uncleared/working balance equation, transaction rows and status indicators. The register has separate outflow/inflow/running-balance columns, green cleared circles and reconciled locks. Filters and secondary actions live under View; row selection exposes editing/deletion. Account type/favorite persist, reconciliation age comes from actual snapshots, and manual accounts show Unlinked. File import, ledger undo/redo, and scheduling remain disabled until their workflows exist. Navigation waits for pending Plan edits to save. Returning to Plan reloads server-calculated amounts. Sidebar accounts use the API; mock credit/loan balances are removed.
+
+`LedgerService` applies domain rules and month projection; `LedgerGate` orders month initialization, Plan writes and ledger commands under a PostgreSQL row lock/transaction. The global ledger revision detects stale edits. Before/after audit receipts, transfer legs, reconciliation and month changes commit together. Register and account snapshots share the same revision. Lost-response retries reuse the original command; conflicts require reload/review.
+
+Account balances are queried from the ledger. Projection recalculates initialized months and propagates ledger balance deltas into later opening values, preserving explicit assignments. This single-budget implementation favors explicit correctness; incremental projection is an optimization if measured scale requires it. Reconciled entries require explicit edit confirmation; snapshots are retained/inactivated and changes audited. Forecasts stay outside actual totals until their due day or explicit Enter Now; due-day entries require approval. A scoped background worker/read catch-up shares the normal application-service transaction path. Account view preferences, notes, adjustments and named flags persist on the server.
+
+Domain unit tests, disposable-PostgreSQL HTTP integration tests and React workflow tests cover this slice. See [testing](testing.md).
+
+
+The register reuses `PayeePicker` and `ManagePayees` for grouped account/merchant choices and persisted payee policies. Popovers are portals so the scrollable register does not clip them; dialogs contain Escape without closing the surrounding inline draft. Payee dialog Undo/Redo is draft-local; committed financial history uses ledger audit/replay.
+
+
+`CategoryPicker` is shared by the inline transaction's main category and split parts. `loadCategoryBudget` retains group metadata and authoritative available/Ready to Assign amounts from the transaction month; `loadCategories` remains the compatibility wrapper for other forms. The portal prevents register clipping. `NewCategoryDialog` extends the existing monthly snapshot workflow; category-list refresh does not remount the transaction draft. No backend model/endpoint or migration is added for this UI extension.
+
+
+`BudgetCarryForward` is the shared pure domain helper for assignment and ledger opening-balance deltas. `BudgetService` snapshots source balances before changing assignments and applies their differences to all initialized later months before the single save. `LedgerService` uses the same helper while recomputing activity chronologically. Monthly API writes use the gate's commit predicate to roll back invalid/conflicting results. The Plan client retains dirty assignments through its autosave boundary and never invents carry totals.

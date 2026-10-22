@@ -14,7 +14,7 @@ For API-only development, start a local PostgreSQL instance yourself, set `Conne
 dotnet run --project src/OpenBudget.Api --urls http://127.0.0.1:5080
 ```
 
-The API applies EF Core migrations at startup. A single default budget identity owns independent monthly snapshots. The first requested month initializes a blank starter category structure; later months carry forward category available balances and prior Ready to Assign exactly once. Activity remains a legacy baseline until the transaction ledger is implemented.
+The API applies EF Core migrations at startup. A single default budget owns monthly snapshots and a cash ledger. First-month initialization uses blank starter categories; later months carry forward available/category and Ready to Assign balances once. Activity combines a preserved legacy baseline with actual transactions.
 
 ## API
 
@@ -24,4 +24,15 @@ The API applies EF Core migrations at startup. A single default budget identity 
 - `GET /api/budget` reads the default budget identity.
 - `PUT /api/budget` renames the default budget using optimistic concurrency.
 
-The API is not yet an account transaction ledger or authenticated multi-user service. Monthly and budget-name edits reject stale versions, but authorization and shared membership are planned for Milestone 8.
+`BudgetService` owns budget behavior. `LedgerService` owns accounts, transactions, payees, splits, paired transfers, cleared state, reconciliation, receipts, audit and projection. `LedgerGate` uses a database transaction plus the shared ledger-state row lock to order ledger commands, monthly initialization and Plan saves. Responses follow commit; financial rows, projection changes and audit receipts roll back together on failure. Ledger commands also use an optimistic revision and replay-safe command IDs.
+
+See [API contracts](api.md) for cash ledger endpoints and [testing](testing.md) for verification. This remains an unauthenticated local application; authorization and household isolation are planned for Milestone 8.
+
+
+The ledger application service also owns schedule rules/occurrences, named flags, review approval and account balance adjustments. A hosted worker and production read catch-up process due schedules via the same locked, idempotent command path. TimeProvider supplies server-local calendar dates; integration tests inject a clock and invoke processing over HTTP. Forecasts never change actual totals until posted; automatic posts are uncleared/unapproved, with independent review and clearing-as-approval.
+
+
+Payee management lives in the `PayeeService` partial of `LedgerService`, with separate contracts and pure validation/matching/history rules in `PayeeContracts`. It extends the shared versioned command transaction rather than writing from handlers. Accepted normalized imports use the same transaction service with explicit imported provenance, rule resolution, category suggestions and unapproved state. Full statement parsing/matching remains milestone 7.
+
+
+Assignment corrections now share `BudgetCarryForward` with ledger projections. All affected month versions and opening amounts save in one gated transaction. The helper creates missing destination category/group records when a backdated category has money to carry, preserving later explicit values. Budget snapshot validation/conflict results cause gate rollback, including newly initialized months. The PostgreSQL test interceptor can fail after SaveChanges to verify rollback after SQL has executed, not only before a save.
