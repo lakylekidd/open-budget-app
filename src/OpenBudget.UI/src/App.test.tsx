@@ -8,6 +8,7 @@ const budget=(month:string,assigned=0,activity=0,available=0):Month=>({month,not
 const response=(data:unknown)=>new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
 let months:Record<string,Month>;let writes:Record<string,unknown>[];let releaseSave:(()=>void)|undefined;let holdSave:boolean;let focusRows:Record<string,unknown>[];let focusAccounts:Record<string,unknown>[];let scheduleRows:Record<string,unknown>[];
 beforeEach(()=>{
+  window.history.replaceState(null, '', '/');
   months={'2026-08':budget('2026-08',50,-35,15),'2026-09':budget('2026-09',0,0,15),'2026-10':budget('2026-10',0,0,15),'2026-11':budget('2026-11',0,0,15)};writes=[];holdSave=false;releaseSave=undefined;focusRows=[];focusAccounts=[];scheduleRows=[];
   vi.stubGlobal('fetch',vi.fn(async(path:string,init?:RequestInit)=>{
     if(path==='/api/accounts')return response({version:1,accounts:focusAccounts});

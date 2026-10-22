@@ -1,0 +1,40 @@
+name: Release and deploy
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/OpenBudget.UI/package-lock.json
+      - run: dotnet restore OpenBudget.slnx
+      - run: npm --prefix src/OpenBudget.UI ci
+      - run: dotnet build OpenBudget.slnx --no-restore
+      - run: dotnet test OpenBudget.slnx --no-build --logger trx
+      - run: npm --prefix src/OpenBudget.UI test
+      - run: npm --prefix src/OpenBudget.UI run build
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    if: ${{ secrets.COOLIFY_WEBHOOK_URL != '' }}
+    steps:
+      - name: Trigger Coolify deployment
+        env:
+          COOLIFY_WEBHOOK_URL: ${{ secrets.COOLIFY_WEBHOOK_URL }}
+        run: curl --fail --show-error --silent --retry 3 --retry-all-errors "$COOLIFY_WEBHOOK_URL"
