@@ -30,7 +30,8 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 2. The API initializes the first month with a deterministic blank starter category structure, then creates later months by carrying forward available category balances and Ready to Assign.
 3. The UI lets the user browse months, edit assignments, move money, manage groups/categories, archive/reorder them, inspect category activity and upcoming transactions, and record a month note. New income is recorded through the cash register; existing manual funds remain a read-only baseline.
 4. After a short debounce, the UI sends editable state and its version to `PUT /api/budget/{YYYY-MM}`. The API calculates available amounts and Ready to Assign and rejects stale versions with the current snapshot.
-5. The API persists each monthly snapshot atomically through EF Core/PostgreSQL. Budget naming uses a separate versioned `PUT /api/budget` endpoint.
+5. Long-Term Planning reads existing actual month snapshots without initializing new months. Forecast income and expenses come from scheduled ledger transactions across accounts; effective-month category budget overrides use separate versioned planning tables and never change monthly Plan state.
+6. The API persists monthly snapshots atomically through EF Core/PostgreSQL. Budget naming uses a separate versioned `PUT /api/budget` endpoint.
 
 `/health` checks database connectivity. EF migrations are applied when the API starts.
 
@@ -49,6 +50,7 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Category creation and ordering | Add categories from a group, drag groups/categories to reorder and move categories between groups; versioned monthly saves preserve category identity |
 | Undo/redo | In-memory UI history; edits are saved but no server-side audit event is recorded |
 | Month note | Persisted on the monthly snapshot |
+| Long-Term Planning | Implemented; annual grid, separate forecast persistence, effective-month overrides, read-only actuals and cross-year carry-forward |
 | Cash accounts, register, transfers, splits, reconciliation | Implemented; real ledger-backed balances, server filters/pagination and retained audit |
 | Account View Options | Server-persisted per-account presets, month range and visibility switches, independently versioned |
 | Scheduled register | Anchored recurrence rules, forecasts, idempotent due-day posting, approval and occurrence review |

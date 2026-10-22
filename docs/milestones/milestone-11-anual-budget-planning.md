@@ -1,30 +1,30 @@
 # Milestone: Annual Long-Term Budget Planning
 
+**Status:** Implemented
+
 ## Goal
 
-Add a new **Long-Term Planning** screen that gives the user a full-year budgeting forecast in a spreadsheet-style layout. The screen allows users to plan expected income, expenses, and category budgets across all 12 months while comparing the plan against actual results.
+Add a new **Long-Term Planning** screen that gives the user a full-year budgeting forecast in a spreadsheet-style layout. The screen projects income and expenses from scheduled account transactions, lets users plan category budgets across all 12 months, and compares the plan against actual results.
 
-The existing application stores each month independently, while explicit month carry-forward is still planned work. This milestone introduces deterministic forecasting and carry-forward behavior rather than relying on cloned monthly snapshots. 
+The existing application persists monthly snapshots and carries actual available amounts between initialized months. Long-term forecasts remain a separate model and must not create or clone monthly snapshots to obtain their planning values.
 
 ## Core behavior
 
-The screen defaults to the current calendar year and displays January through December horizontally. Users can navigate to the previous or next year.
+The screen defaults to the current calendar year and displays January through December as columns in a Plan-style category grid. Users can navigate to the previous or next year.
 
-Each month is represented as a rounded spreadsheet-style column:
+Month headers use the same dark table treatment as Plan and keep their state visible:
 
 - Past months: gray and read-only.
 - Current month: light blue and editable.
 - Future months: light green and editable.
 
-At the top of every month column are:
+At the top of every month column are **Expected Income**, **Expected Expenses**, **Remaining to Be Assigned = Expected Income − planned category budgets**, and **Remaining = Expected Income − Expected Expenses**.
 
-**Expected Income**  
-**Expected Expenses**  
-**Remaining = Expected Income − Expected Expenses**
+Selecting Expected Income, Expected Expenses, or a read-only category/group Expenses value opens an activity list for that month. Selecting a listed transaction opens its account register with the row selected. Future forecast occurrences appear as selected projected rows in the account register when they are later than the schedule's next occurrence.
 
-Below the summary, the screen displays the same category groups and subcategories used by the main budget.
+Below the summary, the screen displays the same category groups and subcategories used by the main budget. Each subcategory/month cell has two stacked rows: planned on top and actual underneath. The planned row includes editable Assigned, read-only scheduled Expenses, and calculated Available; the actual row shows read-only Assigned, Expenses, and Available values. This keeps each month a grid column and makes planned Assigned behave like the monthly Plan input.
 
-Category-group rows are calculated totals and cannot be edited. Individual subcategories contain:
+Category-group rows show planned totals on the title line and cannot be edited. Individual subcategories contain:
 
 **Plan**
 - Planned Budget
@@ -60,7 +60,7 @@ The implementation should therefore support effective-from-month overrides rathe
 
 1. **Annual navigation:** Opening Long-Term Planning shows the current calendar year. Previous-year and next-year controls change the displayed year and always show all 12 months.
 
-2. **Month states:** Months before the current month are visually gray and cannot be edited. The current month uses the light-blue treatment. Future months use the light-green treatment. Month columns use a rounded spreadsheet-style visual treatment.
+2. **Month states:** Months before the current month are visually muted and cannot be edited. The current month uses a blue accent and future months use a green accent within the Plan-style grid.
 
 3. **Historical years:** When viewing a year entirely in the past, all months are read-only. When viewing a future year, all months are editable.
 
@@ -68,7 +68,7 @@ The implementation should therefore support effective-from-month overrides rathe
 
 5. **Category editing:** Category-group totals cannot be edited directly. Planning inputs can only be changed at subcategory level.
 
-6. **Monthly summary:** Each month displays Expected Income, Expected Expenses, and Remaining. Remaining is recalculated immediately whenever its underlying planning values change.
+6. **Monthly summary:** Each month displays Expected Income, Expected Expenses, Remaining to Be Assigned, and Remaining. Remaining to Be Assigned is Expected Income minus all planned category budgets; Remaining is Expected Income minus Expected Expenses. Both summaries update immediately when a budget override changes.
 
 7. **Planned values:** Every subcategory/month displays Planned Budget, Planned Expenses, and Planned Available.
 
@@ -104,4 +104,12 @@ The implementation should therefore support effective-from-month overrides rathe
 
 23. **Loading/error handling:** The screen provides explicit loading and failure states and does not silently replace missing planning data with synthetic sample values.
 
-24. **Automated coverage:** Tests cover propagation, overrides, removal of overrides, group aggregation, year-boundary carry-forward, historical-month locking, summary calculations, and persistence.
+24. **Automated coverage:** Tests cover the paired planned/actual grid rows, editable Assigned input, propagation, overrides, removal of overrides, group aggregation, year-boundary carry-forward, historical-month locking, summary calculations, and persistence.
+
+## Implementation notes
+
+Long-Term Planning is available from the main navigation. `GET /api/long-term-planning/{year}` returns twelve months, the latest active category structure, saved planning values, and read-only actuals from existing monthly snapshots. The annual read does not initialize missing budget months. `PUT /api/long-term-planning/{year}` saves one month value against a shared optimistic version. Budget overrides are stored in `LongTermPlanningCategories`; they never update the regular monthly budget tables.
+
+Expected income and planned expenses are read-only projections of active scheduled transactions across all accounts. Transfers are excluded, and category expenses include scheduled splits. Planned budget values are effective-month overrides; the latest override applies forward until another override, including across year boundaries. Clearing an override restores the previous effective value. Planned available and month summaries recalculate from decimal values. Past months are locked in both UI and API using the server's local date; current and future months can be edited. Actual assigned, net expenses and available values are read from persisted monthly snapshots and remain read-only. If an actual month is absent, assigned/expense values display as unavailable and its available balance carries from the nearest preceding snapshot without creating a new actual month.
+
+The grid uses ordered active groups/categories from the latest existing monthly snapshot, supports collapsing groups while retaining group totals, and keeps the category labels and month headings visible while scrolling. Its row borders, typography, dark surfaces and Assigned inputs follow the main Plan grid. A blank plan starts with zero estimates and reports that no planning values have been saved; it does not seed sample forecasts.

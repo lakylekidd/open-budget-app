@@ -1,10 +1,12 @@
 # OpenBudget
 
-OpenBudget is a local-first budgeting application inspired by publicly documented budgeting workflows. The current implementation provides a React and TypeScript Plan screen backed by a .NET 10 API and PostgreSQL, orchestrated locally with .NET Aspire.
+OpenBudget is a local-first budgeting application inspired by publicly documented budgeting workflows. The current implementation provides React and TypeScript Plan and Long-Term Planning screens backed by a .NET 10 API and PostgreSQL, orchestrated locally with .NET Aspire.
 
 All Accounts provides cash accounts, a searchable register, splits, linked transfers, reconciliation and an audit history. Account balances and new budget activity come from the ledger. Add an account with its opening balance, record negative amounts for spending and positive amounts for income/refunds, and leave income uncategorized to add it to Ready to Assign.
 
 The Plan header shows a grey `All Money Assigned` card with a checkmark when Ready to Assign is €0.00.
+
+Choose **Long-Term Planning** in the sidebar to view all twelve months for the current year. Expected income and expenses come from active scheduled transactions across all accounts. Click those totals or a category's Expenses value to inspect the underlying activity, then click a transaction to open and select it in its account. Each month shows **Remaining to Be Assigned**, calculated as expected income minus planned category budgets, alongside remaining income after scheduled expenses. Enter planned category budgets for the current or future months. Budget overrides apply from that month onward until a later override; planned availability rolls into the following month. Past months are read-only. The screen compares the forecast with existing monthly assigned, activity, and available values without changing the regular Plan or creating missing budget months.
 
 Plan category activity opens the month's matching transactions. Selecting a transaction opens its account register with that transaction highlighted, including reconciled rows. Click a category to see its available balance and scheduled transactions; upcoming spending shows the balance after those forecasts. Add categories from the group plus button, and drag categories between groups or groups/categories to reorder them. Progress bars show the remaining funded amount in green and uncovered overspending in red. Unfunded overspending carries into later months.
 

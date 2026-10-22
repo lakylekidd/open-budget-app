@@ -25,7 +25,7 @@ This roadmap turns product workflows documented publicly by YNAB into independen
 | 8 | Identity, multiple budgets, and household sharing | Secure sign-in, isolated budgets, invitations, membership roles, and sharing. | Planned | [Milestone 8](milestones/milestone-08-identity-and-sharing.md) |
 | 9 | Cross-device experience and offline resilience | Responsive installable UI, offline changes, synchronization, and conflict handling. | Planned | [Milestone 9](milestones/milestone-09-cross-device-offline.md) |
 | 10 | Optional linked-account import | Consent-based provider connection, transaction sync/review, reconnect, and disconnect. | Planned; provider availability to be assessed | [Milestone 10](milestones/milestone-10-linked-accounts.md) |
-| 11 | Annual long-term budget planning | Full-year planned-versus-actual forecast grid with effective-month overrides, carry-forward, and year navigation. | Planned | [Milestone 11](milestones/milestone-11-anual-budget-planning.md) |
+| 11 | Annual long-term budget planning | Full-year planned-versus-actual forecast grid with effective-month overrides, carry-forward, and year navigation. | Current / implemented | [Milestone 11](milestones/milestone-11-anual-budget-planning.md) |
 
 ## Cross-cutting completion criteria
 
@@ -38,6 +38,8 @@ Apply these to every milestone that changes persisted behavior:
 - Sensitive data is minimized, secrets remain outside source control, and authorization is tested at the API boundary.
 - Product behavior and API contracts are documented, including known limitations.
 - Every feature must include unit and integration tests appropriate to its rules/persistence boundaries, UI workflow tests, and running-application acceptance verification. See [testing](testing.md) and `AGENTS.md`.
+
+Annual planning: Long-Term Planning stores expected income, category expenses and effective-month budget overrides separately from monthly budget snapshots. Its annual grid calculates planned available and summaries with decimal-safe cents, displays read-only ledger-backed actual values, and keeps past months locked. See [Milestone 11](milestones/milestone-11-anual-budget-planning.md) for the API, persistence, and acceptance coverage.
 
 ## Source review
 

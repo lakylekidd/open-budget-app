@@ -12,6 +12,10 @@ beforeEach(()=>{
   vi.stubGlobal('fetch',vi.fn(async(path:string,init?:RequestInit)=>{
     if(path==='/api/accounts')return response({version:1,accounts:focusAccounts});
     if(path==='/api/budget')return response({id:'default',name:'Test budget',version:1,currency:'EUR'});
+    if(path.startsWith('/api/long-term-planning/')){
+      const year=Number(path.split('/').at(-1));
+      return response({year,version:1,hasPlanningData:false,months:Array.from({length:12},(_,index)=>({month:`${year}-${String(index+1).padStart(2,'0')}`,expectedIncome:0,hasExpectedIncome:false,expectedExpenses:0,remaining:0,hasActualData:false})),groups:[]});
+    }
     if(path.startsWith('/api/schedules?'))return response({version:1,page:1,pageSize:100,total:scheduleRows.length,items:scheduleRows});
     if(path.startsWith('/api/register-views/'))return response({version:1,datePreset:'all',fromMonth:null,toMonth:null,showReconciled:false,showRunningBalance:false,showFlags:false,showImages:false});
     if(path==='/api/flags')return response({version:1,flags:[]});
@@ -176,4 +180,13 @@ it('drags a category into another group and saves the new membership',async()=>{
   const submitted= writes[0] as {groups:{id:string;categories:{id:string}[]}[]};
   expect(submitted.groups.find(group=>group.id==='home')?.categories.some(category=>category.id==='utilities')).toBe(false);
   expect(submitted.groups.find(group=>group.id==='other')?.categories.some(category=>category.id==='utilities')).toBe(true);
+});
+
+it('opens Long-Term Planning from the main navigation',async()=>{
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Long-Term Planning'}));
+  expect(await screen.findByRole('heading',{name:'Long-Term Planning'})).toBeInTheDocument();
+  expect(await screen.findByText('Add budget categories in Plan to start long-term planning.')).toBeInTheDocument();
+  const year=new Date().getFullYear();
+  expect(vi.mocked(fetch)).toHaveBeenCalledWith(`/api/long-term-planning/${year}`,expect.objectContaining({signal:expect.any(AbortSignal)}));
 });

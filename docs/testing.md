@@ -125,6 +125,20 @@ Live verification used the isolated `openbudget-categories-smoke` PostgreSQL con
 
 The live browser scenario used the isolated `openbudget-rollover-smoke` PostgreSQL 17 container, labeled `openbudget.task=rollover-smoke`, with one synthetic Household account. September and October were initialized before August's assignment. The UI assigned August EUR50, a synthetic easyEnergy ledger row spent EUR35 in August, and September displayed EUR15 then EUR65 after its own EUR50 assignment. Updating August to EUR80 displayed September EUR95 with Assigned still EUR50; restoring August EUR50 returned September EUR65. Saved the September screenshot, removed only the labeled test container, restored the viewport, rebuilt and restarted normal Aspire with the development volume preserved. No developer budget assignments or transactions were changed by verification.
 
+## Milestone 11 acceptance map
+
+| Behavior | Automated coverage |
+|---|---|
+| Plan-style month grid with planned/actual subrows and editable Assigned inputs | `LongTermPlanning.test.tsx` |
+| Current-year default, year navigation, past/current/future edit states | `LongTermPlanning.test.tsx` |
+| Effective month overrides, later-override protection and override removal | `LongTermPlanningTests` and `longTermPlanningMath.test.ts` |
+| Planned available carry across the year boundary with decimal cents | `LongTermPlanningTests`; `LongTermPlanningApiTests.Planned_available_and_actual_available_carry_across_year_boundary_without_creating_actual_months` |
+| Expected income/expenses, Remaining, Remaining to Be Assigned, immediate available and group aggregation with collapsed categories | `LongTermPlanning.test.tsx` and `longTermPlanningMath.test.ts` |
+| Actuals from existing monthly snapshots, missing-month carry, and no actual-month initialization | `LongTermPlanningApiTests` |
+| Separate planning persistence, API restart, no mutation of monthly budgets, stale writes and invalid/historical input | `LongTermPlanningApiTests` |
+| Main sidebar navigation, loading failure and retry | `App.test.tsx` and `LongTermPlanning.test.tsx` |
+| Annual activity popup, projected occurrence details and account selection | `LongTermPlanning.test.tsx`; `LongTermPlanningApiTests.Scheduled_income_and_expenses_from_all_accounts_drive_read_only_forecasts` |
+
 ## Zero Ready to Assign header (2026-10-21)
 
 All 122 UI tests pass, including three new cases covering the zero summary, navigation back to a funded month, and positive/negative one-cent boundaries. TypeScript/Vite production build passes. Verified the actual Plan component in a temporary browser preview with synthetic read responses: the zero card is 225 by 62 pixels, muted grey, with `All Money Assigned` and a circular checkmark. Removed the preview files after capture; no developer budget data changed. This UI-only change does not alter API or persistence workflows; backend suites were not rerun.
@@ -144,3 +158,9 @@ All 125 existing UI tests and the production build pass after applying the share
 Live browser verification confirms the bottom bar and upward menu on the normal register, and 390px layout bounds (bar left 28/right 362, menu left 130/right 362). No financial action was submitted to the developer budget. Backend was rebuilt and Aspire restarted after implementation. Match/Unmatch are visibly disabled until the import matching workflow exists.
 
 Commit-time verification on October 22: the previous complete run passed the counts above, and the final solution/UI builds passed. A focused rerun of the seven selection integration scenarios after adding explicit action parameters to the audit payload could not initialize its PostgreSQL fixture because Docker Desktop's Linux engine pipe was unavailable. No scenario reached its assertions in that rerun. The additional audit-parameter assertion therefore still needs a Docker-backed rerun.
+
+## Milestone 11 verification (2026-10-22)
+
+- Full .NET suite: 84 unit tests and 66 PostgreSQL integration tests passed; no failures or skips. Integration tests apply the planning migration to isolated Testcontainers databases and verify reads, writes, persistence, effective overrides, historical locks, actual values and stale-version conflicts.
+- UI suite: 160 tests passed. Solution build completed with zero warnings/errors; UI production build passed; `git diff --check` passed.
+- Initial Aspire startup was blocked because the local `Parameters:postgres-password` user secret was unset; no migration ran during that attempt. Follow-up verification confirmed the named database volume was uninitialized, added a generated development-only credential to local user secrets, and restarted Aspire. Database-connected API health and the UI both returned HTTP 200; the annual planning endpoint returned 12 months. Browser inspection confirmed the Plan-style grid, paired planned/actual rows, and editable Assigned fields. No existing budget data was overwritten.

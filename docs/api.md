@@ -34,6 +34,18 @@ Successful writes increment the version and return authoritative calculated tota
 
 Category IDs must be unique across the month and remain stable when a category moves between active groups. Keep every existing category ID in the submitted snapshot; changing its containing group changes membership and sort order while preserving its assignment, activity and available balance. Group/category drag ordering is saved through this same versioned endpoint. Archived categories/groups must be restored before moving a category.
 
+## Long-Term Planning
+
+`GET /api/long-term-planning/{year}` returns all 12 months for a year, the latest existing active group/category structure, saved planning values, and actual values from persisted monthly snapshots. Reading a year never initializes a missing budget month. Missing planning income/expenses begin at zero. Missing actual assigned/expense values are null; actual available carries forward from the nearest earlier stored month when one exists.
+
+`GET /api/long-term-planning/{year}/activity/{YYYY-MM}` returns the scheduled occurrences behind that month's expected income, expected expenses, and planned category expenses. It uses the same recurrence, pause, transfer, and pending override rules as the annual totals. Each row has a stable projected occurrence ID and transaction details. The UI gets actual category activity from the existing paginated `GET /api/transactions` endpoint. An invalid or out-of-year month returns 400.
+
+Each month summary contains `expectedIncome`, `expectedExpenses`, `remaining` (income minus expenses), `remainingToBeAssigned` (income minus the sum of planned category budgets), `hasExpectedIncome` and `hasActualData`. Expected income and expenses are read-only sums of active, unpaused scheduled account transactions for that month; transfers are excluded. Recurrence, end date, count, and pending occurrence overrides are respected. Category-month `plannedExpenses` is the sum of scheduled outflows assigned to that category, including splits. Other category-month values are `plannedBudgetOverride`, effective `plannedBudget`, `plannedBudgetBeforeMonth`, calculated `plannedAvailable`, and read-only `actualAssigned`, net `actualExpenses` (the negation of signed activity), and `actualAvailable`. A null override inherits the latest earlier override; an explicit zero is retained as an override.
+
+`PUT /api/long-term-planning/{year}` saves one category budget override using `{ "version": 1, "month": "2027-06", "field": "plannedBudgetOverride", "categoryId": "groceries", "amount": 600.00 }`. Set `amount` to null to remove an override. Expected income and planned expenses are calculated from schedules and cannot be written through this endpoint. Budget values must be non-negative decimal amounts within the `numeric(14,2)` range. The month must belong to the route year, and past-month writes are rejected using the server's local calendar date.
+
+All planning values share an optimistic `version`. A successful write returns the refreshed annual plan and increments the version when values change. A stale version returns 409 with the current plan; invalid requests return 400 without partial writes. Forecast persistence is separate from monthly budget snapshots and does not change monthly assignments, activity, or available balances.
+
 ## Boundaries
 
 There is one local default budget and no authentication. Cash ledger behavior is described below; credit/debt and bank links are future milestones. See [data model](data-model.md) for migration and calculations.

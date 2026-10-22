@@ -8,6 +8,14 @@ EF Core migrations live in `src/OpenBudget.Api/Migrations`.
 
 The current application seeds one plan with ID `default`, name `My Budget`, and currency `EUR`. `Version` is an optimistic concurrency token. Separate user-owned budgets and memberships are planned in Milestone 8.
 
+### Long-Term Planning
+
+`LongTermPlanningStates` holds the shared planning version used for optimistic concurrency. Expected income and expenses are projected from active scheduled ledger transactions across accounts; their old stored planning fields are no longer used for forecasts or accepted by the planning update API. `LongTermPlanningCategories` stores effective-month `PlannedBudgetOverride` values. A null override means inherit the most recent earlier override; an explicit zero is a real override. The planning tables do not update monthly budget snapshots.
+
+The annual forecast calculates `Planned Budget` from the latest effective override and `Planned Available = prior planned available + planned budget - scheduled category expenses`, starting from zero before the first planning event. Calculations include earlier months when a year is loaded, so a December plan carries into January. Expected expenses sum all scheduled outflows except transfers, including uncategorized outflows; `Remaining = expected income - expected expenses` and `Remaining to Be Assigned = expected income - the sum of planned category budgets`. Past-month mutation is rejected using server-local time.
+
+Actual assigned and activity come from stored category snapshots. Actual expenses display as the negated signed activity (refunds reduce net expenses), and actual available comes from the snapshot's server-calculated available value. Missing actual months do not create snapshots; their actual available display carries forward from the nearest earlier stored snapshot while assigned and expense remain unavailable. The category structure is read from the latest existing monthly snapshot.
+
 ### `Budgets`
 
 One row per `YYYY-MM` snapshot, linked to a budget plan. `OpeningReadyToAssign`, preserved legacy `FundsAdded`, and materialized `LedgerIncome` are inputs to Ready to Assign; `Version` guards concurrent edits; `Note` stores the month note.

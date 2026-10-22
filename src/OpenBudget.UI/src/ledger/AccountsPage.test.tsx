@@ -54,6 +54,15 @@ beforeEach(() => {
 function show(selectedAccount = '') { const onChanged = vi.fn(); render(<AccountsPage selectedAccount={selectedAccount} onSelectAccount={vi.fn()} onChanged={onChanged} onMenu={vi.fn()} />); return onChanged; }
 async function ready() { await screen.findByRole('button', { name: 'Edit Shop 2026-10-21' }); }
 
+it('shows and selects a later projected occurrence opened from annual planning', async () => {
+  const projected = { ...register.items[0], id: 'future-occurrence', date: '2027-06-01', amount: -25, payee: 'Rent', categoryId: 'food', needsAttention: false };
+  render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}
+    focusTransaction={{ id: projected.id, accountId: 'checking', date: projected.date, scheduled: true, projected }} />);
+  const row = await screen.findByRole('row', { name: /Rent/ });
+  expect(row).toHaveAttribute('aria-selected', 'true');
+  expect(row).toHaveAttribute('data-transaction-id', 'future-occurrence');
+});
+
 it('shows the bottom bar on selection and applies one action to the selected ids',async()=>{
   register.items.push({...register.items[0],id:'second',payee:'Cafe'});register.total=2;
   show('checking');await ready();expect(screen.queryByRole('region',{name:'Selected transactions'})).not.toBeInTheDocument();

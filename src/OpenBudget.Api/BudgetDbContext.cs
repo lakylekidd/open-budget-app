@@ -5,6 +5,9 @@ namespace OpenBudget.Api;
 public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) : DbContext(options)
 {
     public DbSet<BudgetPlanEntity> BudgetPlans => Set<BudgetPlanEntity>();
+    public DbSet<LongTermPlanningStateEntity> LongTermPlanningStates => Set<LongTermPlanningStateEntity>();
+    public DbSet<LongTermPlanningIncomeEntity> LongTermPlanningIncomes => Set<LongTermPlanningIncomeEntity>();
+    public DbSet<LongTermPlanningCategoryEntity> LongTermPlanningCategories => Set<LongTermPlanningCategoryEntity>();
     public DbSet<BudgetEntity> Budgets => Set<BudgetEntity>();
     public DbSet<CategoryGroupEntity> CategoryGroups => Set<CategoryGroupEntity>();
     public DbSet<CategoryEntity> Categories => Set<CategoryEntity>();
@@ -45,6 +48,27 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) :
             entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasMany(x => x.Months).WithOne(x => x.Plan).HasForeignKey(x => x.BudgetId).OnDelete(DeleteBehavior.Restrict);
         });
+        modelBuilder.Entity<LongTermPlanningStateEntity>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasMaxLength(100);
+            entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasData(new LongTermPlanningStateEntity { Id = "default", Version = 1 });
+        });
+        modelBuilder.Entity<LongTermPlanningIncomeEntity>(entity =>
+        {
+            entity.HasKey(x => x.Month);
+            entity.Property(x => x.Month).HasMaxLength(7);
+            entity.Property(x => x.ExpectedIncome).HasPrecision(14, 2);
+        });
+        modelBuilder.Entity<LongTermPlanningCategoryEntity>(entity =>
+        {
+            entity.HasKey(x => new { x.Month, x.CategoryId });
+            entity.Property(x => x.Month).HasMaxLength(7);
+            entity.Property(x => x.CategoryId).HasMaxLength(100);
+            entity.Property(x => x.PlannedBudgetOverride).HasPrecision(14, 2);
+            entity.Property(x => x.PlannedExpenses).HasPrecision(14, 2);
+        });
         modelBuilder.Entity<BudgetEntity>(entity =>
         {
             entity.HasKey(x => x.Month);
@@ -78,6 +102,26 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) :
             entity.Property(x => x.Target).HasPrecision(14, 2);
         });
     }
+}
+
+public sealed class LongTermPlanningStateEntity
+{
+    public string Id { get; set; } = "default";
+    public long Version { get; set; } = 1;
+}
+
+public sealed class LongTermPlanningIncomeEntity
+{
+    public string Month { get; set; } = "";
+    public decimal ExpectedIncome { get; set; }
+}
+
+public sealed class LongTermPlanningCategoryEntity
+{
+    public string Month { get; set; } = "";
+    public string CategoryId { get; set; } = "";
+    public decimal? PlannedBudgetOverride { get; set; }
+    public decimal PlannedExpenses { get; set; }
 }
 
 public sealed class BudgetPlanEntity

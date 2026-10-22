@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace OpenBudget.Api;
 
-// The single-budget lock orders month initialization, plan writes and ledger commands.
+// The single-budget lock orders month initialization, monthly Plan writes, annual planning writes and ledger commands.
 // Commit before returning the HTTP response, including reads that initialize a month.
 public sealed class LedgerGate(BudgetDbContext db)
 {

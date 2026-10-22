@@ -8,6 +8,7 @@ var connectionString = builder.Configuration.GetConnectionString("budgetdatabase
     ?? "Host=localhost;Port=5432;Database=budgetboard;Username=budgetboard;Password=budgetboard_dev";
 builder.Services.AddDbContext<BudgetDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddScoped<BudgetService>();
+builder.Services.AddScoped<LongTermPlanningService>();
 builder.Services.AddScoped<LedgerService>();
 builder.Services.AddScoped<LedgerGate>();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
@@ -79,6 +80,30 @@ app.MapPut("/api/budget/{month}", async (string month, BudgetUpdateDto request, 
         return Results.Conflict(new { error = "This month changed in another session.", current = result.Budget });
     if (result.Error is not null) return Results.BadRequest(new { error = result.Error });
     return Results.Ok(result.Budget);
+});
+
+app.MapGet("/api/long-term-planning/{year:int}", async (int year, LongTermPlanningService planning, LedgerGate gate, CancellationToken cancellationToken) =>
+{
+    if (year is < 1 or > 9999) return Results.BadRequest(new { error = "Year must be between 0001 and 9999." });
+    return await gate.RunAsync(async () => Results.Ok(await planning.GetYearAsync(year, cancellationToken)), cancellationToken);
+});
+
+app.MapGet("/api/long-term-planning/{year:int}/activity/{month}", async (int year, string month, LongTermPlanningService planning, LedgerGate gate, CancellationToken cancellationToken) =>
+{
+    if (year is < 1 or > 9999 || !DateOnly.TryParseExact($"{month}-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var date) || date.Year != year || month != $"{year:D4}-{date.Month:D2}")
+        return Results.BadRequest(new { error = "Month must use YYYY-MM format and belong to the selected year." });
+    return await gate.RunAsync(async () => Results.Ok(await planning.GetActivityAsync(year, month, cancellationToken)), cancellationToken);
+});
+
+app.MapPut("/api/long-term-planning/{year:int}", async (int year, LongTermPlanningUpdateDto request, LongTermPlanningService planning, LedgerGate gate, CancellationToken cancellationToken) =>
+{
+    var result = await gate.RunAsync(() => planning.UpdateAsync(year, request, cancellationToken), cancellationToken,
+        value => value.Error is null && !value.IsConflict);
+    if (result.IsConflict)
+        return Results.Conflict(new { error = "Long-term planning changed in another session.", current = result.Plan });
+    if (result.Error is not null) return Results.BadRequest(new { error = result.Error });
+    return Results.Ok(result.Plan);
 });
 
 app.MapGet("/api/accounts", async (LedgerService ledger, LedgerGate gate, CancellationToken ct) => {

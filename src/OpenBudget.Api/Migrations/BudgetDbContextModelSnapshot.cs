@@ -315,6 +315,66 @@ namespace OpenBudget.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("OpenBudget.Api.LongTermPlanningCategoryEntity", b =>
+                {
+                    b.Property<string>("Month")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
+                    b.Property<string>("CategoryId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<decimal?>("PlannedBudgetOverride")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)");
+
+                    b.Property<decimal>("PlannedExpenses")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)");
+
+                    b.HasKey("Month", "CategoryId");
+
+                    b.ToTable("LongTermPlanningCategories");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.LongTermPlanningIncomeEntity", b =>
+                {
+                    b.Property<string>("Month")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
+                    b.Property<decimal>("ExpectedIncome")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)");
+
+                    b.HasKey("Month");
+
+                    b.ToTable("LongTermPlanningIncomes");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.LongTermPlanningStateEntity", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("LongTermPlanningStates");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = "default",
+                            Version = 1L
+                        });
+                });
+
             modelBuilder.Entity("OpenBudget.Api.PayeeEntity", b =>
                 {
                     b.Property<Guid>("Id")
