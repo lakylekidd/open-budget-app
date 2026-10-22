@@ -69,7 +69,7 @@ npm --prefix src/OpenBudget.UI test
 
 ## GitHub pull requests and releases
 
-`.github/workflows/test.yml` runs the .NET solution build, unit and PostgreSQL integration tests, UI tests, and UI production build for every pull request and push. Configure a branch protection rule for `main` that requires the **Build and test / verify** check before merging. This repository setting cannot be enabled by a workflow file.
+`.github/workflows/test.yml` runs the .NET solution build, unit and PostgreSQL integration tests, UI tests, and UI production build for every pull request and for pushes to `main`. Configure a branch protection rule for `main` that requires the **Build and test / verify** check before merging. This repository setting cannot be enabled by a workflow file.
 
 Creating a GitHub Release from a version tag such as `v0.2.0` runs `.github/workflows/release.yml`. It waits for the same verification job, then invokes the Coolify deployment webhook when the repository secret `COOLIFY_WEBHOOK_URL` is configured. In Coolify, configure the application to deploy this repository's release tag and set its webhook to trigger a deployment. Keep the webhook URL secret and use a persistent PostgreSQL volume in the Coolify service configuration. The workflow reports success when Coolify accepts the webhook; check Coolify for the final deployment and health status. Releases still build and pass verification if the webhook secret is not configured, but deployment is skipped.
 
