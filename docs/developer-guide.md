@@ -67,6 +67,14 @@ npm --prefix src/OpenBudget.UI test
 
 `OpenBudget.UnitTests` covers domain rules/calculations. `OpenBudget.IntegrationTests` uses the real HTTP API/EF migrations and a disposable PostgreSQL 17 Testcontainers instance with a fresh database per test. Docker must be running; unavailable Docker fails tests rather than silently skipping them. No developer database connection or financial-service credential is required. Vitest/Testing Library test the ledger UI in jsdom.
 
+## GitHub pull requests and releases
+
+`.github/workflows/test.yml` runs the .NET solution build, unit and PostgreSQL integration tests, UI tests, and UI production build for every pull request and push. Configure a branch protection rule for `main` that requires the **Build and test / verify** check before merging. This repository setting cannot be enabled by a workflow file.
+
+Creating a GitHub Release from a version tag such as `v0.2.0` runs `.github/workflows/release.yml`. It waits for the same verification job, then invokes the Coolify deployment webhook when the repository secret `COOLIFY_WEBHOOK_URL` is configured. In Coolify, configure the application to deploy this repository's release tag and set its webhook to trigger a deployment. Keep the webhook URL secret and use a persistent PostgreSQL volume in the Coolify service configuration. The workflow reports success when Coolify accepts the webhook; check Coolify for the final deployment and health status. Releases still build and pass verification if the webhook secret is not configured, but deployment is skipped.
+
+For Coolify, create an application from this repository using the `docker-compose.yml` file in the repository root. It builds the .NET API and React UI and runs PostgreSQL 17 with a persistent volume. Set `POSTGRES_PASSWORD` as an environment variable in Coolify to a strong random value. Route the application's domain to the `ui` service on port 80. The API applies EF migrations at startup. Configure the Coolify Git source to use the release tag/ref for production deployments; the release webhook triggers the configured resource.
+
 For focused runs, use `dotnet test tests/OpenBudget.UnitTests`, `dotnet test tests/OpenBudget.IntegrationTests`, or `npm --prefix src/OpenBudget.UI run test:watch`.
 
 After backend changes, stop the AppHost, rebuild the solution and restart before live verification. Windows running executables can lock build output; avoid building over an active API process. Preserve the named development volume. Test databases/containers are independent of it. See the [acceptance coverage map](testing.md).
