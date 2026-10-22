@@ -42,6 +42,6 @@ jobs:
             echo "Configure COOLIFY_WEBHOOK_URL and COOLIFY_TOKEN repository secrets before publishing a release." >&2
             exit 1
           fi
-          curl --fail-with-body --show-error --silent --retry 3 --retry-all-errors \
+          curl --request POST --fail-with-body --show-error --silent \
             --header "Authorization: Bearer $COOLIFY_TOKEN" \
             "$COOLIFY_WEBHOOK_URL"
