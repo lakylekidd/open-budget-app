@@ -49,6 +49,7 @@ async function assign(value:string){await userEvent.click(screen.getByRole('butt
 it('shows the all-money-assigned summary at zero and restores the income action in a funded month',async()=>{
   months['2026-10'].readyToAssign=0;
   render(<App/>);await saved();
+  expect(screen.getByRole('button',{name:/Test budget/}).querySelector('img')).toHaveAttribute('src','/openbudget-logo.svg');
   const summary=within(screen.getByRole('region',{name:'Ready to assign'}));
   expect(summary.getByText('€0.00')).toBeInTheDocument();
   expect(summary.getByText('All Money Assigned')).toBeInTheDocument();
