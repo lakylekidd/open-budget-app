@@ -3,6 +3,12 @@ name: Release and deploy
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing release tag to verify and deploy
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -13,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.release.tag_name || inputs.version }}
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
@@ -42,6 +48,6 @@ jobs:
             echo "Configure COOLIFY_WEBHOOK_URL and COOLIFY_TOKEN repository secrets before publishing a release." >&2
             exit 1
           fi
-          curl --fail-with-body --show-error --silent --retry 3 --retry-all-errors \
+          curl --request POST --fail-with-body --show-error --silent \
             --header "Authorization: Bearer $COOLIFY_TOKEN" \
             "$COOLIFY_WEBHOOK_URL"
