@@ -32,9 +32,16 @@ jobs:
   deploy:
     needs: verify
     runs-on: ubuntu-latest
-    if: ${{ secrets.COOLIFY_WEBHOOK_URL != '' }}
     steps:
       - name: Trigger Coolify deployment
         env:
           COOLIFY_WEBHOOK_URL: ${{ secrets.COOLIFY_WEBHOOK_URL }}
-        run: curl --fail --show-error --silent --retry 3 --retry-all-errors "$COOLIFY_WEBHOOK_URL"
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          if [[ -z "$COOLIFY_WEBHOOK_URL" || -z "$COOLIFY_TOKEN" ]]; then
+            echo "Configure COOLIFY_WEBHOOK_URL and COOLIFY_TOKEN repository secrets before publishing a release." >&2
+            exit 1
+          fi
+          curl --fail-with-body --show-error --silent --retry 3 --retry-all-errors \
+            --header "Authorization: Bearer $COOLIFY_TOKEN" \
+            "$COOLIFY_WEBHOOK_URL"
