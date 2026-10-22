@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AccountSidebarRow } from './ledger/AccountSidebarRow';
 import { AccountsPage } from './ledger/AccountsPage';
-import { type Accounts, requestJson } from './ledger/api';
+import { type Accounts, type Entry, type Register, type ScheduledItem, type Schedules, requestJson } from './ledger/api';
 import { parseAssignment } from './budgetMoney';
+import { categoryProgress, categoryTransactionAmount, moveItem } from './planHelpers';
+import { PlanTransactionList, type PlanTransactionItem } from './PlanTransactionList';
 
 type Category = {
   id: string;
@@ -19,7 +21,7 @@ type Category = {
 
 type CategoryGroup = { id: string; name: string; categories: Category[]; isArchived?: boolean; sortOrder?: number };
 type Filter = 'All' | 'Overspent' | 'Underfunded' | 'Overfunded' | 'Money available' | 'Snoozed' | 'Archived';
-type BudgetState = { month: string; groups: CategoryGroup[]; note?: string; version: number; openingReadyToAssign: number; fundsAdded: number; readyToAssign: number };
+type BudgetState = { month: string; groups: CategoryGroup[]; note?: string; version: number; openingReadyToAssign: number; fundsAdded: number; ledgerIncome: number; readyToAssign: number };
 type BudgetPlan = { id: string; name: string; currency: string; version: number };
 
 const filters: Filter[] = ['All', 'Overspent', 'Underfunded', 'Overfunded', 'Money available', 'Snoozed', 'Archived'];
@@ -65,6 +67,14 @@ const initialGroups: CategoryGroup[] = [
 const currency = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR' });
 const money = (value: number) => currency.format(value);
 const shortMonthText = (value: string) => new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric' }).format(new Date(`${value}-01T12:00:00`));
+const monthBounds = (month: string) => {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const format = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  return { from: `${month}-01`, to: format(new Date(year, monthNumber, 0)) };
+};
+
+type PlanFocus = { id: string; accountId: string; date: string; scheduled: boolean };
+type CategoryTransactionDialog = { title: string; categoryId: string; kind: 'activity' | 'upcoming'; items: PlanTransactionItem[]; loading: boolean; error: string; requestId: number };
 
 function Icon({ name, size = 18 }: { name: string; size?: number }) {
   if (['plan', 'bank', 'chart'].includes(name)) return <img src={`/icon-${name}.svg`} width={size} height={size} alt="" aria-hidden="true" />;
@@ -104,7 +114,7 @@ function App() {
   const [accountEditRequest,setAccountEditRequest]=useState<{id:string;token:number}>();
   const [ledgerRefresh, setLedgerRefresh] = useState(0);
   const [budgetRefresh, setBudgetRefresh] = useState(0);
-  const [data, setData] = useState<BudgetState>({ month: '2026-10', groups: initialGroups, note: '', version: 1, openingReadyToAssign: 0, fundsAdded: 0, readyToAssign: 0 });
+  const [data, setData] = useState<BudgetState>({ month: '2026-10', groups: initialGroups, note: '', version: 1, openingReadyToAssign: 0, fundsAdded: 0, ledgerIncome: 0, readyToAssign: 0 });
   const [saveState, setSaveState] = useState<'loading' | 'saved' | 'saving' | 'offline' | 'conflict'>('loading');
   const loadedMonth = useRef<string | null>(null);
   const lastSaved = useRef<string | null>(null);
@@ -128,6 +138,18 @@ function App() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [history, setHistory] = useState<BudgetState[]>([]);
   const [future, setFuture] = useState<BudgetState[]>([]);
+  const [upcomingItems, setUpcomingItems] = useState<ScheduledItem[]>([]);
+  const [upcomingLoading, setUpcomingLoading] = useState(true);
+  const [upcomingError, setUpcomingError] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [categoryDialog, setCategoryDialog] = useState<CategoryTransactionDialog | null>(null);
+  const [focusTransaction, setFocusTransaction] = useState<PlanFocus | null>(null);
+  const dialogRequestId = useRef(0);
+  const [addCategoryGroupId, setAddCategoryGroupId] = useState<string | null>(null);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [categoryNameError, setCategoryNameError] = useState('');
+  const [dragSource, setDragSource] = useState<{ kind: 'group' | 'category'; id: string } | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -136,12 +158,12 @@ function App() {
     return () => controller.abort();
   }, [ledgerRefresh]);
 
-  function navigate(page: string, accountId = '') {
+  function navigate(page: string, accountId = '', transaction: PlanFocus | null = null) {
     if (ledgerPending) { setToast('Resolve the pending ledger save before leaving accounts.'); return; }
     if (editingId || saveState === 'saving' || conflictBudget || (loadedMonth.current === data.month && lastSaved.current !== JSON.stringify(data))) {
       setToast('Wait for the plan to save, or resolve its save error before opening accounts.'); return;
     }
-    setActivePage(page); setSelectedAccount(accountId); setMobileMenu(false);
+    setActivePage(page); setSelectedAccount(accountId); setFocusTransaction(transaction); setMobileMenu(false);
     if (page === 'Plan') setBudgetRefresh(value => value + 1);
   }
 
@@ -179,6 +201,27 @@ function App() {
           setToast('Could not reach the budget API. Start the backend and reload.');
         }
       });
+    return () => controller.abort();
+  }, [data.month, budgetRefresh]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const { from, to } = monthBounds(data.month);
+    setUpcomingLoading(true); setUpcomingError(''); setUpcomingItems([]); setSelectedCategoryId(null);
+    const load = async () => {
+      try {
+        const first = await requestJson<Schedules>(`/api/schedules?${new URLSearchParams({ from, to, page: '1', pageSize: '100' })}`, { signal: controller.signal });
+        const items = [...first.items];
+        for (let page = 2; (page - 1) * first.pageSize < first.total; page++) {
+          const next = await requestJson<Schedules>(`/api/schedules?${new URLSearchParams({ from, to, page: String(page), pageSize: '100' })}`, { signal: controller.signal });
+          items.push(...next.items);
+        }
+        if (!controller.signal.aborted) setUpcomingItems(items.filter(item => !item.isPaused));
+      } catch (error) {
+        if (!controller.signal.aborted && error instanceof Error) setUpcomingError(error.message);
+      } finally { if (!controller.signal.aborted) setUpcomingLoading(false); }
+    };
+    void load();
     return () => controller.abort();
   }, [data.month, budgetRefresh]);
 
@@ -241,6 +284,9 @@ function App() {
   const visibleCategories = data.groups.flatMap(group => group.categories.map(category => ({ ...category, isArchived: Boolean(category.isArchived || group.isArchived) })));
   const moveCategories = data.groups.filter(group => !group.isArchived).flatMap(group => group.categories.filter(category => !category.isArchived));
   const matchingCategoryCount = visibleCategories.filter(matchesFilter).length;
+  const selectedCategory = visibleCategories.find(category => category.id === selectedCategoryId);
+  const selectedUpcoming = selectedCategory ? upcomingItems.flatMap(item => { const amount = categoryTransactionAmount(item.transaction, selectedCategory.id); return amount < 0 ? [{ item, amount }] : []; }) : [];
+  const selectedUpcomingTotal = selectedUpcoming.reduce((sum, item) => sum + item.amount, 0);
 
   function updateCategory(id: string, updater: (category: Category) => Category) {
     setData(current => { setHistory(stack => [...stack.slice(-49), current]); setFuture([]); return { ...current, groups: current.groups.map(group => ({ ...group, categories: group.categories.map(category => category.id === id ? updater(category) : category) })) }; });
@@ -276,10 +322,20 @@ function App() {
   }
 
   function addCategory(groupId: string) {
-    const name = window.prompt('Category name')?.trim();
-    if (!name) return;
+    setAddCategoryGroupId(groupId); setNewCategoryName(''); setCategoryNameError('');
+  }
+
+  function submitCategory(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = newCategoryName.trim();
+    const groupId = addCategoryGroupId;
+    const group = data.groups.find(item => item.id === groupId);
+    if (!group || !name) { setCategoryNameError('Enter a category name.'); return; }
+    if (name.length > 160) { setCategoryNameError('Category names can be up to 160 characters.'); return; }
+    if (group.categories.some(item => item.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase())) { setCategoryNameError('This group already has a category with that name.'); return; }
     const id = `category-${crypto.randomUUID()}`;
-    setData(current => { setHistory(stack => [...stack.slice(-49), current]); setFuture([]); return { ...current, groups: current.groups.map(group => group.id === groupId ? { ...group, categories: [...group.categories, { id, name, assigned: 0, activity: 0, available: 0, target: 0, icon: '＋', isArchived: false }] } : group) }; });
+    setData(current => { setHistory(stack => [...stack.slice(-49), current]); setFuture([]); return { ...current, groups: current.groups.map(item => item.id === groupId ? { ...item, categories: [...item.categories, { id, name, assigned: 0, activity: 0, available: 0, target: 0, icon: '＋', isArchived: false }] } : item) }; });
+    setAddCategoryGroupId(null);
     setToast('Category added');
     window.setTimeout(() => setToast(''), 2200);
   }
@@ -328,11 +384,73 @@ function App() {
   }
 
   function moveGroup(id: string, direction: -1 | 1) {
-    setData(current => { const groups = [...current.groups]; const index = groups.findIndex(group => group.id === id); const target = index + direction; if (target < 0 || target >= groups.length) return current; [groups[index], groups[target]] = [groups[target], groups[index]]; return { ...current, groups }; });
+    setData(current => { const from = current.groups.findIndex(group => group.id === id); const to = from + direction; if (from < 0 || to < 0 || to >= current.groups.length) return current; setHistory(stack => [...stack.slice(-49), current]); setFuture([]); return { ...current, groups: moveItem(current.groups, from, to) }; });
   }
 
   function moveCategory(groupId: string, id: string, direction: -1 | 1) {
-    setData(current => ({ ...current, groups: current.groups.map(group => { if (group.id !== groupId) return group; const categories = [...group.categories]; const index = categories.findIndex(category => category.id === id); const target = index + direction; if (target < 0 || target >= categories.length) return group; [categories[index], categories[target]] = [categories[target], categories[index]]; return { ...group, categories }; }) }));
+    setData(current => { const group = current.groups.find(item => item.id === groupId); if (!group) return current; const from = group.categories.findIndex(category => category.id === id); const to = from + direction; const next = moveItem(group.categories, from, to); if (next === group.categories) return current; setHistory(stack => [...stack.slice(-49), current]); setFuture([]); return { ...current, groups: current.groups.map(item => item.id === groupId ? { ...item, categories: next } : item) }; });
+  }
+
+  function reorderGroup(sourceId: string, targetId: string) {
+    setData(current => { const from = current.groups.findIndex(group => group.id === sourceId); const to = current.groups.findIndex(group => group.id === targetId); const next = moveItem(current.groups, from, to); if (next === current.groups) return current; setHistory(stack => [...stack.slice(-49), current]); setFuture([]); return { ...current, groups: next }; });
+  }
+
+  function dropCategory(sourceId: string, targetGroupId: string, targetCategoryId?: string) {
+    setData(current => {
+      const sourceGroup = current.groups.find(group => group.categories.some(category => category.id === sourceId));
+      const destinationGroup = current.groups.find(group => group.id === targetGroupId);
+      const source = sourceGroup?.categories.find(category => category.id === sourceId);
+      if (!sourceGroup || !destinationGroup || !source || sourceGroup.isArchived || destinationGroup.isArchived || source.isArchived || sourceId === targetCategoryId) return current;
+      const groups = current.groups.map(group => group.id === sourceGroup.id ? { ...group, categories: group.categories.filter(category => category.id !== sourceId) } : group);
+      const destinationIndex = groups.findIndex(group => group.id === targetGroupId);
+      const destination = groups[destinationIndex];
+      const categories = [...destination.categories];
+      const targetIndex = targetCategoryId ? categories.findIndex(category => category.id === targetCategoryId) : -1;
+      categories.splice(targetIndex < 0 ? categories.length : targetIndex, 0, source);
+      groups[destinationIndex] = { ...destination, categories };
+      setHistory(stack => [...stack.slice(-49), current]); setFuture([]);
+      return { ...current, groups };
+    });
+  }
+
+  function dropGroup(sourceId: string, targetGroupId: string) {
+    if (dragSource?.kind === 'group') reorderGroup(sourceId, targetGroupId);
+    else if (dragSource?.kind === 'category') dropCategory(sourceId, targetGroupId);
+    setDragSource(null); setDropTargetId(null);
+  }
+
+  async function openActivity(category: Category) {
+    const requestId = ++dialogRequestId.current;
+    setCategoryDialog({ title: `Activity · ${category.name}`, categoryId: category.id, kind: 'activity', items: [], loading: true, error: '', requestId });
+    const { from, to } = monthBounds(data.month);
+    try {
+      const loadPage = (page: number) => {
+        const query = new URLSearchParams({ categoryId: category.id, from, to, page: String(page), pageSize: '100', includeReconciled: 'true' });
+        return requestJson<Register>(`/api/transactions?${query}`);
+      };
+      const first = await loadPage(1);
+      const entries = [...first.items];
+      for (let page = 2; (page - 1) * first.pageSize < first.total; page++) entries.push(...(await loadPage(page)).items);
+      setCategoryDialog(current => current?.requestId === requestId ? { ...current, items: entries.map(entry => ({ entry, scheduled: false })), loading: false } : current);
+    } catch (error) {
+      setCategoryDialog(current => current?.requestId === requestId ? { ...current, loading: false, error: error instanceof Error ? error.message : 'Could not load transactions.' } : current);
+    }
+  }
+
+  function openUpcoming(category: Category) {
+    const items = upcomingItems.flatMap(item => {
+      const amount = categoryTransactionAmount(item.transaction, category.id);
+      return amount < 0 ? [{ entry: item.transaction, scheduled: true, categoryAmount: amount }] : [];
+    });
+    const requestId = ++dialogRequestId.current;
+    setCategoryDialog({ title: `Upcoming activity · ${category.name}`, categoryId: category.id, kind: 'upcoming', items, loading: false, error: upcomingError, requestId });
+  }
+
+  function closeCategoryDialog() { dialogRequestId.current++; setCategoryDialog(null); }
+
+  function showTransactionInAccount(entry: Entry, scheduled: boolean) {
+    closeCategoryDialog();
+    navigate('Accounts', entry.accountId, { id: entry.id, accountId: entry.accountId, date: entry.date, scheduled });
   }
 
   function addFunds() {
@@ -443,24 +561,28 @@ function App() {
               const shownCategories = group.categories.filter(category => filter === 'Archived' ? Boolean(group.isArchived || category.isArchived) : !category.isArchived && matchesFilter(category));
               if (!groupVisible || (filter !== 'All' && shownCategories.length === 0 && !group.isArchived)) return null;
               const isCollapsed = collapsed.includes(group.id);
-              return <div className="category-group" key={group.id}>
+              return <div className={`category-group ${dropTargetId === group.id ? 'drop-target' : ''}`} key={group.id} onDragOver={event => { if (dragSource) { event.preventDefault(); setDropTargetId(group.id); } }} onDrop={event => { event.preventDefault(); if (dragSource) dropGroup(dragSource.id, group.id); }}>
                 <div className="group-row">
-                  <div className="group-name"><button className="group-collapse" aria-label={`Toggle ${group.name}`} aria-expanded={!isCollapsed} onClick={() => toggleGroup(group.id)}><span className={`group-chevron ${isCollapsed ? 'closed' : ''}`}><Icon name="chevron" size={12} /></span></button><input type="checkbox" aria-label={`Select ${group.name}`} checked={group.categories.length > 0 && group.categories.every(category => selectedIds.includes(category.id))} onChange={event => setSelectedIds(current => event.target.checked ? [...new Set([...current, ...group.categories.map(category => category.id)])] : current.filter(id => !group.categories.some(category => category.id === id)))} /><button className="group-label" onDoubleClick={() => { const name = window.prompt('Rename category group', group.name)?.trim(); if(name) setData(current => ({...current,groups:current.groups.map(item => item.id === group.id ? {...item,name} : item)})); }}>{group.name}</button><div className="group-order-tools"><button aria-label={`Move ${group.name} up`} onClick={() => moveGroup(group.id, -1)}>↑</button><button aria-label={`Move ${group.name} down`} onClick={() => moveGroup(group.id, 1)}>↓</button></div></div>
+                  <div className="group-name"><button className="group-collapse" aria-label={`Toggle ${group.name}`} aria-expanded={!isCollapsed} onClick={() => toggleGroup(group.id)}><span className={`group-chevron ${isCollapsed ? 'closed' : ''}`}><Icon name="chevron" size={12} /></span></button><input type="checkbox" aria-label={`Select ${group.name}`} checked={group.categories.length > 0 && group.categories.every(category => selectedIds.includes(category.id))} onChange={event => setSelectedIds(current => event.target.checked ? [...new Set([...current, ...group.categories.map(category => category.id)])] : current.filter(id => !group.categories.some(category => category.id === id)))} /><button className="group-label" draggable={!group.isArchived} title="Drag to reorder this group" onDragStart={event => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', group.id); setDragSource({ kind: 'group', id: group.id }); }} onDragEnd={() => { setDragSource(null); setDropTargetId(null); }} onDoubleClick={() => { const name = window.prompt('Rename category group', group.name)?.trim(); if(name) setData(current => ({...current,groups:current.groups.map(item => item.id === group.id ? {...item,name} : item)})); }}>{group.name}</button>{!group.isArchived && <button className="group-add" onClick={() => addCategory(group.id)} aria-label={`Add category to ${group.name}`}><Icon name="plus" size={16} /></button>}<div className="group-order-tools"><button aria-label={`Move ${group.name} up`} onClick={() => moveGroup(group.id, -1)}>↑</button><button aria-label={`Move ${group.name} down`} onClick={() => moveGroup(group.id, 1)}>↓</button></div></div>
                   <div className="group-assigned">{money(group.categories.reduce((sum, item) => sum + item.assigned, 0))}</div>
                   <div className="group-activity">{money(group.categories.reduce((sum, item) => sum + item.activity, 0))}</div>
                   <div className={`group-available ${groupTotal < 0 ? 'negative' : ''}`}>{money(groupTotal)}</div>
-                  {!group.isArchived && <button className="group-add" onClick={() => addCategory(group.id)} aria-label={`Add category to ${group.name}`}><Icon name="plus" size={16} /></button>}<button className="group-archive" aria-label={`${group.isArchived ? 'Restore' : 'Archive'} group ${group.name}`} onClick={() => toggleGroupArchived(group.id)}>{group.isArchived ? 'Restore' : 'Archive'}</button>
+                  {addCategoryGroupId === group.id && <form className="category-add-popover" onSubmit={submitCategory}><label className="sr-only" htmlFor={`new-category-${group.id}`}>New category</label><input id={`new-category-${group.id}`} autoFocus maxLength={160} value={newCategoryName} placeholder="New Category" onChange={event => { setNewCategoryName(event.target.value); setCategoryNameError(''); }} onKeyDown={event => { if (event.key === 'Escape') setAddCategoryGroupId(null); }} />{categoryNameError && <span role="alert">{categoryNameError}</span>}<div><button type="button" onClick={() => setAddCategoryGroupId(null)}>Cancel</button><button className="button button-primary" type="submit">OK</button></div></form>}<button className="group-archive" aria-label={`${group.isArchived ? 'Restore' : 'Archive'} group ${group.name}`} onClick={() => toggleGroupArchived(group.id)}>{group.isArchived ? 'Restore' : 'Archive'}</button>
                 </div>
                 {!isCollapsed && shownCategories.map(category => {
-                  const progress = category.target > 0 ? Math.min(100, Math.max(0, Math.round(category.available / category.target * 100))) : 0;
-                  return <div className={`category-row ${category.available < 0 ? 'is-overspent' : ''}`} key={category.id}>
-                    <div className="category-name-cell"><input type="checkbox" aria-label={`Select ${category.name}`} checked={selectedIds.includes(category.id)} onChange={event => setSelectedIds(current => event.target.checked ? [...current, category.id] : current.filter(id => id !== category.id))} /><div className="category-copy"><div className="category-label-line"><button className="category-name" title="Double-click to rename" disabled={category.isArchived || group.isArchived} onDoubleClick={() => { const name = window.prompt('Rename category', category.name)?.trim(); if(name) updateCategory(category.id, item => ({...item,name})); }}>{category.name}</button>{progressOn && <span className="category-status">{category.available < 0 ? 'Overspent' : category.snoozed ? 'Snoozed' : category.available === 0 && category.activity < 0 ? 'Fully Spent' : ''}</span>}</div>{progressOn && category.target > 0 && <div className={`progress-track ${category.available < 0 ? 'over' : category.assigned >= category.target ? 'funded' : ''}`}><span style={{width: `${category.available < 0 ? 100 : category.assigned >= category.target ? 100 : progress}%`}} /></div>}</div><div className="category-order-tools"><button aria-label={`Move ${category.name} up`} disabled={category.isArchived || group.isArchived} onClick={() => moveCategory(group.id, category.id, -1)}>↑</button><button aria-label={`Move ${category.name} down`} disabled={category.isArchived || group.isArchived} onClick={() => moveCategory(group.id, category.id, 1)}>↓</button></div><button className="category-archive" disabled={group.isArchived} aria-label={`${category.isArchived ? 'Restore' : 'Archive'} category ${category.name}`} onClick={() => toggleCategoryArchived(category.id)}>{category.isArchived ? 'Restore' : 'Archive'}</button></div>
+                  const progress = categoryProgress(category.assigned, category.activity, category.available);
+                  const categoryUpcoming = upcomingItems.flatMap(item => { const amount = categoryTransactionAmount(item.transaction, category.id); return amount < 0 ? [{ item, amount }] : []; });
+                  const upcomingTotal = categoryUpcoming.reduce((sum, item) => sum + item.amount, 0);
+                  const hasUpcomingTransactions = categoryUpcoming.length > 0;
+                  const underfundedUpcoming = hasUpcomingTransactions && category.available + upcomingTotal < 0;
+                  return <div className={`category-row ${category.available < 0 ? 'is-overspent' : ''} ${selectedCategoryId === category.id ? 'category-selected' : ''}`} key={category.id} draggable={!category.isArchived && !group.isArchived} onDragStart={event => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', category.id); setDragSource({ kind: 'category', id: category.id }); }} onDragEnd={() => { setDragSource(null); setDropTargetId(null); }} onDragOver={event => { if (dragSource?.kind === 'category') { event.preventDefault(); setDropTargetId(category.id); } }} onDrop={event => { event.preventDefault(); event.stopPropagation(); if (dragSource?.kind === 'category') dropCategory(dragSource.id, group.id, category.id); setDragSource(null); setDropTargetId(null); }}>
+                    <div className="category-name-cell"><input type="checkbox" aria-label={`Select ${category.name}`} checked={selectedIds.includes(category.id)} onChange={event => setSelectedIds(current => event.target.checked ? [...current, category.id] : current.filter(id => id !== category.id))} /><div className="category-copy"><div className="category-label-line"><button className="category-name" title="Click to see category details; double-click to rename" disabled={category.isArchived || group.isArchived} onClick={() => setSelectedCategoryId(category.id)} onDoubleClick={() => { const name = window.prompt('Rename category', category.name)?.trim(); if(name) updateCategory(category.id, item => ({...item,name})); }}>{category.name}</button>{progressOn && <span className="category-status">{category.available < 0 ? 'Overspent' : category.snoozed ? 'Snoozed' : category.available === 0 && category.activity < 0 ? 'Fully Spent' : ''}</span>}</div>{progressOn && (category.assigned !== 0 || category.available !== 0) && <div className={`progress-track ${category.available < 0 ? 'over' : ''}`} aria-label={`Category progress: ${Math.round(progress.green)}% available${progress.red ? `, ${Math.round(progress.red)}% overspent` : ''}`}><span className="progress-green" style={{ width: `${progress.green}%` }} /><span className="progress-red" style={{ width: `${progress.red}%` }} /></div>}{underfundedUpcoming && <button className="category-upcoming" onClick={() => openUpcoming(category)} aria-label={`${categoryUpcoming.length} upcoming transactions for ${category.name}, ${money(upcomingTotal)}`}>{categoryUpcoming.length} Upcoming {categoryUpcoming.length === 1 ? 'Transaction' : 'Transactions'} <span>{money(upcomingTotal)}</span></button>}</div><div className="category-order-tools"><button aria-label={`Move ${category.name} up`} disabled={category.isArchived || group.isArchived} onClick={() => moveCategory(group.id, category.id, -1)}>↑</button><button aria-label={`Move ${category.name} down`} disabled={category.isArchived || group.isArchived} onClick={() => moveCategory(group.id, category.id, 1)}>↓</button></div><button className="category-archive" disabled={group.isArchived} aria-label={`${category.isArchived ? 'Restore' : 'Archive'} category ${category.name}`} onClick={() => toggleCategoryArchived(category.id)}>{category.isArchived ? 'Restore' : 'Archive'}</button></div>
                     <div className="assigned-cell">{editingId===category.id&&assignmentError&&<span role="alert" className="assignment-error">{assignmentError}</span>}
-                      {editingId === category.id ? <input className="amount-input" autoFocus value={editValue} aria-invalid={Boolean(assignmentError)} onChange={event => {setEditValue(event.target.value);setAssignmentError('');}} onBlur={() => saveEdit(category)} onKeyDown={event => { if (event.key === 'Enter') saveEdit(category); if (event.key === 'Escape') {setEditingId(null);setAssignmentError('');} }} aria-label={`Assigned to ${category.name}`} /> : <button className="amount-button" disabled={category.isArchived || group.isArchived || saveState==='loading' || loadedMonth.current!==data.month || !!conflictBudget} onClick={() => startEdit(category)} aria-label={`Edit assigned for ${category.name}`}>{money(category.assigned)}</button>}
+                      {editingId === category.id ? <input className="amount-input" autoFocus value={editValue} aria-invalid={Boolean(assignmentError)} onFocus={event => event.currentTarget.select()} onChange={event => {setEditValue(event.target.value);setAssignmentError('');}} onBlur={() => saveEdit(category)} onKeyDown={event => { if (event.key === 'Enter') saveEdit(category); if (event.key === 'Escape') {setEditingId(null);setAssignmentError('');} }} aria-label={`Assigned to ${category.name}`} /> : <button className="amount-button" disabled={category.isArchived || group.isArchived || saveState==='loading' || loadedMonth.current!==data.month || !!conflictBudget} onClick={() => startEdit(category)} aria-label={`Edit assigned for ${category.name}`}>{money(category.assigned)}</button>}
 
                     </div>
-                    <div className={`activity-cell ${category.activity < 0 ? 'negative' : ''}`}>{money(category.activity)}</div>
-                    <div className={`available-cell ${category.available < 0 ? 'negative' : category.available > 0 ? 'positive' : ''}`}><span>{money(category.available)}</span></div>
+                    <div className={`activity-cell ${category.activity < 0 ? 'negative' : ''}`}><button className="activity-button" aria-label={`View transactions for ${category.name} activity`} onClick={() => void openActivity(category)}>{money(category.activity)}</button></div>
+                    <div className={`available-cell ${category.available < 0 ? 'negative' : hasUpcomingTransactions ? 'underfunded' : category.available > 0 ? 'positive' : ''}`}><span>{money(category.available)}</span></div>
                   </div>;
                 })}
                 {!isCollapsed && shownCategories.length === 0 && <div className="empty-group">No categories match this filter.</div>}
@@ -472,9 +594,10 @@ function App() {
         </section>
 
         <aside className="summary-column">
+          {selectedCategory && <section className="category-detail-card"><header><strong>{selectedCategory.name}</strong><button type="button" aria-label="Close category details" onClick={() => setSelectedCategoryId(null)}>×</button></header><div className="summary-body"><div className="summary-line"><span>Available Balance</span><strong>{money(selectedCategory.available)}</strong></div><div className="summary-line"><span>Assigned This Month</span><strong>{money(selectedCategory.assigned)}</strong></div><div className="summary-line"><span>Activity</span><strong>{money(selectedCategory.activity)}</strong></div>{upcomingLoading ? <p role="status">Loading upcoming transactions…</p> : upcomingError ? <div role="alert">{upcomingError} <button onClick={() => setBudgetRefresh(value => value + 1)}>Retry</button></div> : selectedUpcoming.length > 0 && <><button className="category-upcoming-detail" onClick={() => openUpcoming(selectedCategory)}><span>{selectedUpcoming.length} Upcoming {selectedUpcoming.length === 1 ? 'Transaction' : 'Transactions'}</span><strong>{money(selectedUpcomingTotal)}</strong><span>Available After Upcoming</span><strong>{money(selectedCategory.available + selectedUpcomingTotal)}</strong></button>{selectedCategory.available + selectedUpcomingTotal < 0 && <span className="category-underfunded-hint">This category does not have enough available to cover these transactions.</span>}</>}</div></section>}
           <section className="summary-card"><button className="summary-title" onClick={() => setToast('Monthly summary')}><span>{new Date(data.month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long'})}'s Summary</span><Icon name="chevron" size={15} /></button><div className="summary-body">
             <div className="summary-line"><span>Ready to Assign</span><strong>{money(data.readyToAssign)}</strong></div><div className="summary-line"><span>Assigned in {new Date(data.month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long'})}</span><strong>{money(totals.assigned)}</strong></div><div className="summary-line"><span>Activity</span><strong>{money(totals.activity)}</strong></div><div className="summary-line summary-total"><span>Available</span><strong>{money(totals.available)}</strong></div>
-            <div className="summary-rule" /><div className="summary-subhead">Cost to Be Me</div><div className="summary-line"><span>{new Date(data.month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long'})}’s Targets</span><strong>{money(targetSum)}</strong></div><div className="target-progress"><span style={{width:'14%'}} /></div><div className="summary-line"><span>Expected Income</span><strong>{money(12500)} <button className="edit-income" aria-label="Edit income" onClick={() => setToast('Income settings')}>↗</button></strong></div><div className="income-progress"/><div className="summary-footnote">Next month's targets could increase your total to {money(targetSum)}</div></div></section>
+            <div className="summary-rule" /><div className="summary-subhead">Cost to Be Me</div><div className="summary-line"><span>{new Date(data.month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long'})}’s Targets</span><strong>{money(targetSum)}</strong></div><div className="target-progress"><span style={{width:'14%'}} /></div><div className="summary-line"><span>Expected Income</span><strong>{money(data.ledgerIncome)} <button className="edit-income" aria-label="Edit income" onClick={() => setToast('Income settings')}>↗</button></strong></div><div className="income-progress"/><div className="summary-footnote">Next month's targets could increase your total to {money(targetSum)}</div></div></section>
           <button className="auto-assign-card" onClick={() => setToast('Auto-Assign options')}><span>ϟ</span><strong>Auto-Assign</strong><Icon name="right" size={15} /></button>
           <section className="future-card"><div className="future-header"><strong>Assigned in Future Months</strong><Icon name="chevron" size={15} /></div><button onClick={() => changeMonth(1)}><span className="future-month">◷ &nbsp; {new Date(Number(data.month.slice(0,4)),Number(data.month.slice(5)),1).toLocaleDateString('en-GB',{month:'long'})}</span><span>{money(0)}</span></button></section>
           <section className="for-you-card"><strong>For You <Icon name="chevron" size={15} /></strong><h3>You’re all caught up!</h3><p>Want to keep going? There’s plenty more where that came from.</p><button onClick={() => setToast('This local demo has no connected blog')}>Read the Blog</button></section>
@@ -508,13 +631,14 @@ function App() {
 
     <main className="main-area">
       <header className="topbar"><div className="breadcrumbs"><span>{plan.name}</span><Icon name="right" size={13} /><strong>{activePage}</strong></div><div className="topbar-right"><button className="share-button" onClick={() => setToast('Sharing is not connected in this local demo')}>Share</button><button className="top-avatar" aria-label="Profile">A</button></div></header>
-      {activePage === 'Accounts' ? <AccountsPage editAccountRequest={accountEditRequest} onPendingChange={setLedgerPending} selectedAccount={selectedAccount} onSelectAccount={setSelectedAccount} onChanged={() => setLedgerRefresh(value => value + 1)} onMenu={() => setMobileMenu(true)} /> : activePage === 'Plan' ? <div className="page-content"><div className="page-heading"><div><span className="eyebrow">YOUR MONEY, WITH A PLAN</span><h1>Plan</h1></div></div>{budgetPage}<div className="ledger-plan-status" role="status">{saveState === 'saved' ? 'Plan saved' : saveState === 'saving' ? 'Saving plan…' : saveState === 'loading' ? 'Loading plan…' : saveState === 'conflict' ? 'Resolve the conflicting plan edits' : 'Plan changes could not be saved'} {saveState === 'offline' && <button onClick={() => setBudgetRefresh(value => value + 1)}>Reload saved plan</button>}</div></div> : <div className="page-content other-page"><div className="page-heading"><div><span className="eyebrow">MY BUDGET</span><h1>{activePage}</h1></div></div><section className="coming-card"><div className="coming-icon"><Icon name={otherPages[activePage].icon} size={24} /></div><h2>{otherPages[activePage].title}</h2><p>{otherPages[activePage].subtitle}</p><div className="coming-preview"><span /><span /><span /></div><button className="button button-primary" onClick={() => setActivePage('Plan')}>Back to your plan <Icon name="right" size={15} /></button><small>This view is queued for the next build slice.</small></section></div>}
+      {activePage === 'Accounts' ? <AccountsPage editAccountRequest={accountEditRequest} focusTransaction={focusTransaction} onPendingChange={setLedgerPending} selectedAccount={selectedAccount} onSelectAccount={setSelectedAccount} onChanged={() => setLedgerRefresh(value => value + 1)} onMenu={() => setMobileMenu(true)} /> : activePage === 'Plan' ? <div className="page-content"><div className="page-heading"><div><span className="eyebrow">YOUR MONEY, WITH A PLAN</span><h1>Plan</h1></div></div>{budgetPage}<div className="ledger-plan-status" role="status">{saveState === 'saved' ? 'Plan saved' : saveState === 'saving' ? 'Saving plan…' : saveState === 'loading' ? 'Loading plan…' : saveState === 'conflict' ? 'Resolve the conflicting plan edits' : 'Plan changes could not be saved'} {saveState === 'offline' && <button onClick={() => setBudgetRefresh(value => value + 1)}>Reload saved plan</button>}</div></div> : <div className="page-content other-page"><div className="page-heading"><div><span className="eyebrow">MY BUDGET</span><h1>{activePage}</h1></div></div><section className="coming-card"><div className="coming-icon"><Icon name={otherPages[activePage].icon} size={24} /></div><h2>{otherPages[activePage].title}</h2><p>{otherPages[activePage].subtitle}</p><div className="coming-preview"><span /><span /><span /></div><button className="button button-primary" onClick={() => setActivePage('Plan')}>Back to your plan <Icon name="right" size={15} /></button><small>This view is queued for the next build slice.</small></section></div>}
       <footer className="footer-note"><span>{saveState === 'loading' ? 'Loading budget…' : saveState === 'saving' ? 'Saving changes…' : saveState === 'conflict' ? 'Budget changed elsewhere' : saveState === 'offline' ? 'Changes not saved' : 'Changes saved to PostgreSQL'}</span><span>OpenBudget <span className="footer-separator">·</span> Local workspace</span></footer>
     </main>
 
     <button className="help-bubble" aria-label="Help" onClick={() => setToast('Local demo help: edit Assigned values, move money with Fix This, or add a Category Group.')}>?</button>
     {conflictBudget && <div className="modal-backdrop" role="presentation"><section className="move-modal conflict-modal" role="dialog" aria-modal="true" aria-labelledby="conflict-title"><span className="eyebrow">BUDGET UPDATED ELSEWHERE</span><h2 id="conflict-title">Choose which plan to keep</h2><p className="modal-copy">Another session saved this month while you were editing. Load that version or reapply your edits over it.</p><div className="conflict-actions"><button className="button" onClick={() => resolveConflict(false)}>Load latest</button><button className="button button-primary" onClick={() => resolveConflict(true)}>Reapply my changes</button></div></section></div>}
     {moveOpen && <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMoveOpen(false); }}><section className="move-modal" role="dialog" aria-modal="true" aria-labelledby="move-title"><div className="modal-heading"><div className="modal-icon"><Icon name="transfer" /></div><button className="icon-button" aria-label="Close move money dialog" onClick={() => setMoveOpen(false)}><Icon name="close" /></button></div><span className="eyebrow">GIVE YOUR MONEY A NEW JOB</span><h2 id="move-title">Move money</h2><p className="modal-copy">Shift money between categories. Your total plan stays the same.</p><form onSubmit={applyMove}><label>Move from<select value={moveFrom} onChange={event => setMoveFrom(event.target.value)}>{moveCategories.map(category => <option key={category.id} value={category.id}>{category.name} · {money(category.available)}</option>)}</select></label><div className="modal-arrow"><Icon name="arrow" /></div><label>Move to<select value={moveTo} onChange={event => setMoveTo(event.target.value)}>{moveCategories.map(category => <option key={category.id} value={category.id}>{category.name} · {money(category.available)}</option>)}</select></label><label className="amount-label">Amount<div className="modal-amount"><span>€</span><input autoFocus inputMode="decimal" value={moveAmount} onChange={event => setMoveAmount(event.target.value)} aria-label="Amount to move" /></div></label><button className="button button-primary modal-submit" type="submit">Move {money(parseAssignment(moveAmount)??0)}</button></form></section></div>}
+    {categoryDialog && <PlanTransactionList title={categoryDialog.title} items={categoryDialog.items} accounts={accounts.accounts} loading={categoryDialog.loading} error={categoryDialog.error} onClose={closeCategoryDialog} onRetry={categoryDialog.kind === 'activity' ? () => { const category = visibleCategories.find(item => item.id === categoryDialog.categoryId); if (category) void openActivity(category); } : undefined} onSelect={showTransactionInAccount} />}
     {toast && <div className="toast" role="status"><span className="toast-check"><Icon name="check" size={14} /></span>{toast}<button aria-label="Dismiss notification" onClick={() => setToast('')}><Icon name="close" size={14} /></button></div>}
   </div>;
 }

@@ -72,7 +72,7 @@ export function PayeePicker({ value, onChange, accountId, disabled, form, catego
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); keyboard(e.key === 'ArrowDown' ? 1 : -1); }
         if (e.key === 'Enter' && open && active >= 0) { e.preventDefault(); choose(active); }
         if (e.key === 'Tab') setOpen(false);
-      }} /><button type="button" className="payee-open" aria-label="Choose payee" disabled={disabled} onClick={() => { setOpen(v => !v); input.current?.focus(); }}>▾</button></span>
+      }} /><button type="button" className="payee-open" aria-label="Choose payee" tabIndex={-1} disabled={disabled} onClick={() => { setOpen(v => !v); input.current?.focus(); }}>▾</button></span>
     {open && createPortal(<div ref={popup} className="payee-picker" style={position} onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); input.current?.focus(); } }}>
       <div id={form + '-payee-list'} role="listbox" aria-label="Payees" className="payee-options">
         {!data && !error && <p role="status">Loading payees…</p>}{error && <p role="alert">Could not load saved payees. <button type="button" onClick={() => setRefresh(n => n + 1)}>Retry</button></p>}

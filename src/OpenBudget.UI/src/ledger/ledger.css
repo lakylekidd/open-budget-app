@@ -129,6 +129,7 @@
 /* Inline account-register editing and scheduled forecasts. */
 .register-table .register-inline-row td{height:36px;background:#201e4b;padding:3px 2px;overflow:visible}
 .register-inline-row input:not([type=checkbox]),.register-inline-row select,.register-inline-footer input:not([type=checkbox]),.register-inline-footer select{width:100%;min-width:0;height:25px;border:1px solid #615aff;background:#0d0d28;border-radius:3px;padding:2px 4px;color:#f4f3ff;font:inherit;font-size:13px}
+.register-inline-row input:not([type=checkbox]):focus-visible,.register-inline-row select:focus-visible,.register-inline-footer input:not([type=checkbox]):focus-visible,.register-inline-footer select:focus-visible{outline:none;outline-offset:0}
 .register-inline-row input::placeholder{color:#86859a}.register-inline-row td:nth-last-child(3)>input,.register-inline-row td:nth-last-child(4)>input{text-align:right}
 .register-table .register-inline-footer td{background:#201e4b;padding:4px 16px 7px;overflow:visible;white-space:normal;font-size:13px}
 .register-inline-footer form{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.register-inline-footer label{display:flex;gap:6px;align-items:center}

@@ -101,13 +101,17 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             await budgets.GetMonthAsync(Month(request.Date), ct);
             var account = new AccountEntity { Id = Guid.NewGuid(), Name = request.Name.Trim(), AccountType = request.AccountType };
             db.Accounts.Add(account);
-            var opening = new TransactionEntity
+            TransactionEntity? opening = null;
+            if (request.OpeningBalance != 0)
             {
-                Id = Guid.NewGuid(), Account = account, AccountId = account.Id, Date = request.Date,
-                Amount = request.OpeningBalance, Status = "cleared", IsOpening = true, Memo = "Opening balance"
-            };
-            db.Transactions.Add(opening);
-            return new Change(account.Id, null, new { account, opening = ToDto(opening) });
+                opening = new TransactionEntity
+                {
+                    Id = Guid.NewGuid(), Account = account, AccountId = account.Id, Date = request.Date,
+                    Amount = request.OpeningBalance, Status = "cleared", IsOpening = true, Memo = "Opening balance"
+                };
+                db.Transactions.Add(opening);
+            }
+            return new Change(account.Id, null, new { account, opening = opening is null ? null : ToDto(opening) });
         }, ct);
 
     public Task<MutationDto> UpdateAccountAsync(Guid id, UpdateAccountRequest request, CancellationToken ct) =>

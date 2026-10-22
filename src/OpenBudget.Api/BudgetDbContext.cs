@@ -66,7 +66,7 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) :
         });
         modelBuilder.Entity<CategoryEntity>(entity =>
         {
-            entity.HasKey(x => new { x.BudgetMonth, x.GroupId, x.Id });
+            entity.HasKey(x => new { x.BudgetMonth, x.Id });
             entity.Property(x => x.Id).HasMaxLength(100);
             entity.Property(x => x.GroupId).HasMaxLength(100);
             entity.Property(x => x.Name).HasMaxLength(160);

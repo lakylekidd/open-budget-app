@@ -64,6 +64,10 @@ Implemented grouped Selected / Payments and Transfers / Saved Payees choices, st
 
 Payee typing filters merchant and transfer choices even for exact matches/full transfer names. Unmatched names create a saved payee only on successful transaction save, available immediately in the next draft. Regression coverage checks case-insensitive reuse, replay, validation/rollback, clearing searches and keyboard selection after a query changes.
 
+### Plan interaction extension (2026-10-22)
+
+Implemented category activity and upcoming-transaction drilldowns. Activity lists include reconciled entries; selecting an entry opens its account register with the date narrowed, filters cleared, and the entry highlighted. Upcoming category shortfalls show the projected available amount and let the user inspect the scheduled item before opening its account. A category with upcoming spending highlights its Available badge yellow to call attention to the forecast, even if the projected balance remains positive. Plan groups and categories can be reordered, and categories can move between groups without changing their stable IDs, ledger links or budget assignments. Group rows provide category creation. Category progress bars show remaining assigned money, spent space and overdraft separately. Existing month carry-forward continues to carry uncovered overspending into later months. UI/domain helper tests and a real PostgreSQL HTTP test cover these behaviors; milestone verification details remain in [the test map](../testing.md).
+
 
 ### Grouped category dropdown extension (2026-10-21)
 

@@ -31,10 +31,13 @@ UI tests use Vitest, jsdom and Testing Library with controlled API responses. Th
 | Concurrent writers, stale Plan saves, conflicting command reuse | `Concurrent_writes_and_reused_command_ids_return_conflict_without_lost_edits`; conflict/reload UI |
 | Rollback after intermediate saves, including future months | `Simulated_persistence_failure_rolls_back_both_transfer_legs_budget_and_receipt`; `Simulated_spending_failure_rolls_back_activity_income_and_future_carry_forward` |
 | Historical/date/account edits, future carry-forward and restart | `Historical_edits_propagate_into_existing_later_months_and_survive_restart`; `Moving_a_transaction_between_months_and_accounts_reverses_original_activity` |
+| Move a category between groups without losing assignment/activity or transaction labels | `Moving_a_category_between_groups_preserves_its_budget_state_and_transaction_identity` |
+| Plan category activity, account focus, upcoming shortfalls, drag ordering and progress display | `App.test.tsx`; `planHelpers.test.ts` |
 | Upgrade preserving legacy activity/balances | `Upgrade_preserves_legacy_activity_and_available_values` applies old migrations, seeds legacy rows, then upgrades |
 | Server-owned calculations and invalid/unknown/archived input | `Plan_cannot_fabricate_income_or_change_server_owned_activity`; `Invalid_requests_do_not_change_balance_budget_version_or_audit`; `Archived_categories_invalid_transfers_and_missing_commands_do_not_write` |
 | Money precision, exact splits, refund/transfer rules, cleared balances | `LedgerRulesTests` and money-input unit tests |
 | Loading/error/empty, safe replay after reload, audit/deletion confirmation, keyboard closure | `AccountsPage.test.tsx` and `TransactionForm.test.tsx` |
+| Inline transaction Tab order skips dropdown arrows and proceeds to the next field | `AccountsPage.test.tsx` |
 
 `FailureInjector` throws on the final receipt/audit save after financial rows have already been saved within the open transaction. Fresh HTTP/database assertions prove rollback, rather than just observing an exception.
 

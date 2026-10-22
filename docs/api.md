@@ -24,11 +24,15 @@ Reads or initializes a month using `YYYY-MM`. The first requested month receives
 
 The response includes `month`, `note`, `version`, `openingReadyToAssign`, legacy `fundsAdded`, server-owned `ledgerIncome`, calculated `readyToAssign`, and ordered groups/categories. Each category includes `assigned`, total legacy-plus-ledger `activity`, calculated `available`, target and archive/display fields.
 
+The Plan summary's **Expected Income** value displays this month's `ledgerIncome`; it does not use a separate fixed estimate.
+
 ## `PUT /api/budget/{month}`
 
 Saves the editable monthly snapshot. The route month must match `body.month`. The request accepts `note`, `version`, `fundsAdded`, groups, and category assignments/metadata. It does not accept `activity`, `available`, or opening balance fields; those remain server-owned. Amounts use decimal precision of two places. Existing groups/categories must be retained and archived rather than deleted. New categories must start with zero assigned. Ordering values and identifiers must be unique.
 
 Successful writes increment the version and return authoritative calculated totals. Changes to assignments also update every initialized later month's opening category/Ready to Assign amounts atomically, retaining those months' own assignments and activity. Affected later versions increment, so previously loaded snapshots must reload before writing. A stale version returns 409 with the latest budget so the UI can reload or reapply. Invalid requests return 400. `fundsAdded` must equal its preserved legacy value; record new income through a cash account transaction. Monthly initialization/writes and ledger commands share a database lock/transaction. Ledger changes increase affected month versions.
+
+Category IDs must be unique across the month and remain stable when a category moves between active groups. Keep every existing category ID in the submitted snapshot; changing its containing group changes membership and sort order while preserving its assignment, activity and available balance. Group/category drag ordering is saved through this same versioned endpoint. Archived categories/groups must be restored before moving a category.
 
 ## Boundaries
 
@@ -45,7 +49,7 @@ Stale writes return 409 `{ "error": "..." }`; reload and review before sending a
 | Method/path | Additional body fields / result |
 |---|---|
 | `GET /api/accounts` | `{ version, accounts: [{ id, name, isClosed, balance, clearedBalance, unclearedBalance }] }`, including closed accounts |
-| `POST /api/accounts` | Required `name` (max 120), `date`, `openingBalance`. Creates one cleared opening entry, including zero. |
+| `POST /api/accounts` | Required `name` (max 120), `date`, `openingBalance`. A nonzero opening balance creates one cleared opening entry; a zero opening balance creates no transaction. |
 | `PUT /api/accounts/{id}` | `name`, `isClosed`. Close only at zero balance with no uncleared entries or uncategorized spending; an error explains how to resolve it. Reopen through the same endpoint. |
 | `POST /api/accounts/{id}/reconcile` | `statementBalance`, equal to the cleared-plus-reconciled balance. Saves a snapshot and marks currently cleared entries reconciled. |
 

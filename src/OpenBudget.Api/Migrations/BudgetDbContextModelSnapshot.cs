@@ -124,10 +124,6 @@ namespace OpenBudget.Api.Migrations
                     b.Property<string>("BudgetMonth")
                         .HasColumnType("character varying(7)");
 
-                    b.Property<string>("GroupId")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
                     b.Property<string>("Id")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -139,6 +135,11 @@ namespace OpenBudget.Api.Migrations
                     b.Property<decimal>("Assigned")
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)");
+
+                    b.Property<string>("GroupId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("Icon")
                         .HasMaxLength(24)
@@ -170,7 +171,9 @@ namespace OpenBudget.Api.Migrations
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)");
 
-                    b.HasKey("BudgetMonth", "GroupId", "Id");
+                    b.HasKey("BudgetMonth", "Id");
+
+                    b.HasIndex("BudgetMonth", "GroupId");
 
                     b.ToTable("Categories");
                 });

@@ -14,8 +14,9 @@ import './ledger.css';
 type Dialog = { kind: 'account'; account?: Account } | { kind: 'transaction'; entry?: Entry } | { kind: 'transfer'; entry?: Entry; from?: string; to?: string }
   | { kind: 'reconcile'; account: Account } | { kind: 'delete'; entry: Entry } | { kind: 'history' };
 
-export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMenu, onPendingChange, editAccountRequest }: {
+export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMenu, onPendingChange, editAccountRequest, focusTransaction }: {
   selectedAccount: string; onSelectAccount: (id: string) => void; onChanged: () => void; onMenu: () => void; onPendingChange?: (pending: boolean) => void; editAccountRequest?: {id:string;token:number};
+  focusTransaction?: { id: string; accountId: string; date: string; scheduled: boolean } | null;
 }) {
   const [managePayees,setManagePayees]=useState(false);
   const [payeePending,setPayeePending]=useState(false);const [payeeFilter,setPayeeFilter]=useState<string|null>(null);
@@ -65,26 +66,31 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     return () => controller.abort();
   }, [scope, refresh]);
   useEffect(() => { setInline(null); setSchedulePage(1); }, [scope]);
+  useEffect(() => { if (focusTransaction) { setPage(1); setSchedulePage(1); setSelectedIds([focusTransaction.id]); } }, [focusTransaction?.id]);
   useEffect(() => {
     onPendingChange?.(busy || uncertain || viewSaving || payeePending);
     return () => onPendingChange?.(false);
   }, [busy, uncertain, viewSaving, payeePending, onPendingChange]);
-  useEffect(() => { setPage(1); setSelectedIds([]); }, [selectedAccount, search, from, to, category, status, reviewFilter, view.showReconciled]);
+  useEffect(() => { setPage(1); setSelectedIds(focusTransaction?.accountId === selectedAccount ? [focusTransaction.id] : []); }, [selectedAccount, search, from, to, category, status, reviewFilter, view.showReconciled, focusTransaction?.id]);
   useEffect(() => {
     const controller = new AbortController(); setLoading(true);
     if (savedView?.scope !== scope) return () => controller.abort();
-    const query = new URLSearchParams({ page: String(page), pageSize: '25', includeReconciled: String(view.showReconciled) });
+    const focused = focusTransaction?.accountId === selectedAccount ? focusTransaction : null;
+    const query = new URLSearchParams({ page: String(page), pageSize: focused ? '100' : '25', includeReconciled: String(focused ? true : view.showReconciled) });
     if (selectedAccount) query.set('accountId', selectedAccount);
-    if(reviewFilter)query.set('needsAttention','true');
-    if (search) query.set('search', search);
-    if(payeeFilter)query.set('payeeId',payeeFilter);
-    if (from) query.set('from', from); if (to) query.set('to', to);
-    if (category) query.set('categoryId', category); if (status) query.set('status', status);
+    if (focused) { query.set('from', focused.date); query.set('to', focused.date); }
+    else {
+      if(reviewFilter)query.set('needsAttention','true');
+      if (search) query.set('search', search);
+      if(payeeFilter)query.set('payeeId',payeeFilter);
+      if (from) query.set('from', from); if (to) query.set('to', to);
+      if (category) query.set('categoryId', category); if (status) query.set('status', status);
+    }
     requestJson<Register>(`/api/transactions?${query}`, { signal: controller.signal })
-      .then(nextRegister => { if (!controller.signal.aborted) { setAccounts(nextRegister.accounts); setRegister(nextRegister); setLoading(false); } })
+      .then(nextRegister => { if (!controller.signal.aborted) { setAccounts(nextRegister.accounts); setRegister(nextRegister); if (focused && !focused.scheduled && nextRegister.items.some(item => item.id === focused.id)) setSelectedIds([focused.id]); setLoading(false); } })
       .catch(err => { if (!controller.signal.aborted) { setError(err.message); setLoading(false); setRegister(null); } });
     return () => controller.abort();
-  }, [selectedAccount, search, from, to, category, status, page, refresh, savedView, scope, reviewFilter, view.showReconciled,payeeFilter]);
+  }, [selectedAccount, search, from, to, category, status, page, refresh, savedView, scope, reviewFilter, view.showReconciled, payeeFilter, focusTransaction?.id]);
   useEffect(() => {
     const controller = new AbortController();
     loadCategories(today(), controller.signal).then(setCategories).catch(err => { if (err.name !== 'AbortError') setError('Could not load category filters. Reload to retry.'); });
@@ -101,13 +107,20 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   useEffect(() => {
     if (savedView?.scope !== scope) return;
     const controller = new AbortController();
-    const query = new URLSearchParams({page:String(schedulePage),pageSize:'25'});
+    const focused = focusTransaction?.scheduled && focusTransaction.accountId === selectedAccount ? focusTransaction : null;
+    const query = new URLSearchParams({page:String(schedulePage),pageSize:focused?'100':'25'});
     if(selectedAccount) query.set('accountId',selectedAccount);
-    if(from) query.set('from',from); if(to) query.set('to',to);
-    requestJson<Schedules>(`/api/schedules?${query}`,{signal:controller.signal}).then(value=>{if(!controller.signal.aborted)setSchedules(value);})
+    if(focused){query.set('from',focused.date);query.set('to',focused.date);}
+    else {if(from) query.set('from',from); if(to) query.set('to',to);}
+    requestJson<Schedules>(`/api/schedules?${query}`,{signal:controller.signal}).then(value=>{if(!controller.signal.aborted){setSchedules(value);if(focused&&value.items.some(item=>item.occurrenceId===focused.id))setSelectedIds([focused.id]);}})
       .catch(err=>{if(!controller.signal.aborted)setError('Could not load scheduled transactions. Reload to retry. '+err.message);});
     return ()=>controller.abort();
-  },[scope,selectedAccount,from,to,schedulePage,refresh,savedView]);
+  },[scope,selectedAccount,from,to,schedulePage,refresh,savedView,focusTransaction?.id]);
+  useEffect(() => {
+    if (!focusTransaction || focusTransaction.accountId !== selectedAccount) return;
+    const timer = window.setTimeout(() => document.querySelector(`[data-transaction-id="${focusTransaction.id}"]`)?.scrollIntoView?.({ block: 'center' }), 0);
+    return () => window.clearTimeout(timer);
+  }, [focusTransaction?.id, selectedAccount, loading, register, schedules]);
   useEffect(() => {
     if(editAccountRequest && editAccountRequest.token !== handledEdit.current && selectedAccount === editAccountRequest.id && !loading) {
       const account=accounts.accounts.find(a=>a.id===editAccountRequest.id);
@@ -190,7 +203,8 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   }
   const selectedActions = selectedIds.length > 0 && <div className="register-selected-actions"><strong>Selected transaction</strong><button disabled={disabled || chosenEditLocked} onClick={() => chosen && void edit(chosen)}>Edit selected</button><button disabled={disabled || chosenLocked || !!chosenSchedule} onClick={() => chosen && open({kind:'delete',entry:chosen})}>Delete selected</button>{chosenSchedule&&<><button disabled={disabled||chosenSchedule.isPaused} onClick={()=>void scheduleAction(chosenSchedule,'post',chosenSchedule.transaction.date>today()?today():undefined)}>Enter Now</button><button disabled={disabled||chosenSchedule.isPaused} onClick={()=>void scheduleAction(chosenSchedule,'skip')}>Skip</button><button disabled={disabled||chosenSchedule.isPaused} onClick={()=>{const d=new Date(chosenSchedule.transaction.date+'T12:00:00');d.setDate(d.getDate()+1);void scheduleAction(chosenSchedule,'snooze',`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);}}>Snooze one day</button><button disabled={disabled} onClick={()=>void scheduleAction(chosenSchedule,chosenSchedule.isPaused?'resume':'pause')}>{chosenSchedule.isPaused?'Resume':'Pause'}</button><button disabled={disabled} onClick={()=>void scheduleAction(chosenSchedule,'end')}>End schedule</button></>}<button onClick={() => setSelectedIds([])}>Clear selection</button></div>;
   return <section className="ledger-page account-register-page" aria-label="Accounts and transactions">
-    {needsCategory > 0 && <div className="account-attention-banner"><span><span className="transaction-info">i</span> {needsCategory} new {needsCategory === 1 ? 'transaction' : 'transactions'} to approve or categorize.</span><button className="button-primary" onClick={() => { setReviewFilter(true);setCategory(''); setPage(1); }}>View</button></div>}
+      {focusTransaction && focusTransaction.accountId === selectedAccount && <div className="account-focus-banner" role="status">Showing the transaction selected from the Plan screen. <button onClick={() => setSelectedIds([focusTransaction.id])}>Highlight transaction</button></div>}
+      {needsCategory > 0 && <div className="account-attention-banner"><span><span className="transaction-info">i</span> {needsCategory} new {needsCategory === 1 ? 'transaction' : 'transactions'} to approve or categorize.</span><button className="button-primary" onClick={() => { setReviewFilter(true);setCategory(''); setPage(1); }}>View</button></div>}
     <AccountHeader current={current} accounts={accounts.accounts} disabled={disabled} loading={loading && !register} onMenu={onMenu}
       onAddAccount={() => open({ kind: 'account' })} onEdit={() => current && open({ kind: 'account', account: current })}
       onReconcile={() => current && open({ kind: 'reconcile', account: current })}

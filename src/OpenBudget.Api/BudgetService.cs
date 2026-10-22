@@ -88,12 +88,12 @@ public sealed class BudgetService(BudgetDbContext db)
 
         var currentGroups = budget.Groups.ToDictionary(x => x.Id, StringComparer.Ordinal);
         var currentCategories = budget.Groups.SelectMany(g => g.Categories)
-            .ToDictionary(x => (x.GroupId, x.Id));
-        var requestedCategoryKeys = request.Groups.SelectMany(g => g.Categories.Select(c => (g.Id, c.Id))).ToHashSet();
+            .ToDictionary(x => x.Id, StringComparer.Ordinal);
+        var requestedCategoryIds = request.Groups.SelectMany(g => g.Categories.Select(c => c.Id)).ToHashSet(StringComparer.Ordinal);
 
         // Preserve historical category records; archive them instead of deleting their month state.
         if (currentGroups.Keys.Any(id => request.Groups.All(g => g.Id != id)) ||
-            currentCategories.Keys.Any(key => !requestedCategoryKeys.Contains(key)))
+            currentCategories.Keys.Any(id => !requestedCategoryIds.Contains(id)))
             return BudgetUpdateResult.Invalid("Existing groups and categories must be archived instead of removed.");
 
         var previousReadyToAssign = CalculateReadyToAssign(budget);
@@ -113,13 +113,20 @@ public sealed class BudgetService(BudgetDbContext db)
 
             foreach (var categoryRequest in groupRequest.Categories)
             {
-                if (!currentCategories.TryGetValue((groupRequest.Id, categoryRequest.Id), out var category))
+                if (!currentCategories.TryGetValue(categoryRequest.Id, out var category))
                 {
                     if (categoryRequest.Assigned != 0)
                         return BudgetUpdateResult.Invalid("A new category must start with zero assigned.");
                     category = new CategoryEntity { BudgetMonth = request.Month, GroupId = groupRequest.Id, Id = categoryRequest.Id };
                     group.Categories.Add(category);
-                    currentCategories.Add((category.GroupId, category.Id), category);
+                    currentCategories.Add(category.Id, category);
+                }
+                else if (category.GroupId != groupRequest.Id)
+                {
+                    var previousGroup = currentGroups[category.GroupId];
+                    if (previousGroup.IsArchived || group.IsArchived || category.IsArchived)
+                        return BudgetUpdateResult.Invalid("An archived category cannot be moved until it is restored.");
+                    category.GroupId = groupRequest.Id;
                 }
                 else if ((group.IsArchived || category.IsArchived) && categoryRequest.Assigned != category.Assigned)
                 {

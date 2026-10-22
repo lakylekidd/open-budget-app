@@ -255,11 +255,11 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.PostAsJsonAsync("/api/transfers", request));
         Assert.Equal(before.Version, (await Accounts(client)).Version);
         Assert.Equal(100, (await Accounts(client)).Accounts.Single(a => a.Id == from).Balance);
-        Assert.Equal(2, (await Register(client)).Total);
+        Assert.Equal(1, (await Register(client)).Total);
         Assert.Equal(budget.Version, (await Budget(client)).Version);
         await using var db = app.CreateDb(); Assert.False(await db.LedgerCommands.AnyAsync(c => c.Id == request.CommandId));
         await Post<MutationDto>(client, "/api/transfers", request);
-        Assert.Equal(4, (await Register(client)).Total);
+        Assert.Equal(3, (await Register(client)).Total);
     }
 
     [Fact]
@@ -389,6 +389,7 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
     {
         await using var app = await fixture.CreateAppAsync(); var client = app.CreateClient();
         var created = await Post<MutationDto>(client, "/api/accounts", new CreateAccountRequest(Guid.NewGuid(), 1, "Reserve", Date, 0, "savings"));
+        Assert.Empty((await Register(client)).Items);
         await Put<MutationDto>(client, $"/api/accounts/{created.Id}", new UpdateAccountRequest(Guid.NewGuid(), created.Version, "Reserve", false, IsFavorite:true));
         var before = await Accounts(client);
         Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync($"/api/accounts/{created.Id}", new UpdateAccountRequest(Guid.NewGuid(), before.Version, "Reserve", false, "credit"))).StatusCode);
@@ -658,7 +659,7 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
     [Fact]
     public async Task Zero_opening_entry_remains_editable_without_allowing_zero_regular_entries()
     {
-        await using var app=await fixture.CreateAppAsync();var client=app.CreateClient();var account=await AddAccount(client,0);var opening=Assert.Single((await Register(client)).Items);
+        await using var app=await fixture.CreateAppAsync();var client=app.CreateClient();var account=await AddAccount(client,10);var opening=Assert.Single((await Register(client)).Items);
         var edit=(await Request(client,account,0)) with{Status="cleared",Memo="Starting point"};
         await Put<MutationDto>(client,$"/api/transactions/{opening.Id}",edit);
         Assert.Equal("Starting point",Assert.Single((await Register(client)).Items).Memo);Assert.Equal(0,(await Accounts(client)).Accounts[0].Balance);
@@ -826,6 +827,40 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
         var november=await Get<BudgetDto>(client,"/api/budget/2026-11");Assert.Equal(12.65m,Category(november,categoryId).Available);
         await AddTransaction(client,account,2.35m,categoryId,"Household Store");Assert.Equal(15,Category(await Budget(client),categoryId).Available);
         Assert.Equal(15,Category(await Get<BudgetDto>(client,"/api/budget/2026-11"),categoryId).Available);Assert.Equal(90,(await Accounts(client)).Accounts[0].Balance);
+    }
+
+    [Fact]
+    public async Task Moving_a_category_between_groups_preserves_its_budget_state_and_transaction_identity()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        var client = app.CreateClient();
+        var account = await AddAccount(client, 100);
+        await AddTransaction(client, account, -12.35m, "groceries", "Market");
+        var budget = await Budget(client);
+        var editable = Editable(budget);
+        var daily = editable.Groups.Single(group => group.Id == "daily");
+        var home = editable.Groups.Single(group => group.Id == "home");
+        editable = editable with
+        {
+            Groups = editable.Groups.Select(group => group.Id == daily.Id
+                ? group with
+                {
+                    Categories = group.Categories.Where(category => category.Id != "groceries")
+                        .Select((category, index) => category with { SortOrder = index }).ToList()
+                }
+                : group.Id == home.Id
+                    ? group with
+                    {
+                        Categories = [.. group.Categories, daily.Categories.Single(category => category.Id == "groceries") with { SortOrder = group.Categories.Count }]
+                    }
+                    : group).ToList()
+        };
+        var moved = await Put<BudgetDto>(client, "/api/budget/2026-10", editable);
+
+        Assert.Equal("Home", moved.Groups.Single(group => group.Categories.Any(category => category.Id == "groceries")).Name);
+        Assert.Equal(-12.35m, Category(moved, "groceries").Activity);
+        Assert.Equal(-12.35m, Category(moved, "groceries").Available);
+        Assert.Equal("Home: Groceries", Assert.Single((await Register(client, "categoryId=groceries")).Items).CategoryName);
     }
 
     [Fact]

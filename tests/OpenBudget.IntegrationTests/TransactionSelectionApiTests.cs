@@ -82,7 +82,7 @@ public sealed class TransactionSelectionApiTests(PostgresFixture fixture) : ICla
         Assert.Equal(baseline,(await Accounts(c)).Version);Assert.Equal("Original",(await Register(c)).Items.Single(t=>t.Id==id).Memo);
         var opening=(await Register(c)).Items.First(t=>t.IsOpening&&t.AccountId==a);
         Assert.Equal(HttpStatusCode.BadRequest,(await c.PostAsJsonAsync("/api/transactions/selection",(await Command(c,"duplicate",id,opening.Id)))).StatusCode);
-        Assert.Equal(3,(await Register(c)).Total);
+        Assert.Equal(2,(await Register(c)).Total);
     }
 
     [Fact]

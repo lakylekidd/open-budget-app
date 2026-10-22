@@ -45,7 +45,7 @@ export function CategoryPicker({value,categories,readyToAssign,disabled,notNeede
     if(e.key==='Tab')close();
     if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();show();const direction=e.key==='ArrowDown'?1:-1;setActive(n=>choices.length?((n<0?(direction>0?-1:0):n)+direction+choices.length)%choices.length:-1);}
     if(e.key==='Enter'&&open){e.preventDefault();if(active>=0)choose(active);}
-  }}/><button type="button" className="category-open" aria-label={`Choose ${label.toLowerCase()}`} disabled={disabled||notNeeded} onClick={()=>{if(open)close();else show();setQuery(null);setActive(-1);input.current?.focus();}}>▾</button></span>
+  }}/><button type="button" className="category-open" aria-label={`Choose ${label.toLowerCase()}`} tabIndex={-1} disabled={disabled||notNeeded} onClick={()=>{if(open)close();else show();setQuery(null);setActive(-1);input.current?.focus();}}>▾</button></span>
     {open&&createPortal(<div ref={popup} className="category-picker" style={position} onKeyDown={e=>{if(e.key==='Escape'){e.stopPropagation();close();input.current?.focus();}}}>
       {onNewCategory&&<button type="button" className="new-category-link" onClick={()=>{close();onNewCategory();}}>⊕ New Category</button>}
       <div className="category-options" role="listbox" id={`${id}-list`} aria-label="Budget categories">

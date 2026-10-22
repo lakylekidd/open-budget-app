@@ -342,6 +342,16 @@ it('requires confirmation when editing a reconciled row and sends the explicit a
  await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0].body).toMatchObject({confirmReconciledEdit:true,status:'cleared'});
 });
 
+it('tabs from the payee field to the next editable field and skips inline dropdown chevrons',async()=>{
+ show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));
+ const payee=screen.getByRole('combobox',{name:'Payee'});payee.focus();
+ expect(screen.getByRole('button',{name:'Choose payee'})).toHaveAttribute('tabindex','-1');
+ await userEvent.tab();expect(screen.getByRole('combobox',{name:'Category'})).toHaveFocus();
+ expect(screen.getByRole('button',{name:'Choose category'})).toHaveAttribute('tabindex','-1');
+ await userEvent.tab();expect(screen.getByRole('textbox',{name:'Memo'})).toHaveFocus();
+ expect(screen.getByRole('button',{name:'Choose date and repeat'})).toHaveAttribute('tabindex','-1');
+});
+
 it('expands scheduled rows, posts Enter Now explicitly, and keeps forecast actions separate',async()=>{
  scheduledItems=[{id:'rule',occurrenceId:'occurrence',repeat:'monthly',startDate:'2036-10-25',isPaused:false,endDate:null,count:null,toAccountId:null,transaction:{...register.items[0],id:'occurrence',date:'2036-10-25',payee:'Employer',memo:'Next salary',amount:2500}}];
  show('checking');await ready();await screen.findByRole('button',{name:'Edit Employer 2036-10-25'});

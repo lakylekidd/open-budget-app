@@ -28,7 +28,7 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 
 1. The Plan screen loads the budget identity from `GET /api/budget` and the selected month from `GET /api/budget/{YYYY-MM}`.
 2. The API initializes the first month with a deterministic blank starter category structure, then creates later months by carrying forward available category balances and Ready to Assign.
-3. The UI lets the user browse months, edit assignments, move money, manage groups/categories, archive/reorder them, and record a month note. New income is recorded through the cash register; existing manual funds remain a read-only baseline.
+3. The UI lets the user browse months, edit assignments, move money, manage groups/categories, archive/reorder them, inspect category activity and upcoming transactions, and record a month note. New income is recorded through the cash register; existing manual funds remain a read-only baseline.
 4. After a short debounce, the UI sends editable state and its version to `PUT /api/budget/{YYYY-MM}`. The API calculates available amounts and Ready to Assign and rejects stale versions with the current snapshot.
 5. The API persists each monthly snapshot atomically through EF Core/PostgreSQL. Budget naming uses a separate versioned `PUT /api/budget` endpoint.
 
@@ -44,7 +44,9 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Move money between categories | Implemented as paired assignment changes in one monthly save |
 | Add, rename, reorder, archive/restore group/category | Implemented and persisted |
 | Budget identity and name | One default budget, name editable and persisted |
-| Category filters, search, collapse, select, progress bars | UI interactions implemented; several options are view-only |
+| Category filters, search, collapse, select, progress bars | Implemented; bars show remaining funds and uncovered overspending |
+| Category activity and scheduled spending | Monthly activity opens filtered ledger rows; category details show upcoming transactions and projected availability |
+| Category creation and ordering | Add categories from a group, drag groups/categories to reorder and move categories between groups; versioned monthly saves preserve category identity |
 | Undo/redo | In-memory UI history; edits are saved but no server-side audit event is recorded |
 | Month note | Persisted on the monthly snapshot |
 | Cash accounts, register, transfers, splits, reconciliation | Implemented; real ledger-backed balances, server filters/pagination and retained audit |
@@ -74,10 +76,12 @@ Account balances are queried from the ledger. Projection recalculates initialize
 Domain unit tests, disposable-PostgreSQL HTTP integration tests and React workflow tests cover this slice. See [testing](testing.md).
 
 
-The register reuses `PayeePicker` and `ManagePayees` for grouped account/merchant choices and persisted payee policies. Popovers are portals so the scrollable register does not clip them; dialogs contain Escape without closing the surrounding inline draft. Payee dialog Undo/Redo is draft-local; committed financial history uses ledger audit/replay.
+The register reuses `PayeePicker` and `ManagePayees` for grouped account/merchant choices and persisted payee policies. Popovers are portals so the scrollable register does not clip them; dialogs contain Escape without closing the surrounding inline draft. In the inline editor, selector chevrons remain clickable but are skipped by Tab so focus moves directly to the next field; input focus does not add a second outline around the field. Payee dialog Undo/Redo is draft-local; committed financial history uses ledger audit/replay.
 
 
 `CategoryPicker` is shared by the inline transaction's main category and split parts. `loadCategoryBudget` retains group metadata and authoritative available/Ready to Assign amounts from the transaction month; `loadCategories` remains the compatibility wrapper for other forms. The portal prevents register clipping. `NewCategoryDialog` extends the existing monthly snapshot workflow; category-list refresh does not remount the transaction draft. No backend model/endpoint or migration is added for this UI extension.
+
+Plan activity uses the existing date/category-filtered register endpoint and includes reconciled rows. Selecting a result opens its account with the row focused and temporarily applies the account/date/reconciled filters needed to reveal it. Category details use the existing scheduled transaction endpoint; forecasts stay outside actual activity and account totals. Category/group drag changes save through the versioned month snapshot. Category identity is stable within a month while its group membership changes, so a move retains assignment, available balance and ledger links.
 
 
 `BudgetCarryForward` is the shared pure domain helper for assignment and ledger opening-balance deltas. `BudgetService` snapshots source balances before changing assignments and applies their differences to all initialized later months before the single save. `LedgerService` uses the same helper while recomputing activity chronologically. Monthly API writes use the gate's commit predicate to roll back invalid/conflicting results. The Plan client retains dirty assignments through its autosave boundary and never invents carry totals.

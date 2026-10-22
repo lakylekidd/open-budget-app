@@ -15,6 +15,6 @@ This documentation describes the current OpenBudget implementation and its plann
 
 ## Current release shape
 
-The application provides monthly Plan state and a cash-account transaction ledger persisted in PostgreSQL and orchestrated by Aspire. Accounts, transactions, splits, transfers, cleared/reconciled state and audit history are implemented. Legacy prototype balances remain explicit migration baselines. Inline editing, scheduled register review, named flags, account notes and balance adjustments are implemented. Reflect, credit/debt and bank links remain future milestones.
+The application provides monthly Plan state and a cash-account transaction ledger persisted in PostgreSQL and orchestrated by Aspire. Plan supports category activity drill-down, scheduled spending details, category creation, drag ordering/moves and funded/spent/overspent progress bars. Accounts, transactions, splits, transfers, cleared/reconciled state and audit history are implemented. Legacy prototype balances remain explicit migration baselines. Inline editing, scheduled register review, named flags, account notes and balance adjustments are implemented. Reflect, credit/debt and bank links remain future milestones.
 
 The roadmap treats the YNAB site as a source of product capabilities and user workflows, not as a source-code or private API contract. Published features and support articles can change; roadmap links were checked on 2026-10-21.

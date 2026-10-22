@@ -14,7 +14,7 @@ One row per `YYYY-MM` snapshot, linked to a budget plan. `OpeningReadyToAssign`,
 
 ### `CategoryGroups` and `Categories`
 
-Groups are ordered and can be archived. Categories store assignment, target, icon, snooze, archive state, `OpeningAvailable`, and `LegacyActivity`. Materialized `Activity` is legacy activity plus nondeleted, non-transfer single-category/split ledger amounts in that month. `Available = OpeningAvailable + Assigned + Activity`; calculated fields are not accepted from browser writes.
+Groups are ordered and can be archived. Categories have a month-scoped stable ID and a mutable group membership/order, so moving one between active groups preserves its identity and ledger links. Categories store assignment, target, icon, snooze, archive state, `OpeningAvailable`, and `LegacyActivity`. Materialized `Activity` is legacy activity plus nondeleted, non-transfer single-category/split ledger amounts in that month. `Available = OpeningAvailable + Assigned + Activity`; calculated fields are not accepted from browser writes.
 
 ### Register view preferences
 

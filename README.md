@@ -6,13 +6,15 @@ All Accounts provides cash accounts, a searchable register, splits, linked trans
 
 The Plan header shows a grey `All Money Assigned` card with a checkmark when Ready to Assign is €0.00.
 
+Plan category activity opens the month's matching transactions. Selecting a transaction opens its account register with that transaction highlighted, including reconciled rows. Click a category to see its available balance and scheduled transactions; upcoming spending shows the balance after those forecasts. Add categories from the group plus button, and drag categories between groups or groups/categories to reorder them. Progress bars show the remaining funded amount in green and uncovered overspending in red. Unfunded overspending carries into later months.
+
 Checkboxes throughout Plan, the register and dialogs use the same compact purple checked style with a white tick.
 
 Typing a payee filters saved payees and transfer accounts by name. Save a transaction with a new name to create a saved payee; it is then available in subsequent transactions.
 
 Selecting transactions opens a floating bar at the bottom of the register. More offers clearing, duplication, repeating schedules, memo edits, moving ordinary transactions to another account, CSV export and confirmed deletion. Bulk writes are atomic and replay-safe. Match/Unmatch remain disabled until imported-transaction matching is implemented.
 
-Select an account in the sidebar for its register: Cleared + Uncleared = Working Balance, with separate outflow, inflow and running-balance columns. Click a transaction's `c` to toggle cleared status; green locks identify reconciled history. Use Reconcile to confirm the statement balance, and View for date presets, month ranges and column visibility. Apply saves every View selection per account on the server, so it follows the account on another PC connected to the same OpenBudget server. Cancel discards the draft. More contains category/status filters, transfers, audit history, and actions for the selected row. Clicking a row highlights it; clicking it again edits it inline. Add Transaction inserts a row with Save/Cancel and Save and add another. Accounts are currently unlinked/manual; automatic bank sync is a later milestone.
+Select an account in the sidebar for its register: Cleared + Uncleared = Working Balance, with separate outflow, inflow and running-balance columns. Click a transaction's `c` to toggle cleared status; green locks identify reconciled history. Use Reconcile to confirm the statement balance, and View for date presets, month ranges and column visibility. Apply saves every View selection per account on the server, so it follows the account on another PC connected to the same OpenBudget server. Cancel discards the draft. More contains category/status filters, transfers, audit history, and actions for the selected row. Clicking a row highlights it; clicking it again edits it inline. Add Transaction inserts a row with Save/Cancel and Save and add another. While editing inline, Tab moves between fields and skips the adjacent dropdown arrows; inputs keep a single border without an extra focus outline. Accounts are currently unlinked/manual; automatic bank sync is a later milestone.
 
 ## Run the application
 
