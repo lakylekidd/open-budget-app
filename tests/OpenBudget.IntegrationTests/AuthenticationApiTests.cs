@@ -150,6 +150,29 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
     }
 
     [Fact]
+    public async Task Non_development_bootstrap_requires_configured_credentials_and_does_not_create_development_admin()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        var environment = app.Services.GetRequiredService<IWebHostEnvironment>();
+        var originalEnvironment = environment.EnvironmentName;
+        environment.EnvironmentName = Environments.Production;
+        try
+        {
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection().Build();
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => AuthenticationSetup.EnsureBootstrapAdministratorAsync(app.Services, configuration, environment));
+            Assert.Contains("Non-Development environments require BootstrapAdmin", error.Message);
+
+            await using var verify = app.CreateDb();
+            Assert.DoesNotContain(await verify.Users.ToListAsync(), user => user.UserName == "admin");
+        }
+        finally
+        {
+            environment.EnvironmentName = originalEnvironment;
+        }
+    }
+
+    [Fact]
     public async Task Login_session_logout_and_lockout_use_identity_cookie_and_persisted_user()
     {
         await using var app = await fixture.CreateAppAsync();

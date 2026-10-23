@@ -168,9 +168,9 @@ public static class AuthenticationSetup
             email ??= "admin@localhost";
             password ??= "admin";
         }
-        else if (environment.IsProduction() && (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password)))
+        else if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
         {
-            throw new InvalidOperationException("Production requires BootstrapAdmin:Username, BootstrapAdmin:Email, and BootstrapAdmin:Password to provision the initial administrator.");
+            throw new InvalidOperationException("Non-Development environments require BootstrapAdmin:Username, BootstrapAdmin:Email, and BootstrapAdmin:Password to provision the initial administrator.");
         }
 
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password)) return;

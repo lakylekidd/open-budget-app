@@ -237,7 +237,7 @@ Existing categories and groups must be updated to reference the appropriate budg
 **Acceptance criteria**
 
 - [x] Authentication uses HttpOnly, SameSite=Strict, Secure cookies and same-origin checks for authenticated state-changing requests.
-- [ ] Passwords and bootstrap credentials are never committed to source control.
+- [x] Production bootstrap credentials and password hashes are never committed to source control; the documented `admin/admin` bootstrap is Development-only.
 - [x] Session invalidation works after logout, suspension and security-sensitive account changes.
 - [x] Automated integration tests verify login, registration controls, lockout, account suspension and administrative authorization.
 - [x] Automated tests verify cross-user budget access is denied for read and write operations.

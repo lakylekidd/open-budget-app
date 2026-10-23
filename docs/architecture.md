@@ -58,8 +58,8 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Bank linking, credit/debt accounts | Future milestones |
 | Targets and assignment recommendations | Basic static target/progress display only |
 | Reflect reports | Not implemented; entry remains a placeholder |
-| Identity sign-in, bootstrap administrators, verified registration/recovery and audited account lifecycle administration | Implemented as initial Milestone 2a slices |
-| Owner-scoped budget identity, archive/restore, membership limits, monthly Plan snapshots and active budget selection | Implemented in APIs/UI; ledger/planning data scoping remains |
+| Identity sign-in, bootstrap administrators, verified registration/recovery and audited account lifecycle administration | Implemented |
+| Owner-scoped budget identity, archive/restore, membership limits, monthly Plan snapshots, ledger/planning isolation and active budget selection | Implemented |
 
 ## Design limits to address
 

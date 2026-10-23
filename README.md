@@ -36,6 +36,7 @@ dotnet run --project src/OpenBudget.AppHost
 ```
 
 Open the `ui` endpoint in the Aspire dashboard, or visit `http://127.0.0.1:5173/`.
+The local Development administrator is `admin` / `admin`. Production deployments require `BootstrapAdmin__Username`, `BootstrapAdmin__Email`, and `BootstrapAdmin__Password`; see the [release deployment guide](docs/release-deployment.md#2-configure-coolify).
 
 ## Documentation
 
@@ -47,4 +48,4 @@ Open the `ui` endpoint in the Aspire dashboard, or visit `http://127.0.0.1:5173/
 
 ## Project status
 
-OpenBudget is under active development. Authentication, administrator controls, owner-scoped budgets, monthly Plan snapshots, and budget-isolated ledger and long-term planning data are in place. Milestone 2a remains in progress; see the [architecture](docs/architecture.md) and [roadmap](docs/roadmap.md) for current scope and planned work.
+OpenBudget is under active development. Milestone 2a is implemented: authentication, administrator controls, owner-scoped budgets, monthly Plan snapshots, and budget-isolated ledger and long-term planning data are in place. See the [architecture](docs/architecture.md) and [roadmap](docs/roadmap.md) for current capabilities and planned work.

@@ -8,7 +8,7 @@ Checks PostgreSQL connectivity. Success: `{ "status": "ok", "database": "connect
 
 ## Authentication
 
-Outside the Testing environment, API requests require an authenticated Identity session. Budget-management and owner-scoped monthly Plan APIs are available to authenticated users and enforce ownership. Ledger and long-term planning APIs remain restricted to administrators until their rows are scoped to a selected owned budget. Sign-in creates an HttpOnly, SameSite=Strict cookie; login failures return the same 401 response for unknown, invalid, locked, or suspended accounts. Identity lockout is configured for five failed attempts and 15 minutes.
+Outside the Testing environment, API requests require an authenticated Identity session. Budget-management, monthly Plan, ledger and long-term planning APIs are available to authenticated users and enforce ownership of the selected active budget. Requests without a valid owned-budget selection fall back to `default`, whose legacy routes remain administrator-only. Sign-in creates an HttpOnly, SameSite=Strict cookie; login failures return the same 401 response for unknown, invalid, locked, or suspended accounts. Identity lockout is configured for five failed attempts and 15 minutes.
 
 | Method/path | Behavior |
 |---|---|
