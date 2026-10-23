@@ -112,6 +112,8 @@ it('restores the remembered owned budget on page load',async()=>{
 it('omits budget management controls from the sidebar menu',async()=>{
   render(<App/>);await saved();
   await userEvent.click(screen.getByRole('button',{name:'Budget menu'}));
+  expect(await screen.findByRole('menuitem',{name:'Admin'})).toHaveAttribute('href','/admin');
+  expect(screen.getByRole('menuitem',{name:'Sign Out'})).toBeInTheDocument();
   expect(screen.getByRole('menuitem',{name:/New Plan/})).toBeInTheDocument();
   expect(screen.getByRole('menuitem',{name:/Open Plan/})).toBeInTheDocument();
   for (const name of ['Rename budget','Create budget','Archive budget','Delete budget','Archived budget','Restore']) {
@@ -144,6 +146,28 @@ it('shows only the no accounts message and add action when the account list is e
   expect(screen.getByText("You can't plan without adding accounts to Open Budget first. How about adding one now?")).toBeInTheDocument();
   expect(screen.queryByRole('button',{name:/CASH/})).not.toBeInTheDocument();
   expect(screen.getByRole('button',{name:'Add Account'})).toBeVisible();
+});
+
+it('resizes and collapses the desktop sidebar while preserving its width',async()=>{
+  render(<App/>);await saved();
+  const sidebar=document.querySelector('.sidebar');
+  const resize=screen.getByRole('separator',{name:'Resize sidebar'});
+  fireEvent.keyDown(resize,{key:'ArrowRight'});
+  expect(sidebar).toHaveStyle({'--sidebar-width':'270px'});
+  expect(window.localStorage.getItem('openbudget.sidebarWidth')).toBe('270');
+  Object.defineProperty(resize,'setPointerCapture',{value:vi.fn()});
+  Object.defineProperty(resize,'releasePointerCapture',{value:vi.fn()});
+  fireEvent.pointerDown(resize,{pointerId:1,clientX:270});
+  fireEvent.pointerMove(resize,{pointerId:1,clientX:320});
+  fireEvent.pointerUp(resize,{pointerId:1});
+  expect(sidebar).toHaveStyle({'--sidebar-width':'320px'});
+  await userEvent.click(screen.getByRole('button',{name:'Collapse sidebar'}));
+  expect(sidebar).toHaveClass('is-collapsed');
+  expect(sidebar).toHaveStyle({'--sidebar-width':'56px'});
+  expect(screen.getByRole('button',{name:'Plan'})).toBeVisible();
+  await userEvent.click(screen.getByRole('button',{name:'Expand sidebar'}));
+  expect(sidebar).not.toHaveClass('is-collapsed');
+  expect(sidebar).toHaveStyle({'--sidebar-width':'320px'});
 });
 
 it('opens the account creation form from beneath CASH',async()=>{

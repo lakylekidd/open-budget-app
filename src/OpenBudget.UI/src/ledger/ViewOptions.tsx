@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { today } from './api';
 
-export type ViewOptions = { version: number; datePreset: string; fromMonth: string | null; toMonth: string | null; showReconciled: boolean; showRunningBalance: boolean; showFlags: boolean; showImages: boolean };
-export const defaultView: ViewOptions = { version: 0, datePreset: 'allDates', fromMonth: null, toMonth: null, showReconciled: true, showRunningBalance: true, showFlags: true, showImages: true };
+export type ColumnWidths = Record<string, number>;
+export type ViewOptions = { version: number; datePreset: string; fromMonth: string | null; toMonth: string | null; showReconciled: boolean; showRunningBalance: boolean; showFlags: boolean; showImages: boolean; columnWidths: ColumnWidths };
+export const defaultColumnWidths: ColumnWidths = { check: 36, info: 32, flag: 32, image: 44, date: 130, payee: 200, category: 230, memo: 180, outflow: 120, inflow: 120, balance: 120, status: 40 };
+export const defaultView: ViewOptions = { version: 0, datePreset: 'allDates', fromMonth: null, toMonth: null, showReconciled: true, showRunningBalance: true, showFlags: true, showImages: true, columnWidths: {} };
 export const presets = [['thisMonth','This Month'],['lastMonth','Last Month'],['latest3Months','Latest 3 Months'],['thisYear','This Year'],['lastYear','Last Year'],['allDates','All Dates']] as const;
 const month = (year: number, index: number) => `${year}-${String(index + 1).padStart(2, '0')}`;
 export function presetMonths(preset: string, now = today()) {

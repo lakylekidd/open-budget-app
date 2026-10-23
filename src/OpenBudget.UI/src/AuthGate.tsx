@@ -30,6 +30,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => { void refreshSession(); }, []);
+  useEffect(() => {
+    const signOut = () => { void logout(); };
+    window.addEventListener('openbudget:signout', signOut);
+    return () => window.removeEventListener('openbudget:signout', signOut);
+  }, []);
 
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError('');
@@ -75,5 +80,5 @@ export function AuthGate({ children }: { children: ReactNode }) {
     {error && <p role="alert" className="auth-error">{error}</p>}
     {notice && <p role="status">{notice}</p>}<button className="button button-primary" type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button><a href="/forgot-password">Forgot password?</a>{registrationMode !== 'Disabled' && <a href="/register">Create an account</a>}
   </form></main>;
-  return <><div className="session-bar"><span>{session.userName}{session.isAdministrator ? ' · Administrator' : ''}</span>{session.isAdministrator && <a href="/admin">Admin</a>}<button onClick={() => void logout()}>Sign out</button></div>{children}</>;
+  return <>{children}</>;
 }

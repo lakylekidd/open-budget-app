@@ -1,9 +1,9 @@
-import { Fragment as ReactFragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment as ReactFragment, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { type Account, type Accounts, type Audit, type CategoryOption, type Entry, type Register, type Schedules, type ScheduledItem, ApiError, formatMoney, loadCategories, parseMoney, requestJson, today } from './api';
 import { LedgerDialog } from './LedgerDialog';
 import { TransactionForm } from './TransactionForm';
 import { AccountHeader, RegisterIcon, TransactionRow } from './AccountRegister';
-import { defaultView, viewDates, ViewOptionsPanel, type ViewOptions } from './ViewOptions';
+import { defaultColumnWidths, defaultView, viewDates, ViewOptionsPanel, type ColumnWidths, type ViewOptions } from './ViewOptions';
 import { InlineTransactionEditor, type InlineFields } from './InlineTransactionEditor';
 import { defaultFlags, type Flag } from './Flags';
 import { EditAccountForm } from './EditAccountForm';
@@ -48,11 +48,53 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   const [savedView, setSavedView] = useState<{ scope: string; value: ViewOptions } | null>(null);
   const scope = selectedAccount || 'all';
   const view = savedView?.scope === scope ? savedView.value : defaultView;
+  const [resizing, setResizing] = useState<{ scope: string; widths: ColumnWidths } | null>(null);
+  const resizeRef = useRef<{ key: string; pointerId: number; startX: number; startWidth: number } | null>(null);
+  const latestWidths = useRef<ColumnWidths>({});
+  const columnWidths = { ...defaultColumnWidths, ...(view.columnWidths ?? {}), ...(resizing?.scope === scope ? resizing.widths : {}) };
   const { from, to } = viewDates(view);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [auditPage, setAuditPage] = useState(1); const [auditTotal, setAuditTotal] = useState(0);
   const pending = useRef<{ signature: string; body: string; path: string; method: string; fields: object } | null>(null);
   const inFlight = useRef(false); const viewInFlight = useRef(false);
+  function beginColumnResize(key: string, event: PointerEvent<HTMLSpanElement>) {
+    if (disabled || viewSaving) return;
+    event.preventDefault(); event.stopPropagation();
+    const widths = { ...columnWidths };
+    latestWidths.current = widths;
+    setResizing({ scope, widths });
+    resizeRef.current = { key, pointerId: event.pointerId, startX: event.clientX, startWidth: widths[key] ?? 100 };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+  function moveColumnResize(event: PointerEvent<HTMLSpanElement>) {
+    const active = resizeRef.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+    const widths = { ...latestWidths.current, [active.key]: Math.max(24, Math.min(1200, Math.round(active.startWidth + event.clientX - active.startX))) };
+    latestWidths.current = widths;
+    setResizing({ scope, widths });
+  }
+  async function persistColumnWidths(widths: ColumnWidths) {
+    if (viewInFlight.current) return;
+    viewInFlight.current = true; setViewSaving(true);
+    try {
+      const next = await requestJson<ViewOptions>(`/api/register-views/${scope}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...view, columnWidths: widths }) });
+      setSavedView({ scope, value: next });
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not save column widths.'); }
+    finally { viewInFlight.current = false; setViewSaving(false); setResizing(current => current?.scope === scope ? null : current); }
+  }
+  async function finishColumnResize(event: PointerEvent<HTMLSpanElement>) {
+    if (!resizeRef.current || resizeRef.current.pointerId !== event.pointerId) return;
+    resizeRef.current = null;
+    const widths = { ...latestWidths.current };
+    setResizing(null);
+    await persistColumnWidths(widths);
+  }
+  function resizeHandle(key: string, label: string) {
+    return <span className="register-resize-handle" role="separator" aria-label={`Resize ${label} column`} aria-orientation="vertical" aria-valuemin={24} aria-valuemax={1200} aria-valuenow={columnWidths[key]} tabIndex={0}
+      onPointerDown={event => beginColumnResize(key, event)} onPointerMove={moveColumnResize} onPointerUp={event => void finishColumnResize(event)}
+      onPointerCancel={() => { resizeRef.current = null; setResizing(null); }}
+      onKeyDown={event => { if (!viewSaving && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) { event.preventDefault(); const widths = { ...columnWidths, [key]: Math.max(24, Math.min(1200, columnWidths[key] + (event.key === 'ArrowRight' ? 10 : -10))) }; latestWidths.current = widths; setResizing({ scope, widths }); void persistColumnWidths(widths); } }} />;
+  }
   async function loadView() {
     const value = await requestJson<ViewOptions>(`/api/register-views/${scope}`);
     setSavedView({ scope, value });
@@ -241,10 +283,11 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     </div>
 
     <div className="register-scroll">
-      <table onKeyDown={e=>{if(e.key==='Escape'&&inline&&!disabled)setInline(null);}} className="register-table" aria-label="Transaction register"><colgroup><col className="col-check"/><col className="col-info"/>{view.showFlags && <col className={`col-flag ${[...(register?.items??[]),...(schedules?.items.map(s=>s.transaction)??[])].some(t=>t.flagColor)?'has-flags':''}`}/>}{view.showImages && <col className="col-image"/>}<col className="col-date"/><col className="col-payee"/><col className="col-category"/><col className="col-memo"/><col className="col-amount"/><col className="col-amount"/>{view.showRunningBalance && <col className="col-balance"/>}<col className="col-status"/></colgroup>
-        <thead><tr><th><input type="checkbox" aria-label="Select visible transactions" checked={Boolean(register?.items.length && register.items.every(t => selectedIds.includes(t.id)))} onChange={e => setSelectedIds(e.target.checked ? register?.items.map(t => t.id) ?? [] : [])}/></th>
-          <th><span className="transaction-info muted-info" aria-hidden="true">i</span><span className="sr-only">Attention</span></th>{view.showFlags && <th className="register-decoration-heading"><RegisterIcon name="flag" size={15}/><span className="sr-only">Flag</span></th>}{view.showImages && <th className="register-decoration-heading"><RegisterIcon name="image" size={15}/><span className="sr-only">Attachment</span></th>}
-          <th aria-sort="descending">DATE <span className="register-sort-arrow">▾</span></th><th>PAYEE</th><th>CATEGORY</th><th>MEMO</th><th className="register-money">OUTFLOW</th><th className="register-money">INFLOW</th>{view.showRunningBalance && <th className="register-money">BALANCE</th>}<th><span className="cleared-symbol" title="Cleared status" aria-hidden="true">c</span><span className="sr-only">Cleared status</span></th></tr></thead>
+      <table onKeyDown={e=>{if(e.key==='Escape'&&inline&&!disabled)setInline(null);}} className="register-table" aria-label="Transaction register"><colgroup>
+        <col style={{width:columnWidths.check}}/><col style={{width:columnWidths.info}}/>{view.showFlags && <col style={{width:columnWidths.flag}}/>}{view.showImages && <col style={{width:columnWidths.image}}/>}<col style={{width:columnWidths.date}}/><col style={{width:columnWidths.payee}}/><col style={{width:columnWidths.category}}/><col style={{width:columnWidths.memo}}/><col style={{width:columnWidths.outflow}}/><col style={{width:columnWidths.inflow}}/>{view.showRunningBalance && <col style={{width:columnWidths.balance}}/>}<col style={{width:columnWidths.status}}/></colgroup>
+        <thead><tr><th aria-label="Select transactions">{resizeHandle('check','selection')}<input type="checkbox" aria-label="Select visible transactions" checked={Boolean(register?.items.length && register.items.every(t => selectedIds.includes(t.id)))} onChange={e => setSelectedIds(e.target.checked ? register?.items.map(t => t.id) ?? [] : [])}/></th>
+          <th aria-label="Attention">{resizeHandle('info','attention')}<span className="transaction-info muted-info" aria-hidden="true">i</span><span className="sr-only">Attention</span></th>{view.showFlags && <th className="register-decoration-heading" aria-label="Flag">{resizeHandle('flag','flag')}<RegisterIcon name="flag" size={15}/><span className="sr-only">Flag</span></th>}{view.showImages && <th className="register-decoration-heading" aria-label="Attachment">{resizeHandle('image','attachment')}<RegisterIcon name="image" size={15}/><span className="sr-only">Attachment</span></th>}
+          <th aria-label="DATE" aria-sort="descending">{resizeHandle('date','date')}DATE <span className="register-sort-arrow">▾</span></th><th aria-label="PAYEE">{resizeHandle('payee','payee')}PAYEE</th><th aria-label="CATEGORY">{resizeHandle('category','category')}CATEGORY</th><th aria-label="MEMO">{resizeHandle('memo','memo')}MEMO</th><th aria-label="OUTFLOW" className="register-money">{resizeHandle('outflow','outflow')}OUTFLOW</th><th aria-label="INFLOW" className="register-money">{resizeHandle('inflow','inflow')}INFLOW</th>{view.showRunningBalance && <th aria-label="BALANCE" className="register-money">{resizeHandle('balance','balance')}BALANCE</th>}<th aria-label="Cleared status">{resizeHandle('status','cleared status')}<span className="cleared-symbol" title="Cleared status" aria-hidden="true">c</span><span className="sr-only">Cleared status</span></th></tr></thead>
         <tbody>
           {inline&&(!inline.entry||(!loading&&(inline.schedule?!schedules?.items.some(s=>s.occurrenceId===inline.entry!.id):!register?.items.some(t=>t.id===inline.entry!.id))))&&editor()}
           {Boolean(schedules?.total) && <tr className="scheduled-transactions-row"><td colSpan={9+Number(view.showFlags)+Number(view.showImages)+Number(view.showRunningBalance)}><button aria-expanded={scheduledOpen} onClick={()=>setScheduledOpen(!scheduledOpen)}><RegisterIcon name="calendar"/>Scheduled Transactions <svg className="scheduled-chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m5 3 5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg> ({schedules?.total})</button></td></tr>}

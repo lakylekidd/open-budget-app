@@ -34,8 +34,8 @@
 .register-plus{width:16px;height:16px;display:grid;place-items:center;border-radius:50%;background:#aaa6ff;color:#11132c;font-size:17px;font-weight:700;line-height:16px}
 .register-toolbar-divider{height:16px;width:1px;background:#292a40;margin:0 10px}
 .register-history-icon{font-size:20px;line-height:16px}.register-toolbar-right{margin-left:auto;display:flex;align-items:center;gap:24px;min-width:0}
-.register-caret{font-size:12px}.register-search{width:192px;min-width:110px;height:32px;display:flex;gap:6px;align-items:center;border:1px solid #74758b;border-radius:4px;padding:0 9px;color:#9d9eb1}
-.register-search input{border:0;outline:0;min-width:0;width:100%;font:inherit;font-size:13px;background:transparent;color:#eeedff}
+.register-caret{font-size:12px}.register-search{width:192px;min-width:110px;height:32px;display:flex;gap:6px;align-items:center;border:1px solid #74758b;border-radius:4px;padding:0 9px;color:#9d9eb1;transition:width .18s ease;box-shadow:none}.register-search:focus-within{width:269px;border-color:#74758b;outline:none;box-shadow:none}
+.register-search input{border:0!important;outline:none!important;box-shadow:none!important;min-width:0;width:100%;font:inherit;font-size:13px;background:transparent;color:#eeedff}.register-search input:focus,.register-search input:focus-visible{border:0!important;outline:none!important;box-shadow:none!important}
 .register-search input::placeholder{color:#8f90a5}
 .register-view-control{position:static}.register-view-panel{position:absolute;top:47px;right:16px;width:350px;padding:16px;background:#1c1d38;border:1px solid #4b4c69;border-radius:8px;box-shadow:0 12px 30px #0009;z-index:9}
 .register-filter-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}.register-filter-fields label{display:grid;gap:5px;font-size:12px;color:#c4c5dd}
@@ -45,6 +45,9 @@
 .register-view-actions button{padding:6px 0}.register-view-actions button:disabled{opacity:.4}
 .register-scroll{flex:1;min-height:0;overflow:auto;position:relative}
 .register-table{border-collapse:separate;border-spacing:0;width:100%;min-width:1250px;table-layout:fixed;text-align:left;font-size:14px}
+.register-table th{position:relative}
+.register-resize-handle{position:absolute;z-index:4;top:0;right:-3px;width:7px;height:100%;cursor:col-resize;touch-action:none}
+.register-resize-handle:hover,.register-resize-handle:focus-visible{background:#7772ff;outline:0}
 .col-check{width:2.1%}.col-info{width:2.1%}.col-flag{width:2.1%}.col-image{width:3.7%}.col-date{width:9%}.col-payee{width:16%}.col-category{width:16.5%}.col-memo{width:16%}.col-amount{width:10%}.col-balance{width:10%}.col-status{width:2.5%}
 .register-table thead{position:sticky;top:0;z-index:3}
 .register-table th{height:33px;background:#0b0c20;border-right:1px solid #292a40;border-bottom:1px solid #303147;padding:0 7px;font-size:12px;font-weight:500;color:#c4c5dd;letter-spacing:.4px;white-space:nowrap}
@@ -93,7 +96,7 @@
   .account-balance-equation{padding:8px 12px;gap:10px;overflow-x:auto}.balance-term{min-width:85px}.balance-term strong{font-size:17px}.balance-term>span{font-size:10px}
   .ledger-menu{display:block;background:none;padding:0 4px;color:#aaa6ff!important}
   .register-toolbar{padding:0 12px;gap:9px}.register-toolbar>button:nth-of-type(n+2),.register-toolbar-divider{display:none}
-  .register-toolbar-right{gap:12px}.register-search{width:120px}.register-toolbar>button{font-size:12px}
+  .register-toolbar-right{gap:12px}.register-search{width:120px}.register-search:focus-within{width:168px}.register-toolbar>button{font-size:12px}
   .register-view-panel{position:fixed;top:206px;left:12px;right:12px;width:auto;max-height:65vh;overflow:auto}
   .account-attention-banner{font-size:12px;padding:8px 12px}.account-attention-banner .button-primary{min-width:65px}
   .ledger-dialog{padding:18px}.split-row label:nth-child(2){width:95px}
@@ -119,7 +122,7 @@
 .view-options-footer{display:flex;justify-content:flex-end;gap:8px;padding-top:4px}
 .register-toolbar .view-options-footer button{padding:8px 16px;border-radius:9px;background:#343255;color:#f5f4ff;font-size:16px;font-weight:600}
 .register-toolbar .view-options-footer .button-primary{background:#5c55ff}
-@media(max-width:700px){.register-view-panel.view-options-panel{width:auto}.view-presets{flex-wrap:wrap;justify-content:flex-start}.view-month-range{flex-wrap:wrap}.view-options-panel select{max-width:100px}.view-month-range strong:nth-of-type(2){margin-left:0}.register-toolbar-right{gap:6px}.register-view-control{gap:6px}.register-search{width:100px}}
+@media(max-width:700px){.register-view-panel.view-options-panel{width:auto}.view-presets{flex-wrap:wrap;justify-content:flex-start}.view-month-range{flex-wrap:wrap}.view-options-panel select{max-width:100px}.view-month-range strong:nth-of-type(2){margin-left:0}.register-toolbar-right{gap:6px}.register-view-control{gap:6px}.register-search{width:100px}.register-search:focus-within{width:140px}}
 
 @media(min-width:701px) and (max-width:1100px){.register-toolbar>button:nth-of-type(n+3),.register-toolbar-divider{display:none}.register-toolbar-right{gap:12px}}
 @media(max-width:700px){.register-view-panel.view-options-panel{max-width:calc(100vw - 24px)}}

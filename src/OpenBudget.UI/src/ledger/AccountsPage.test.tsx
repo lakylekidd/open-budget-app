@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { defaultFlags } from './Flags';
@@ -53,6 +53,18 @@ beforeEach(() => {
 
 function show(selectedAccount = '') { const onChanged = vi.fn(); render(<AccountsPage selectedAccount={selectedAccount} onSelectAccount={vi.fn()} onChanged={onChanged} onMenu={vi.fn()} />); return onChanged; }
 async function ready() { await screen.findByRole('button', { name: 'Edit Shop 2026-10-21' }); }
+
+it('resizes every visible register column and persists the selected column width', async () => {
+  show('checking'); await ready();
+  const handle = screen.getByRole('separator', { name: 'Resize payee column' });
+  const payeeColumn = handle.closest('th')?.cellIndex;
+  expect(screen.getAllByRole('separator', { name: /^Resize .* column$/ })).toHaveLength(12);
+  fireEvent.pointerDown(handle, { pointerId: 1, clientX: 200 });
+  fireEvent.pointerMove(handle, { pointerId: 1, clientX: 260 });
+  fireEvent.pointerUp(handle, { pointerId: 1, clientX: 260 });
+  await waitFor(() => expect(views['/api/register-views/checking']?.columnWidths.payee).toBe(260));
+  expect(screen.getAllByRole('columnheader')[payeeColumn!].querySelector('.register-resize-handle')).toBeInTheDocument();
+});
 
 it('shows and selects a later projected occurrence opened from annual planning', async () => {
   const projected = { ...register.items[0], id: 'future-occurrence', date: '2027-06-01', amount: -25, payee: 'Rent', categoryId: 'food', needsAttention: false };

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { AccountSidebarRow } from './ledger/AccountSidebarRow';
 import { AccountsPage } from './ledger/AccountsPage';
 import { type Accounts, type Entry, type Register, type ScheduledItem, type Schedules, requestJson } from './ledger/api';
@@ -84,10 +84,14 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
 
 function BudgetApplication() {
   const [userEmail, setUserEmail] = useState('');
+  const [isAdministrator, setIsAdministrator] = useState(false);
   useEffect(() => {
     let active = true;
     void fetch('/api/auth/session', { credentials: 'same-origin' }).then(async response => {
-      if (response.ok && active) setUserEmail((await response.json() as { email: string | null }).email ?? '');
+      if (response.ok && active) {
+        const session = await response.json() as { email: string | null; isAdministrator: boolean };
+        setUserEmail(session.email ?? ''); setIsAdministrator(session.isAdministrator);
+      }
     }).catch(() => undefined);
     return () => { active = false; };
   }, []);
@@ -117,6 +121,22 @@ function BudgetApplication() {
   const [moveOpen, setMoveOpen] = useState(false);
   const [conflictBudget, setConflictBudget] = useState<BudgetState | null>(null);
   const [mobileMenu, setMobileMenu] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = Number(window.localStorage.getItem('openbudget.sidebarWidth'));
+    return Number.isFinite(saved) && saved >= 190 && saved <= 420 ? saved : 260;
+  });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.localStorage.getItem('openbudget.sidebarCollapsed') === 'true');
+  const resizingSidebar = useRef(false);
+  function changeSidebarWidth(width: number) {
+    const next = Math.min(420, Math.max(190, Math.round(width)));
+    setSidebarWidth(next);
+    window.localStorage.setItem('openbudget.sidebarWidth', String(next));
+  }
+  function toggleSidebar() {
+    if (window.innerWidth <= 700) { setMobileMenu(false); return; }
+    setBudgetMenuOpen(false);
+    setSidebarCollapsed(value => { window.localStorage.setItem('openbudget.sidebarCollapsed', String(!value)); return !value; });
+  }
   const [activePage, setActivePage] = useState(() => new URLSearchParams(window.location.search).get('page') || 'Plan');
   const [planningPending, setPlanningPending] = useState(false);
   const [toast, setToast] = useState('');
@@ -658,7 +678,8 @@ function BudgetApplication() {
 
   return <div className="app-shell">
     {mobileMenu && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMobileMenu(false)} />}
-    <aside className={`sidebar ${mobileMenu ? 'mobile-open' : ''}`}>
+    <aside className={`sidebar ${mobileMenu ? 'mobile-open' : ''} ${sidebarCollapsed && !mobileMenu ? 'is-collapsed' : ''}`} style={{'--sidebar-width': `${sidebarCollapsed && !mobileMenu ? 56 : sidebarWidth}px`} as CSSProperties}>
+      {!sidebarCollapsed && <div className="sidebar-resizer" role="separator" aria-label="Resize sidebar" aria-orientation="vertical" aria-valuemin={190} aria-valuemax={420} aria-valuenow={sidebarWidth} tabIndex={0} onPointerDown={event => { resizingSidebar.current = true; event.currentTarget.setPointerCapture(event.pointerId); event.preventDefault(); }} onPointerMove={event => { if (resizingSidebar.current) changeSidebarWidth(event.clientX); }} onPointerUp={event => { resizingSidebar.current = false; event.currentTarget.releasePointerCapture(event.pointerId); }} onPointerCancel={() => { resizingSidebar.current = false; }} onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); changeSidebarWidth(sidebarWidth + (event.key === 'ArrowRight' ? 10 : -10)); } }} />}
       <div className="budget-menu-anchor" onKeyDown={event => { if (event.key === 'Escape') setBudgetMenuOpen(false); }}>
         <button type="button" className="budget-picker" aria-label="Budget menu" aria-haspopup="menu" aria-expanded={budgetMenuOpen} onClick={() => { cancelClosePlans(); setBudgetMenuSection('main'); setBudgetMenuOpen(value => !value); }}><img src="/openbudget-logo.svg" alt="" /><span className="budget-picker-copy"><strong>{plan.name}</strong><small title={userEmail}>{userEmail}</small></span><span className="budget-picker-chevron" aria-hidden="true" /></button>
         {budgetMenuOpen && <><button className="budget-menu-dismiss" aria-label="Close budget menu" onClick={() => setBudgetMenuOpen(false)} /><div className="budget-dropdown" role="menu" aria-label="Budget menu options">
@@ -674,7 +695,8 @@ function BudgetApplication() {
             <p>Account</p>
             <button role="menuitem" onClick={() => { setBudgetMenuOpen(false); setProfileOpen(true); }}>♟ <span>Account Settings</span></button>
             <button role="menuitem" onClick={() => setToast('Bank connections are not available yet')}>▥ <span>Manage Bank Connections</span></button>
-            <button role="menuitem" onClick={() => setToast('Sign out from the account bar')}>⇥ <span>Log Out</span></button>
+            {isAdministrator && <a className="budget-menuitem" role="menuitem" href="/admin">♟ <span>Admin</span></a>}
+            <button role="menuitem" onClick={() => { setBudgetMenuOpen(false); window.dispatchEvent(new Event('openbudget:signout')); }}>⇥ <span>Sign Out</span></button>
         </div><div className={`budget-plan-flyout ${budgetMenuSection !== 'main' ? 'is-open' : ''}`} role="menu" aria-label={budgetMenuSection === 'all' ? 'All Plans' : 'Recent Plans'} aria-hidden={budgetMenuSection === 'main'} onMouseEnter={cancelClosePlans} onMouseLeave={scheduleClosePlans}>
           <p>{budgetMenuSection === 'recent' ? 'Recent Plans' : 'All Plans'}</p>
           {(budgetMenuSection === 'recent' ? ownedBudgets.slice(0, 5) : ownedBudgets).map(budget => <button key={budget.id} role="menuitem" aria-current={budget.id === selectedBudgetId ? 'true' : undefined} onClick={() => { selectBudget(budget.id); setBudgetMenuOpen(false); }}>▣ <span>{budget.name}</span></button>)}
@@ -682,10 +704,10 @@ function BudgetApplication() {
         </div></>}
       </div>
       <div className="side-nav" role="navigation" aria-label="Main navigation">
-        <button className={`nav-item ${activePage === 'Plan' ? 'active' : ''}`} onClick={() => navigate('Plan')}><Icon name="plan" size={22} /><span>Plan</span></button>
-        <button className={`nav-item ${activePage === 'Long-Term Planning' ? 'active' : ''}`} onClick={() => navigate('Long-Term Planning')}><Icon name="calendar" size={22} /><span>Long-Term Planning</span></button>
-        <button className={`nav-item ${activePage === 'Reflect' ? 'active' : ''}`} onClick={() => setToast('Reflect is outside this demo’s scope')}><Icon name="chart" /><span>Reflect</span></button>
-        <button className={`nav-item ${activePage === 'Accounts' && !selectedAccount ? 'active' : ''}`} onClick={() => navigate('Accounts')}><Icon name="bank" size={22} /><span>All Accounts</span></button>
+        <button aria-label="Plan" title="Plan" className={`nav-item ${activePage === 'Plan' ? 'active' : ''}`} onClick={() => navigate('Plan')}><Icon name="plan" size={22} /><span>Plan</span></button>
+        <button aria-label="Long-Term Planning" title="Long-Term Planning" className={`nav-item ${activePage === 'Long-Term Planning' ? 'active' : ''}`} onClick={() => navigate('Long-Term Planning')}><Icon name="calendar" size={22} /><span>Long-Term Planning</span></button>
+        <button aria-label="Reflect" title="Reflect" className={`nav-item ${activePage === 'Reflect' ? 'active' : ''}`} onClick={() => setToast('Reflect is outside this demo’s scope')}><Icon name="chart" /><span>Reflect</span></button>
+        <button aria-label="All Accounts" title="All Accounts" className={`nav-item ${activePage === 'Accounts' && !selectedAccount ? 'active' : ''}`} onClick={() => navigate('Accounts')}><Icon name="bank" size={22} /><span>All Accounts</span></button>
       </div>
       <div className="account-section">
         {accountsLoaded && !accountError && accounts.accounts.length === 0 ? <section className="no-accounts-card"><strong>No Accounts</strong><p>You can't plan without adding accounts to Open Budget first. How about adding one now?</p></section> : null}
@@ -698,7 +720,7 @@ function BudgetApplication() {
         {accountError && <button className="account-row" onClick={() => setLedgerRefresh(value => value + 1)}>Retry loading accounts</button>}
         {accountsLoaded && !accountError && <button type="button" className="add-cash-account" onClick={() => { if (navigate('Accounts')) setAccountCreateRequest(value => value + 1); }}><span aria-hidden="true">✚</span> Add Account</button>}
       </div>
-      <div className="sidebar-bottom"><div className="referral-banner"><span>Give your friends 6 free weeks to try YNAB!</span><img src="/referral-heart.svg" alt="" /><button aria-label="Dismiss referral" onClick={event => {event.currentTarget.parentElement?.classList.add('dismissed');}}>×</button></div><div className="sidebar-footer"><button onClick={() => setToast('Sharing is not connected in this demo')}>▦ &nbsp; Share & Earn</button><button aria-label="Collapse sidebar" onClick={() => setMobileMenu(value => !value)}>◧</button></div></div>
+      <div className="sidebar-bottom"><div className="referral-banner"><span>Give your friends 6 free weeks to try YNAB!</span><img src="/referral-heart.svg" alt="" /><button aria-label="Dismiss referral" onClick={event => {event.currentTarget.parentElement?.classList.add('dismissed');}}>×</button></div><div className="sidebar-footer"><button onClick={() => setToast('Sharing is not connected in this demo')}>▦ &nbsp; Share & Earn</button><button aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={toggleSidebar}>{sidebarCollapsed ? '›' : '‹'}</button></div></div>
     </aside>
 
     <main className="main-area">

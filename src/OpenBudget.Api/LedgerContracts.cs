@@ -27,7 +27,22 @@ public sealed class LedgerException(string message, int statusCode = 400) : Exce
 }
 
 public sealed record RegisterViewDto(long Version, string DatePreset, string? FromMonth, string? ToMonth,
-    bool ShowReconciled, bool ShowRunningBalance, bool ShowFlags, bool ShowImages);
+    bool ShowReconciled, bool ShowRunningBalance, bool ShowFlags, bool ShowImages, Dictionary<string, int>? ColumnWidths = null)
+{
+    public bool Equals(RegisterViewDto? other) => other is not null && Version == other.Version && DatePreset == other.DatePreset &&
+        FromMonth == other.FromMonth && ToMonth == other.ToMonth && ShowReconciled == other.ShowReconciled &&
+        ShowRunningBalance == other.ShowRunningBalance && ShowFlags == other.ShowFlags && ShowImages == other.ShowImages &&
+        (ColumnWidths ?? []).OrderBy(x => x.Key).SequenceEqual((other.ColumnWidths ?? []).OrderBy(x => x.Key));
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Version); hash.Add(DatePreset); hash.Add(FromMonth); hash.Add(ToMonth); hash.Add(ShowReconciled);
+        hash.Add(ShowRunningBalance); hash.Add(ShowFlags); hash.Add(ShowImages);
+        foreach (var pair in (ColumnWidths ?? []).OrderBy(x => x.Key)) { hash.Add(pair.Key); hash.Add(pair.Value); }
+        return hash.ToHashCode();
+    }
+}
 
 
 public sealed record ReviewTransactionRequest(Guid CommandId, long Version, string Action);

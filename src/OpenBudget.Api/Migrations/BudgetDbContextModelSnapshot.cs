@@ -831,6 +831,10 @@ namespace OpenBudget.Api.Migrations
                         .HasMaxLength(36)
                         .HasColumnType("character varying(36)");
 
+                    b.Property<string>("ColumnWidthsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("DatePreset")
                         .IsRequired()
                         .HasColumnType("text");
