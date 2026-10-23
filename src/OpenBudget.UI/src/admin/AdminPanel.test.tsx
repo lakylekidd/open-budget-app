@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
 import { AdminPanel } from './AdminPanel';
@@ -51,8 +51,13 @@ it('lets administrators assign a membership tier and a budget-limit override', a
   const user = userEvent.setup();
   await user.selectOptions(await screen.findByLabelText('Membership for alice'), 'plus');
   await user.type(screen.getByLabelText('Budget limit override for alice'), '2');
+  await user.click(screen.getByText('Subscription metadata'));
+  fireEvent.change(screen.getByLabelText('Membership starts for alice'), { target: { value: '2026-10-01' } });
+  fireEvent.change(screen.getByLabelText('Membership expires for alice'), { target: { value: '2027-10-01' } });
+  await user.type(screen.getByLabelText('Billing provider for alice'), 'stripe');
+  await user.type(screen.getByLabelText('External subscription ID for alice'), 'sub_test_123');
   await user.click(screen.getByRole('button', { name: 'Save membership' }));
-  expect(fetchMock).toHaveBeenCalledWith('/api/admin/users/u1/membership', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ membershipPlanId: 'plus', budgetLimitOverride: 2 }) }));
+  expect(fetchMock).toHaveBeenCalledWith('/api/admin/users/u1/membership', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ membershipPlanId: 'plus', budgetLimitOverride: 2, startsOn: '2026-10-01', expiresOn: '2027-10-01', billingProvider: 'stripe', externalSubscriptionId: 'sub_test_123' }) }));
 });
 
 it('requires confirmation and requests a password reset link without handling a password', async () => {

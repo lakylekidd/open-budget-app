@@ -984,13 +984,27 @@ namespace OpenBudget.Api.Migrations
                         .HasMaxLength(450)
                         .HasColumnType("character varying(450)");
 
+                    b.Property<string>("BillingProvider")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
                     b.Property<int?>("BudgetLimitOverride")
                         .HasColumnType("integer");
+
+                    b.Property<DateOnly?>("ExpiresOn")
+                        .HasColumnType("date");
+
+                    b.Property<string>("ExternalSubscriptionId")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
 
                     b.Property<string>("MembershipPlanId")
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
+
+                    b.Property<DateOnly?>("StartsOn")
+                        .HasColumnType("date");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()

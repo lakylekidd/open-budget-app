@@ -34,7 +34,7 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) :
         modelBuilder.Entity<ApplicationSettingEntity>(e => { e.HasKey(x => x.Key); e.Property(x => x.Key).HasMaxLength(100); e.Property(x => x.Value).HasMaxLength(500); });
         modelBuilder.Entity<AdminAuditLogEntity>(e => { e.HasKey(x => x.Id); e.Property(x => x.ActorUserId).HasMaxLength(450); e.Property(x => x.TargetUserId).HasMaxLength(450); e.Property(x => x.Action).HasMaxLength(80); e.HasIndex(x => x.CreatedAt); });
         modelBuilder.Entity<MembershipPlanEntity>(e => { e.HasKey(x => x.Id); e.Property(x => x.Id).HasMaxLength(40); e.Property(x => x.Name).HasMaxLength(80); e.Property(x => x.MaxActiveBudgets).IsRequired(false); e.HasData(new MembershipPlanEntity { Id = "free", Name = "Free", MaxActiveBudgets = 1 }, new MembershipPlanEntity { Id = "plus", Name = "Plus", MaxActiveBudgets = 3 }, new MembershipPlanEntity { Id = "pro", Name = "Pro", MaxActiveBudgets = null }); });
-        modelBuilder.Entity<UserMembershipEntity>(e => { e.HasKey(x => x.UserId); e.Property(x => x.UserId).HasMaxLength(450); e.Property(x => x.MembershipPlanId).HasMaxLength(40); e.Property(x => x.Version).IsConcurrencyToken(); e.HasOne<OpenBudgetUser>().WithOne().HasForeignKey<UserMembershipEntity>(x => x.UserId).OnDelete(DeleteBehavior.Cascade); e.HasOne<MembershipPlanEntity>().WithMany().HasForeignKey(x => x.MembershipPlanId).OnDelete(DeleteBehavior.Restrict); });
+        modelBuilder.Entity<UserMembershipEntity>(e => { e.HasKey(x => x.UserId); e.Property(x => x.UserId).HasMaxLength(450); e.Property(x => x.MembershipPlanId).HasMaxLength(40); e.Property(x => x.BillingProvider).HasMaxLength(80); e.Property(x => x.ExternalSubscriptionId).HasMaxLength(160); e.Property(x => x.Version).IsConcurrencyToken(); e.HasOne<OpenBudgetUser>().WithOne().HasForeignKey<UserMembershipEntity>(x => x.UserId).OnDelete(DeleteBehavior.Cascade); e.HasOne<MembershipPlanEntity>().WithMany().HasForeignKey(x => x.MembershipPlanId).OnDelete(DeleteBehavior.Restrict); });
         modelBuilder.Entity<FlagDefinitionEntity>(e => {
             e.HasKey(x=>x.Color); e.Property(x=>x.Color).HasMaxLength(10); e.Property(x=>x.Name).HasMaxLength(40);
             e.HasData(LedgerService.FlagColors.Select(color=>new FlagDefinitionEntity{Color=color,Name=char.ToUpperInvariant(color[0])+color[1..]}));
@@ -179,6 +179,10 @@ public sealed class UserMembershipEntity
     public string UserId { get; set; } = "";
     public string MembershipPlanId { get; set; } = "free";
     public int? BudgetLimitOverride { get; set; }
+    public DateOnly? StartsOn { get; set; }
+    public DateOnly? ExpiresOn { get; set; }
+    public string? BillingProvider { get; set; }
+    public string? ExternalSubscriptionId { get; set; }
     public long Version { get; set; } = 1;
 }
 

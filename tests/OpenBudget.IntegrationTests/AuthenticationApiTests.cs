@@ -377,7 +377,16 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         Assert.Equal(HttpStatusCode.OK, (await adminClient.PutAsJsonAsync("/api/admin/settings/registration-mode", new RegistrationModeRequest("ApprovalRequired"))).StatusCode);
         var tiers = await adminClient.GetFromJsonAsync<MembershipPlanEntity[]>("/api/admin/membership-plans");
         Assert.Contains(tiers!, tier => tier.Id == "free" && tier.MaxActiveBudgets == 1);
-        Assert.Equal(HttpStatusCode.NoContent, (await adminClient.PutAsJsonAsync($"/api/admin/users/{aliceId}/membership", new AdminMembershipRequest("plus", 2))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await adminClient.PutAsJsonAsync($"/api/admin/users/{aliceId}/membership",
+            new AdminMembershipRequest("plus", 2, new DateOnly(2026, 11, 1), new DateOnly(2026, 10, 1)))).StatusCode);
+        var membershipRequest = new AdminMembershipRequest("plus", 2, new DateOnly(2026, 10, 1), new DateOnly(2027, 10, 1), "stripe", "sub_test_123");
+        Assert.Equal(HttpStatusCode.NoContent, (await adminClient.PutAsJsonAsync($"/api/admin/users/{aliceId}/membership", membershipRequest)).StatusCode);
+        var assignedMembership = await adminClient.GetFromJsonAsync<AdminUserDto[]>($"/api/admin/users?q=alice");
+        var aliceMembership = Assert.Single(assignedMembership!);
+        Assert.Equal(new DateOnly(2026, 10, 1), aliceMembership.MembershipStartsOn);
+        Assert.Equal(new DateOnly(2027, 10, 1), aliceMembership.MembershipExpiresOn);
+        Assert.Equal("stripe", aliceMembership.BillingProvider);
+        Assert.Equal("sub_test_123", aliceMembership.ExternalSubscriptionId);
         using var aliceBudgetOne = await userClient.PostAsJsonAsync("/api/budgets", new CreateOwnedBudgetRequest("First"));
         using var aliceBudgetTwo = await userClient.PostAsJsonAsync("/api/budgets", new CreateOwnedBudgetRequest("Second"));
         Assert.Equal(HttpStatusCode.Created, aliceBudgetOne.StatusCode);

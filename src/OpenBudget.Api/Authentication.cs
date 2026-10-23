@@ -28,7 +28,7 @@ public sealed record TokenRequest(string UserId, string Token);
 public sealed record ResetPasswordRequest(string UserId, string Token, string NewPassword);
 public sealed record RegistrationModeRequest(string Mode);
 public sealed record ForgotPasswordRequest(string Email);
-public sealed record AdminUserDto(string Id, string UserName, string? Email, DateTimeOffset CreatedAt, DateTimeOffset? LastLoginAt, string Status, bool IsBootstrapAdministrator, DateTimeOffset? LockoutEnd, string MembershipPlanId, int? BudgetLimitOverride);
+public sealed record AdminUserDto(string Id, string UserName, string? Email, DateTimeOffset CreatedAt, DateTimeOffset? LastLoginAt, string Status, bool IsBootstrapAdministrator, DateTimeOffset? LockoutEnd, string MembershipPlanId, int? BudgetLimitOverride, DateOnly? MembershipStartsOn, DateOnly? MembershipExpiresOn, string? BillingProvider, string? ExternalSubscriptionId);
 public sealed record AdminAuditDto(Guid Id, string ActorUserId, string TargetUserId, string Action, DateTimeOffset CreatedAt);
 public sealed record AdminMembershipCountDto(string MembershipPlanId, string Name, int UserCount);
 public sealed record AdminRegistrationDto(string UserId, string UserName, DateTimeOffset CreatedAt, string Status);
@@ -43,7 +43,7 @@ public sealed record AdminDashboardDto(
     IReadOnlyList<AdminMembershipCountDto> UsersByMembership,
     IReadOnlyList<AdminRegistrationDto> RecentRegistrations,
     IReadOnlyList<AdminAuditDto> RecentSecurityEvents);
-public sealed record AdminMembershipRequest(string MembershipPlanId, int? BudgetLimitOverride);
+public sealed record AdminMembershipRequest(string MembershipPlanId, int? BudgetLimitOverride, DateOnly? StartsOn = null, DateOnly? ExpiresOn = null, string? BillingProvider = null, string? ExternalSubscriptionId = null);
 public sealed record AdminInviteUserRequest(string UserName, string Email, string MembershipPlanId = "free");
 
 public interface IAccountEmailSender
@@ -350,7 +350,8 @@ public static class AuthenticationSetup
             {
                 var userStatus = user.IsSuspended ? "Suspended" : user.LockoutEnd > DateTimeOffset.UtcNow ? "Locked" : user.EmailConfirmed && !user.RequiresApproval ? "Active" : "Pending";
                 memberships.TryGetValue(user.Id, out var membership);
-                rows.Add(new AdminUserDto(user.Id, user.UserName!, user.Email, user.CreatedAt, user.LastLoginAt, userStatus, user.IsBootstrapAdministrator, user.LockoutEnd, membership?.MembershipPlanId ?? "free", membership?.BudgetLimitOverride));
+                rows.Add(new AdminUserDto(user.Id, user.UserName!, user.Email, user.CreatedAt, user.LastLoginAt, userStatus, user.IsBootstrapAdministrator, user.LockoutEnd,
+                    membership?.MembershipPlanId ?? "free", membership?.BudgetLimitOverride, membership?.StartsOn, membership?.ExpiresOn, membership?.BillingProvider, membership?.ExternalSubscriptionId));
             }
             return Results.Ok(rows);
         }).RequireAuthorization(policy => policy.RequireRole(AdministratorRole));
@@ -406,6 +407,10 @@ public static class AuthenticationSetup
         {
             if (request.BudgetLimitOverride is < 1 or > 1000)
                 return Results.BadRequest(new { error = "A budget limit override must be between 1 and 1000, or omitted to use the membership tier." });
+            if (request.StartsOn is not null && request.ExpiresOn is not null && request.ExpiresOn <= request.StartsOn)
+                return Results.BadRequest(new { error = "Membership expiration must be after its start date." });
+            if (request.BillingProvider?.Trim().Length > 80 || request.ExternalSubscriptionId?.Trim().Length > 160)
+                return Results.BadRequest(new { error = "Billing provider and external subscription ID are too long." });
             if (!await db.Users.AnyAsync(user => user.Id == id, ct)) return Results.NotFound();
             if (!await db.MembershipPlans.AnyAsync(plan => plan.Id == request.MembershipPlanId, ct))
                 return Results.BadRequest(new { error = "The selected membership tier does not exist." });
@@ -422,6 +427,10 @@ public static class AuthenticationSetup
                 membership.BudgetLimitOverride = request.BudgetLimitOverride;
                 membership.Version++;
             }
+            membership.StartsOn = request.StartsOn;
+            membership.ExpiresOn = request.ExpiresOn;
+            membership.BillingProvider = string.IsNullOrWhiteSpace(request.BillingProvider) ? null : request.BillingProvider.Trim();
+            membership.ExternalSubscriptionId = string.IsNullOrWhiteSpace(request.ExternalSubscriptionId) ? null : request.ExternalSubscriptionId.Trim();
             await db.SaveChangesAsync(ct);
             await AddAdminAuditAsync(db, principal, id, "user.membership.update", ct);
             await transaction.CommitAsync(ct);
