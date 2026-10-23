@@ -32,9 +32,12 @@ Outside the Testing environment, API requests require an authenticated Identity 
 | `POST /api/admin/users/{id}/suspend` / `reactivate` | Administrator-only; changes account access and records an audit event. The bootstrap administrator cannot be suspended. |
 | `POST /api/admin/users/{id}/unlock` | Administrator-only; clears Identity lockout without changing suspension status. |
 | `POST /api/admin/users/{id}/password-reset` | Administrator-only; emails a two-hour Identity reset link to the user's verified email and audits initiation. The response never contains a reset token or password. |
+| `GET /api/admin/users/{id}/history` | Administrator-only; returns the latest 50 audit events for that user, newest first. Unknown users return 404. |
 | `GET /api/admin/audit` | Administrator-only; returns the latest 100 administration audit events. |
 
 The Identity cookie is HttpOnly, SameSite=Strict and Secure in shared environments. State-changing requests with an Origin or Referer must match the forwarded request scheme and host; authenticated state-changing requests in production require one of those headers. The API processes forwarded scheme/host headers from the private Compose proxy boundary so HTTPS termination is reflected in cookie and CSRF checks. Registration and reset email delivery require SMTP configuration; shared environments also require the trusted `AccountEmail__PublicOrigin` HTTPS setting. Registration and recovery email requests are limited to five per minute per client IP. Identity verification and password reset tokens expire after two hours. Registration mode changes and user lifecycle actions commit together with their audit entry. The `/admin` UI supports user search, approval/rejection, password reset, suspension/reactivation, unlock, registration settings and recent audit history.
+
+The `/admin` UI also supports email invitations, membership assignment and per-user account history. Invitees verify their email, then use Forgot password to choose their initial password.
 
 ## Owned budgets and memberships
 

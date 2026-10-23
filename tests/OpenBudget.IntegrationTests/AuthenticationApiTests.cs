@@ -371,6 +371,7 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         Assert.True(adminSession?.IsAdministrator);
         Assert.False(aliceSession?.IsAdministrator);
         Assert.Equal(HttpStatusCode.Forbidden, (await userClient.GetAsync("/api/admin/users")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await userClient.GetAsync($"/api/admin/users/{aliceId}/history")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await userClient.PostAsync($"/api/admin/users/{aliceId}/suspend", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await userClient.PutAsJsonAsync($"/api/admin/users/{aliceId}/membership", new AdminMembershipRequest("plus", 2))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await adminClient.PutAsJsonAsync("/api/admin/settings/registration-mode", new RegistrationModeRequest("ApprovalRequired"))).StatusCode);
@@ -434,6 +435,11 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         Assert.Contains(audit!, item => item.TargetUserId == pendingId && item.Action == "registration.approve");
         Assert.Contains(audit!, item => item.TargetUserId == aliceId && item.Action == "user.membership.update");
         Assert.Contains(audit!, item => item.Action == "settings.registration-mode");
+        var aliceHistory = await adminClient.GetFromJsonAsync<AdminAuditDto[]>($"/api/admin/users/{aliceId}/history");
+        Assert.Contains(aliceHistory!, item => item.Action == "user.suspend");
+        Assert.Contains(aliceHistory!, item => item.Action == "user.reactivate");
+        Assert.DoesNotContain(aliceHistory!, item => item.TargetUserId != aliceId);
+        Assert.Equal(HttpStatusCode.NotFound, (await adminClient.GetAsync("/api/admin/users/unknown/history")).StatusCode);
     }
 
     [Fact]

@@ -354,6 +354,15 @@ public static class AuthenticationSetup
             }
             return Results.Ok(rows);
         }).RequireAuthorization(policy => policy.RequireRole(AdministratorRole));
+        app.MapGet("/api/admin/users/{id}/history", async (string id, UserManager<OpenBudgetUser> users, BudgetDbContext db, CancellationToken ct) =>
+        {
+            if (!await users.Users.AnyAsync(user => user.Id == id, ct)) return Results.NotFound();
+            var history = await db.AdminAuditLogs.AsNoTracking().Where(entry => entry.TargetUserId == id)
+                .OrderByDescending(entry => entry.CreatedAt).Take(50)
+                .Select(entry => new AdminAuditDto(entry.Id, entry.ActorUserId, entry.TargetUserId, entry.Action, entry.CreatedAt))
+                .ToListAsync(ct);
+            return Results.Ok(history);
+        }).RequireAuthorization(policy => policy.RequireRole(AdministratorRole));
         app.MapPost("/api/admin/users/invite", async (AdminInviteUserRequest request, ClaimsPrincipal principal, BudgetDbContext db,
             UserManager<OpenBudgetUser> users, IAccountEmailSender email, HttpContext context, IConfiguration configuration,
             IWebHostEnvironment environment, CancellationToken ct) =>

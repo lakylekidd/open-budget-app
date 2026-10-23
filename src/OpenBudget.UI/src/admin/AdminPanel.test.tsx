@@ -109,3 +109,23 @@ it('invites a user by email without entering or returning a password', async () 
   expect(await screen.findByRole('status')).toHaveTextContent('Verification link sent');
   expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
 });
+
+it('loads a user-specific status history when the administrator expands it', async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === '/api/admin/users/u1/history') return Response.json([
+      { id: 'e1', actorUserId: 'root', targetUserId: 'u1', action: 'user.suspend', createdAt: '2026-10-02T00:00:00Z' },
+    ]);
+    if (url.startsWith('/api/admin/users')) return Response.json([{ id: 'u1', userName: 'alice', email: 'alice@example.test', createdAt: '2026-10-01T00:00:00Z', lastLoginAt: null, status: 'Suspended', isBootstrapAdministrator: false, lockoutEnd: null, membershipPlanId: 'free', budgetLimitOverride: null }]);
+    if (url === '/api/auth/registration-mode') return Response.json({ mode: 'Disabled' });
+    if (url === '/api/admin/dashboard') return Response.json({ totalUsers: 1, activeUsers: 0, pendingUsers: 0, lockedUsers: 0, suspendedUsers: 1, totalBudgets: 0, activeBudgets: 0, usersByMembership: [], recentRegistrations: [], recentSecurityEvents: [] });
+    if (url === '/api/admin/membership-plans') return Response.json([{ id: 'free', name: 'Free', maxActiveBudgets: 1 }]);
+    return new Response(null, { status: 404 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  render(<AdminPanel />);
+  const user = userEvent.setup();
+  await user.click(await screen.findByText('View account history'));
+  expect(await screen.findByText('user.suspend')).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledWith('/api/admin/users/u1/history');
+});

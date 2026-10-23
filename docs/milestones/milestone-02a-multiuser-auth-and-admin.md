@@ -127,7 +127,7 @@ Administrators can configure:
 - [x] Every implemented administrative action is enforced by backend authorization.
 - [x] Administrators can initiate a secure password reset; reset links are emailed and never expose passwords or tokens in API responses.
 - [x] Administrators cannot read another user's owned budget or monthly Plan data by default.
-- [ ] Administrators can search users and perform the listed management actions.
+- [x] Administrators can search, filter and inspect users; invite, approve/reject, suspend/reactivate, unlock and reset accounts; assign memberships and budget limits; and view account history.
 - [x] Unlocking an account does not unintentionally reactivate a suspended account.
 - [x] Administrative password resets never reveal an existing password.
 - [x] Critical implemented operations require confirmation.
