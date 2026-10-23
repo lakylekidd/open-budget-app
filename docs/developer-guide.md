@@ -50,6 +50,8 @@ The local connection string comes from Aspire's `budgetdatabase` reference. For 
 
 The browser calls same-origin `/api/...` paths. Vite proxies those paths to the API on port 5080. In Aspire, the API and UI have stable local endpoints so the Vite proxy keeps working while Aspire controls startup and health ordering.
 
+The Plan screen starts with an empty loading state and renders budget amounts only after the monthly budget response arrives. This prevents placeholder/demo values from appearing briefly during a reload.
+
 ## Current development boundaries
 
 - There is no authentication or user/tenant boundary yet. Keep this local and synthetic until the roadmap's identity and authorization work is complete.

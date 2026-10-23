@@ -27,44 +27,6 @@ type BudgetPlan = { id: string; name: string; currency: string; version: number 
 
 const filters: Filter[] = ['All', 'Overspent', 'Underfunded', 'Overfunded', 'Money available', 'Snoozed', 'Archived'];
 
-const initialGroups: CategoryGroup[] = [
-  {
-    id: 'home', name: 'Home', categories: [
-      { id: 'rent', name: 'Rent & mortgage', assigned: 1450, activity: -1450, available: 0, target: 1450, icon: '⌂' },
-      { id: 'utilities', name: 'Electricity & water', assigned: 180, activity: -132.45, available: 47.55, target: 180, icon: 'ϟ' },
-      { id: 'internet', name: 'Internet', assigned: 55, activity: -55, available: 0, target: 55, icon: '⌁' },
-    ],
-  },
-  {
-    id: 'daily', name: 'Everyday', categories: [
-      { id: 'groceries', name: 'Groceries', assigned: 520, activity: -376.2, available: 143.8, target: 520, icon: '▤' },
-      { id: 'transport', name: 'Transport', assigned: 120, activity: -96.5, available: 23.5, target: 120, icon: '↗' },
-      { id: 'coffee', name: 'Coffee & lunch', assigned: 90, activity: -42.75, available: 47.25, target: 90, icon: '☕' },
-      { id: 'health', name: 'Health & pharmacy', assigned: 75, activity: -92.4, available: -17.4, target: 75, icon: '✚' },
-    ],
-  },
-  {
-    id: 'life', name: 'Life & fun', categories: [
-      { id: 'dining', name: 'Dining out', assigned: 160, activity: -185.3, available: -25.3, target: 160, icon: '♡' },
-      { id: 'entertainment', name: 'Entertainment', assigned: 80, activity: -34.99, available: 45.01, target: 80, icon: '✦' },
-      { id: 'clothing', name: 'Clothing', assigned: 100, activity: 0, available: 100, target: 100, icon: '◌' },
-    ],
-  },
-  {
-    id: 'future', name: 'True expenses', categories: [
-      { id: 'annual', name: 'Annual bills', assigned: 210, activity: 0, available: 790, target: 1000, icon: '◷' },
-      { id: 'home-repair', name: 'Home maintenance', assigned: 125, activity: 0, available: 625, target: 750, icon: '⌁' },
-      { id: 'travel', name: 'Next trip', assigned: 200, activity: 0, available: 600, target: 1200, icon: '✈' },
-    ],
-  },
-  {
-    id: 'savings', name: 'Savings goals', categories: [
-      { id: 'buffer', name: 'Emergency fund', assigned: 300, activity: 0, available: 2400, target: 5000, icon: '◉' },
-      { id: 'gifts', name: 'Gifts', assigned: 40, activity: 0, available: 160, target: 300, icon: '◇', snoozed: true },
-    ],
-  },
-];
-
 const currency = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR' });
 const money = (value: number) => currency.format(value);
 const shortMonthText = (value: string) => new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric' }).format(new Date(`${value}-01T12:00:00`));
@@ -115,7 +77,7 @@ function App() {
   const [accountEditRequest,setAccountEditRequest]=useState<{id:string;token:number}>();
   const [ledgerRefresh, setLedgerRefresh] = useState(0);
   const [budgetRefresh, setBudgetRefresh] = useState(0);
-  const [data, setData] = useState<BudgetState>({ month: '2026-10', groups: initialGroups, note: '', version: 1, openingReadyToAssign: 0, fundsAdded: 0, ledgerIncome: 0, readyToAssign: 0 });
+  const [data, setData] = useState<BudgetState>({ month: '2026-10', groups: [], note: '', version: 1, openingReadyToAssign: 0, fundsAdded: 0, ledgerIncome: 0, readyToAssign: 0 });
   const [saveState, setSaveState] = useState<'loading' | 'saved' | 'saving' | 'offline' | 'conflict'>('loading');
   const loadedMonth = useRef<string | null>(null);
   const lastSaved = useRef<string | null>(null);

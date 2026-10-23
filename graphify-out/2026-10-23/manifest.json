@@ -1,0 +1,872 @@
+{
+  "OpenBudget.slnx": {
+    "mtime": 1792595707.299464,
+    "seen": 1792643276.9358935,
+    "ast_hash": "d2443058a522010e1d3a509dc8795911",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/BudgetContracts.cs": {
+    "mtime": 1792595392.0777488,
+    "seen": 1792643276.9358935,
+    "ast_hash": "07e4eaee2a8cd59bae557fd077f58f6c",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/BudgetDbContext.cs": {
+    "mtime": 1792644372.8279002,
+    "seen": 1792649787.6429613,
+    "ast_hash": "f401af1fa7a36aba9e01df0a760dabe8",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/BudgetService.cs": {
+    "mtime": 1792644377.5646296,
+    "seen": 1792649787.6429613,
+    "ast_hash": "1f45b57d64496e159466179c16c3ec79",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261021064416_InitialCreate.Designer.cs": {
+    "mtime": 1792566975.381531,
+    "seen": 1792595096.316828,
+    "ast_hash": "9083b557edb001f258d98ce70132712c",
+    "semantic_hash": "9083b557edb001f258d98ce70132712c"
+  },
+  "src/OpenBudget.Api/Migrations/20261021064416_InitialCreate.cs": {
+    "mtime": 1792566975.3805704,
+    "seen": 1792595096.316828,
+    "ast_hash": "28452a1098d1790e266829148e09870a",
+    "semantic_hash": "28452a1098d1790e266829148e09870a"
+  },
+  "src/OpenBudget.Api/Migrations/20261021145111_BudgetCore.Designer.cs": {
+    "mtime": 1792594271.3021684,
+    "seen": 1792595096.316828,
+    "ast_hash": "6c704b2744eca7d6e72ee692429b3936",
+    "semantic_hash": "6c704b2744eca7d6e72ee692429b3936"
+  },
+  "src/OpenBudget.Api/Migrations/20261021145111_BudgetCore.cs": {
+    "mtime": 1792594302.629577,
+    "seen": 1792595096.316828,
+    "ast_hash": "ce36c920e2aabf36129e78f720614c18",
+    "semantic_hash": "ce36c920e2aabf36129e78f720614c18"
+  },
+  "src/OpenBudget.Api/Migrations/20261021145927_NamedBudget.Designer.cs": {
+    "mtime": 1792594767.4231014,
+    "seen": 1792595096.316828,
+    "ast_hash": "816406d1a8668844f28bc87ea534c967",
+    "semantic_hash": "816406d1a8668844f28bc87ea534c967"
+  },
+  "src/OpenBudget.Api/Migrations/20261021145927_NamedBudget.cs": {
+    "mtime": 1792594786.7516723,
+    "seen": 1792595096.316828,
+    "ast_hash": "c34df1548ec419588a533463ae3a2c35",
+    "semantic_hash": "c34df1548ec419588a533463ae3a2c35"
+  },
+  "src/OpenBudget.Api/Migrations/BudgetDbContextModelSnapshot.cs": {
+    "mtime": 1792644475.8585632,
+    "seen": 1792649787.6429613,
+    "ast_hash": "67642d4fd7271b150f29eecc16228c2f",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/OpenBudget.Api.csproj": {
+    "mtime": 1792596269.9480774,
+    "seen": 1792643276.9358935,
+    "ast_hash": "1d93130961356560ddac859d2391ddcd",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Program.cs": {
+    "mtime": 1792613151.0188632,
+    "seen": 1792643276.9358935,
+    "ast_hash": "8773df475d809091595b6525c1e19ad6",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Properties/launchSettings.json": {
+    "mtime": 1792566975.383532,
+    "seen": 1792595096.316828,
+    "ast_hash": "5cbd4f6ace046933bb8ef909fe545d4b",
+    "semantic_hash": "5cbd4f6ace046933bb8ef909fe545d4b"
+  },
+  "src/OpenBudget.Api/appsettings.Development.json": {
+    "mtime": 1792566975.3696136,
+    "seen": 1792595096.316828,
+    "ast_hash": "804b473502a4c415cf75db61c56c32aa",
+    "semantic_hash": "804b473502a4c415cf75db61c56c32aa"
+  },
+  "src/OpenBudget.Api/appsettings.json": {
+    "mtime": 1792566975.372606,
+    "seen": 1792595096.316828,
+    "ast_hash": "025da8b3723e340cb6f05940be34802e",
+    "semantic_hash": "025da8b3723e340cb6f05940be34802e"
+  },
+  "src/OpenBudget.AppHost/AppHost.cs": {
+    "mtime": 1792567100.7587173,
+    "seen": 1792595096.316828,
+    "ast_hash": "bfb9f6e2b77b5e02fb1bb3683d453829",
+    "semantic_hash": "bfb9f6e2b77b5e02fb1bb3683d453829"
+  },
+  "src/OpenBudget.AppHost/OpenBudget.AppHost.csproj": {
+    "mtime": 1792566990.2831788,
+    "seen": 1792595096.316828,
+    "ast_hash": "d29c030685de556cb55293a5e1e849ef",
+    "semantic_hash": "d29c030685de556cb55293a5e1e849ef"
+  },
+  "src/OpenBudget.AppHost/Properties/launchSettings.json": {
+    "mtime": 1792566975.396611,
+    "seen": 1792595096.316828,
+    "ast_hash": "646290e502d8ac75b325cacfe1c04f43",
+    "semantic_hash": "646290e502d8ac75b325cacfe1c04f43"
+  },
+  "src/OpenBudget.AppHost/appsettings.Development.json": {
+    "mtime": 1792566975.387043,
+    "seen": 1792595096.316828,
+    "ast_hash": "804b473502a4c415cf75db61c56c32aa",
+    "semantic_hash": "804b473502a4c415cf75db61c56c32aa"
+  },
+  "src/OpenBudget.AppHost/appsettings.json": {
+    "mtime": 1792566975.3895502,
+    "seen": 1792595096.316828,
+    "ast_hash": "5916a5f64bc9c0f3abd78f0fdd075c38",
+    "semantic_hash": "5916a5f64bc9c0f3abd78f0fdd075c38"
+  },
+  "src/OpenBudget.AppHost/aspire.config.json": {
+    "mtime": 1792566975.4006166,
+    "seen": 1792595096.316828,
+    "ast_hash": "aa43858aa52dd1898eb6326f380ac494",
+    "semantic_hash": "aa43858aa52dd1898eb6326f380ac494"
+  },
+  "src/OpenBudget.UI/package.json": {
+    "mtime": 1792596178.6831334,
+    "seen": 1792643276.9358935,
+    "ast_hash": "9174207d91d138a382d893092be79484",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/App.tsx": {
+    "mtime": 1792649308.17929,
+    "seen": 1792649787.6429613,
+    "ast_hash": "24c9a6005b58b6e18e6d858be767f0a0",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/main.tsx": {
+    "mtime": 1792563015.4323854,
+    "seen": 1792595096.316828,
+    "ast_hash": "2d9e8cef72d8eb72d307b74fc7df2067",
+    "semantic_hash": "2d9e8cef72d8eb72d307b74fc7df2067"
+  },
+  "src/OpenBudget.UI/src/vite-env.d.ts": {
+    "mtime": 1792563041.5375764,
+    "seen": 1792595096.316828,
+    "ast_hash": "0352474ba2918efe13895edbc3780d94",
+    "semantic_hash": "0352474ba2918efe13895edbc3780d94"
+  },
+  "src/OpenBudget.UI/tsconfig.json": {
+    "mtime": 1792563015.4172156,
+    "seen": 1792595096.316828,
+    "ast_hash": "d4c0ee5a4ebaeff6771f14852a1196b3",
+    "semantic_hash": "d4c0ee5a4ebaeff6771f14852a1196b3"
+  },
+  "src/OpenBudget.UI/vite.config.ts": {
+    "mtime": 1792566653.9938421,
+    "seen": 1792595096.316828,
+    "ast_hash": "529faf2bc180125281428dede6e0a9dc",
+    "semantic_hash": "529faf2bc180125281428dede6e0a9dc"
+  },
+  "src/OpenBudget.Api/BudgetCarryForward.cs": {
+    "mtime": 1792611489.0188508,
+    "seen": 1792643276.9358935,
+    "ast_hash": "ee2ec97316e2b206472f14f941b792d6",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/FlagContracts.cs": {
+    "mtime": 1792606824.2193763,
+    "seen": 1792643276.9358935,
+    "ast_hash": "17ef00268590c3560e99a12f82205609",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/FlagService.cs": {
+    "mtime": 1792607553.4990985,
+    "seen": 1792643276.9358935,
+    "ast_hash": "443cb7368a3341bcd3e55f96a315458f",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/LedgerContracts.cs": {
+    "mtime": 1792608245.9696603,
+    "seen": 1792643276.9358935,
+    "ast_hash": "de569e7e6cdbb8cff815a9ec096eb6fc",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/LedgerGate.cs": {
+    "mtime": 1792611491.0202494,
+    "seen": 1792643276.9358935,
+    "ast_hash": "9943f987609cfc5d93e25615b308a9b5",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/LedgerModel.cs": {
+    "mtime": 1792609180.9631846,
+    "seen": 1792643276.9358935,
+    "ast_hash": "27dde5a98adc7c9089d82fdb59ecf630",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/LedgerRules.cs": {
+    "mtime": 1792595392.0818458,
+    "seen": 1792643276.9358935,
+    "ast_hash": "633e29ef638605a40e186a65d9ed6caf",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/LedgerService.cs": {
+    "mtime": 1792648460.9530208,
+    "seen": 1792649787.6429613,
+    "ast_hash": "342e6d06bf11ae75c44527492e7d8348",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261021151927_CashLedger.Designer.cs": {
+    "mtime": 1792595967.0782363,
+    "seen": 1792643276.9358935,
+    "ast_hash": "6b9701ea91aeee2f63b093caed8010e3",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261021151927_CashLedger.cs": {
+    "mtime": 1792596176.6648521,
+    "seen": 1792643276.9358935,
+    "ast_hash": "ecc63c6066d69a0af262b7b8c3db39d4",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261021155232_AccountRegisterPresentation.Designer.cs": {
+    "mtime": 1792597952.5056102,
+    "seen": 1792643276.9358935,
+    "ast_hash": "6b73809dbea4874d66b38b9ac06190d7",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261021155232_AccountRegisterPresentation.cs": {
+    "mtime": 1792597952.5029912,
+    "seen": 1792643276.9358935,
+    "ast_hash": "183dbc36f10dfe3e7e24426ca51acd65",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261021175223_AccountViewOptions.Designer.cs": {
+    "mtime": 1792605143.1698864,
+    "seen": 1792643276.9358935,
+    "ast_hash": "ceb7b8fc0321d674c2bdc051e22ceb9a",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261021175223_AccountViewOptions.cs": {
+    "mtime": 1792605143.168887,
+    "seen": 1792643276.9358935,
+    "ast_hash": "619a4966cb91fe2c5c97212728500c44",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261021181045_ScheduledTransactions.Designer.cs": {
+    "mtime": 1792606245.5539858,
+    "seen": 1792643276.9358935,
+    "ast_hash": "80b8e8c957bc95c3dfe6b9b1d98fe361",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261021181045_ScheduledTransactions.cs": {
+    "mtime": 1792606245.5528624,
+    "seen": 1792643276.9358935,
+    "ast_hash": "b3d1259b1725fc540ee5a9e313415b0e",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261021181641_TransactionFlags.Designer.cs": {
+    "mtime": 1792606601.439712,
+    "seen": 1792643276.9358935,
+    "ast_hash": "6e984ca0a90402475f786bd70fc3f2e4",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261021181641_TransactionFlags.cs": {
+    "mtime": 1792606601.4387486,
+    "seen": 1792643276.9358935,
+    "ast_hash": "e4ab3e171cd17c721f16e411f8e45d9a",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261021183020_AccountNotes.Designer.cs": {
+    "mtime": 1792607420.6549265,
+    "seen": 1792643276.9358935,
+    "ast_hash": "ebad34c0a7a96dd3fd8690f128a2277a",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261021183020_AccountNotes.cs": {
+    "mtime": 1792607420.6519213,
+    "seen": 1792643276.9358935,
+    "ast_hash": "68caa0fd24d8925bafa0e44fe5c5f1d6",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261021184241_ScheduledApproval.Designer.cs": {
+    "mtime": 1792608161.7202604,
+    "seen": 1792643276.9358935,
+    "ast_hash": "c5e4495ccb4e3633e94116342795a98e",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261021184241_ScheduledApproval.cs": {
+    "mtime": 1792608161.7192497,
+    "seen": 1792643276.9358935,
+    "ast_hash": "991f7c07cbc4c68fa7f4b1657a449752",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261021190028_PayeeManagement.Designer.cs": {
+    "mtime": 1792609228.900182,
+    "seen": 1792643276.9358935,
+    "ast_hash": "5f007077acc6e305342df945c85e6b67",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261021190028_PayeeManagement.cs": {
+    "mtime": 1792609228.8991773,
+    "seen": 1792643276.9358935,
+    "ast_hash": "51bbb0441dff23b11ec6ae78fca74957",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/PayeeContracts.cs": {
+    "mtime": 1792609511.573214,
+    "seen": 1792643276.9358935,
+    "ast_hash": "b01fa9798312ec15e596535f8367a421",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/PayeeService.cs": {
+    "mtime": 1792609466.4325478,
+    "seen": 1792643276.9358935,
+    "ast_hash": "aeee090aa754cc3ce3cfdea1c761febf",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/RecurrenceRules.cs": {
+    "mtime": 1792606033.8390815,
+    "seen": 1792643276.9358935,
+    "ast_hash": "79d4516706f449a9d254a6492a6a1cb4",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/RegisterViewService.cs": {
+    "mtime": 1792605670.7347066,
+    "seen": 1792643276.9358935,
+    "ast_hash": "5c4b50e2084d473f0e5252f92c3a324a",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/ScheduleContracts.cs": {
+    "mtime": 1792608133.1474109,
+    "seen": 1792643276.9358935,
+    "ast_hash": "df4c3fe00b498f5b93b43576f65addc3",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/ScheduleModel.cs": {
+    "mtime": 1792608133.146413,
+    "seen": 1792643276.9358935,
+    "ast_hash": "d166e0b85365b06857de7ae4c5f8d616",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/SchedulePosting.cs": {
+    "mtime": 1792608697.3378255,
+    "seen": 1792643276.9358935,
+    "ast_hash": "cf0867d5ec2b1ad28ea78b826fd28ef7",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/ScheduleService.cs": {
+    "mtime": 1792608133.1636527,
+    "seen": 1792643276.9358935,
+    "ast_hash": "8bee3201e9dd161fffe4134e927ce120",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/TransactionSelectionService.cs": {
+    "mtime": 1792613629.0749054,
+    "seen": 1792643276.9358935,
+    "ast_hash": "97c59d6175115e770afc7ffa3748a82d",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/App.test.tsx": {
+    "mtime": 1792649273.0097358,
+    "seen": 1792649787.6429613,
+    "ast_hash": "1a9d1654c017a78f33e9361b7897ed83",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/budgetMoney.test.ts": {
+    "mtime": 1792611922.2797942,
+    "seen": 1792643276.9358935,
+    "ast_hash": "fc1ea83b059526c4d823ab92e04984a9",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/budgetMoney.ts": {
+    "mtime": 1792611921.0919976,
+    "seen": 1792643276.9358935,
+    "ast_hash": "80139ce927817dc65a772a3c131d23f6",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/AccountRegister.test.tsx": {
+    "mtime": 1792598369.4227903,
+    "seen": 1792643276.9358935,
+    "ast_hash": "015a6b332acc25efca4f355c5404a2d2",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/AccountRegister.tsx": {
+    "mtime": 1792644364.656773,
+    "seen": 1792649787.6429613,
+    "ast_hash": "0dc290e43c4cdf515c798b7f343ecdef",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/AccountSidebarRow.test.tsx": {
+    "mtime": 1792608368.6328738,
+    "seen": 1792643276.9358935,
+    "ast_hash": "a4e9ce2ada9d0006973a125743d2117e",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/AccountSidebarRow.tsx": {
+    "mtime": 1792608245.968605,
+    "seen": 1792643276.9358935,
+    "ast_hash": "5fd93f74b9a258e3ab778aedd6be8dcf",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/AccountsPage.test.tsx": {
+    "mtime": 1792647736.8031857,
+    "seen": 1792649787.6429613,
+    "ast_hash": "ba9fe5a44241f0a2ba51701ac8f392bf",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/AccountsPage.tsx": {
+    "mtime": 1792644889.1087856,
+    "seen": 1792649787.6429613,
+    "ast_hash": "bee2a701aa9c3e891f49557509f0ef29",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/ApprovalButton.test.tsx": {
+    "mtime": 1792608368.5630624,
+    "seen": 1792643276.9358935,
+    "ast_hash": "85761ccedd196bc7d4aade912ed7966a",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/ApprovalButton.tsx": {
+    "mtime": 1792608243.865385,
+    "seen": 1792643276.9358935,
+    "ast_hash": "562c148bc88006183ae71fdb21b7adad",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/CategoryPicker.test.tsx": {
+    "mtime": 1792611234.0191247,
+    "seen": 1792643276.9358935,
+    "ast_hash": "257c931058eb91c4dbc8d022daa1bf07",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/CategoryPicker.tsx": {
+    "mtime": 1792647719.0844605,
+    "seen": 1792649787.6429613,
+    "ast_hash": "d795b72b9d7a096d1aa79c85a0e38769",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/EditAccountForm.test.tsx": {
+    "mtime": 1792607496.040862,
+    "seen": 1792643276.9358935,
+    "ast_hash": "bd204d92eedd9bb781f9c98578622ade",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/EditAccountForm.tsx": {
+    "mtime": 1792607350.6267138,
+    "seen": 1792643276.9358935,
+    "ast_hash": "98e80011892a166bf4293e089c97cb43",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/Flags.test.tsx": {
+    "mtime": 1792607496.0398653,
+    "seen": 1792643276.9358935,
+    "ast_hash": "9ddb757ff8006ec27919e252920672b7",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/Flags.tsx": {
+    "mtime": 1792613459.1466422,
+    "seen": 1792643276.9358935,
+    "ast_hash": "c9dcb1e50a05548478554b3e010d62c4",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/InlineTransactionEditor.tsx": {
+    "mtime": 1792611143.3612146,
+    "seen": 1792643276.9358935,
+    "ast_hash": "e9300e2d17eba3c72e034fc5102ce9f7",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/LedgerDialog.tsx": {
+    "mtime": 1792609500.408544,
+    "seen": 1792643276.9358935,
+    "ast_hash": "8166f18650607e0630db6a5c59ff000f",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/NewCategoryDialog.test.tsx": {
+    "mtime": 1792610825.069255,
+    "seen": 1792643276.9358935,
+    "ast_hash": "db34453247c07e46def070a7670205f9",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/NewCategoryDialog.tsx": {
+    "mtime": 1792610530.5181007,
+    "seen": 1792643276.9358935,
+    "ast_hash": "0f085563586016d5552112c68640a6be",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/Payees.test.tsx": {
+    "mtime": 1792612757.2062929,
+    "seen": 1792643276.9358935,
+    "ast_hash": "184bd99cfe5d5dda2aa2912a609d7fa3",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/Payees.tsx": {
+    "mtime": 1792647712.1890678,
+    "seen": 1792649787.6429613,
+    "ast_hash": "1f9a41d578868807d5172b5a6d56fa57",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/TransactionDatePicker.test.tsx": {
+    "mtime": 1792606899.0065136,
+    "seen": 1792643276.9358935,
+    "ast_hash": "92001c41e5c1508f040597811520a530",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/TransactionDatePicker.tsx": {
+    "mtime": 1792647723.8023334,
+    "seen": 1792649787.6429613,
+    "ast_hash": "fa3a99c8e48bba475615c4ca66c47611",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/TransactionForm.test.tsx": {
+    "mtime": 1792598370.0884347,
+    "seen": 1792643276.9358935,
+    "ast_hash": "44c0b6416f215dfb0c2d416862dc4aac",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/TransactionForm.tsx": {
+    "mtime": 1792596110.4802485,
+    "seen": 1792643276.9358935,
+    "ast_hash": "56eff7739d42eeae418bce41c7afde47",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/TransactionSelectionBar.test.tsx": {
+    "mtime": 1792613487.5415223,
+    "seen": 1792643276.9358935,
+    "ast_hash": "77fd316f9cacbf89c9bee539b535104e",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/TransactionSelectionBar.tsx": {
+    "mtime": 1792613487.606897,
+    "seen": 1792643276.9358935,
+    "ast_hash": "4b2be46f00757741f326699ca9f59f50",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/ViewOptions.test.tsx": {
+    "mtime": 1792605490.067756,
+    "seen": 1792643276.9358935,
+    "ast_hash": "01251004343338d63aeaf866d373e90c",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/ViewOptions.tsx": {
+    "mtime": 1792605735.5566168,
+    "seen": 1792643276.9358935,
+    "ast_hash": "a819bb41ca8ace694dbf4207781f4f21",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/api.test.ts": {
+    "mtime": 1792610647.257551,
+    "seen": 1792643276.9358935,
+    "ast_hash": "ceccea3f072107991ce21c2357cd24ce",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/ledger/api.ts": {
+    "mtime": 1792610447.445783,
+    "seen": 1792643276.9358935,
+    "ast_hash": "33941a361d39362c77fdd600c4e10ee8",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/test-setup.ts": {
+    "mtime": 1792608368.513739,
+    "seen": 1792643276.9358935,
+    "ast_hash": "ce4da56d7739cc2ae9325262cfe8cf23",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/vitest.config.ts": {
+    "mtime": 1792608245.9906998,
+    "seen": 1792643276.9358935,
+    "ast_hash": "1e6b6597c96a18b3411a15302a7d32e1",
+    "semantic_hash": ""
+  },
+  "tests/OpenBudget.IntegrationTests/BudgetCarryForwardApiTests.cs": {
+    "mtime": 1792611974.030065,
+    "seen": 1792643276.9358935,
+    "ast_hash": "30fdde02316c0ad55c4b0e7021a84c5e",
+    "semantic_hash": ""
+  },
+  "tests/OpenBudget.IntegrationTests/LedgerApiTests.cs": {
+    "mtime": 1792648685.2201724,
+    "seen": 1792649787.6429613,
+    "ast_hash": "2545f4bb794754c6418f08ebdd48d0fb",
+    "semantic_hash": ""
+  },
+  "tests/OpenBudget.IntegrationTests/OpenBudget.IntegrationTests.csproj": {
+    "mtime": 1792595706.3616326,
+    "seen": 1792643276.9358935,
+    "ast_hash": "7c6b035f4d09bd50bfdb146526106e47",
+    "semantic_hash": ""
+  },
+  "tests/OpenBudget.IntegrationTests/PostgresFixture.cs": {
+    "mtime": 1792611534.0363946,
+    "seen": 1792643276.9358935,
+    "ast_hash": "da8ce9b38e33465673c4b359f1c09521",
+    "semantic_hash": ""
+  },
+  "tests/OpenBudget.IntegrationTests/TransactionSelectionApiTests.cs": {
+    "mtime": 1792648595.0390468,
+    "seen": 1792649787.6429613,
+    "ast_hash": "5498a16e54b61f3d8b3481ca751b39d4",
+    "semantic_hash": ""
+  },
+  "tests/OpenBudget.UnitTests/BudgetCarryForwardTests.cs": {
+    "mtime": 1792611534.0331607,
+    "seen": 1792643276.9358935,
+    "ast_hash": "7f5c2f38141aaaf55de2195cfbac129c",
+    "semantic_hash": ""
+  },
+  "tests/OpenBudget.UnitTests/LedgerRulesTests.cs": {
+    "mtime": 1792595960.138729,
+    "seen": 1792643276.9358935,
+    "ast_hash": "1b9c521608f9f37b876985d09124ddad",
+    "semantic_hash": ""
+  },
+  "tests/OpenBudget.UnitTests/OpenBudget.UnitTests.csproj": {
+    "mtime": 1792595698.8176763,
+    "seen": 1792643276.9358935,
+    "ast_hash": "480074d12b0e8c195e0284c7e921dcb4",
+    "semantic_hash": ""
+  },
+  "tests/OpenBudget.UnitTests/PayeeRulesTests.cs": {
+    "mtime": 1792609500.41155,
+    "seen": 1792643276.9358935,
+    "ast_hash": "d6e37a4f4a11491a4fcab5329723b19c",
+    "semantic_hash": ""
+  },
+  "tests/OpenBudget.UnitTests/RecurrenceTests.cs": {
+    "mtime": 1792606313.7053125,
+    "seen": 1792643276.9358935,
+    "ast_hash": "3a8ee1c99e5b6b1bb1c01e7fe4edb067",
+    "semantic_hash": ""
+  },
+  "tests/OpenBudget.UnitTests/RegisterViewTests.cs": {
+    "mtime": 1792607714.5308647,
+    "seen": 1792643276.9358935,
+    "ast_hash": "aa341189f1d8a7a3aa0cae30d19b4f95",
+    "semantic_hash": ""
+  },
+  ".github/copilot-instructions.md": {
+    "mtime": 1792590349.7857213,
+    "seen": 1792643276.9358935,
+    "ast_hash": "3087ede11157a99e03f8acb64c3d7e5a",
+    "semantic_hash": ""
+  },
+  ".github/workflows/test.yml": {
+    "mtime": 1792597170.399074,
+    "seen": 1792643276.9358935,
+    "ast_hash": "295e77682dcd488b1da0d9d80233c73c",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1792595390.0773144,
+    "seen": 1792643276.9358935,
+    "ast_hash": "bd1ae902d4b41eecba4f01d54ff26c95",
+    "semantic_hash": ""
+  },
+  "CLAUDE.md": {
+    "mtime": 1792590328.9955838,
+    "seen": 1792643276.9358935,
+    "ast_hash": "3087ede11157a99e03f8acb64c3d7e5a",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1792647746.055557,
+    "seen": 1792649787.6429613,
+    "ast_hash": "560fceebc25adbd1fc9d29703cc18b1a",
+    "semantic_hash": ""
+  },
+  "docs/README.md": {
+    "mtime": 1792644566.055409,
+    "seen": 1792649787.6429613,
+    "ast_hash": "ef896e675f9b66176ad749471c3465ca",
+    "semantic_hash": ""
+  },
+  "docs/api.md": {
+    "mtime": 1792648471.1017356,
+    "seen": 1792649787.6429613,
+    "ast_hash": "38ea8694780b8ba3f801370e11880b6b",
+    "semantic_hash": ""
+  },
+  "docs/architecture.md": {
+    "mtime": 1792647750.1505334,
+    "seen": 1792649787.6429613,
+    "ast_hash": "8eaf2ecfe741843d687ccee08947cbbf",
+    "semantic_hash": ""
+  },
+  "docs/backend.md": {
+    "mtime": 1792612254.0566194,
+    "seen": 1792643276.9358935,
+    "ast_hash": "6b3918a0066d52bf966248426f5c8ffe",
+    "semantic_hash": ""
+  },
+  "docs/conventions.md": {
+    "mtime": 1792613082.1880631,
+    "seen": 1792643276.9358935,
+    "ast_hash": "a39f7dbb51742d4f55e1385c4c296afc",
+    "semantic_hash": ""
+  },
+  "docs/data-model.md": {
+    "mtime": 1792644566.0532196,
+    "seen": 1792649787.6429613,
+    "ast_hash": "a1dcf93eac8719ee00421cbc626db207",
+    "semantic_hash": ""
+  },
+  "docs/developer-guide.md": {
+    "mtime": 1792610293.964947,
+    "seen": 1792643276.9358935,
+    "ast_hash": "367e446735c47978b08e31166ca0c978",
+    "semantic_hash": ""
+  },
+  "docs/milestones/milestone-00-foundation.md": {
+    "mtime": 1792593756.0027158,
+    "seen": 1792643276.9358935,
+    "ast_hash": "ce385c8c1b1ced96d544700da19e5f02",
+    "semantic_hash": ""
+  },
+  "docs/milestones/milestone-01-budget-core.md": {
+    "mtime": 1792649000.610015,
+    "seen": 1792649787.6429613,
+    "ast_hash": "ee79c208650718731810e579425134db",
+    "semantic_hash": ""
+  },
+  "docs/milestones/milestone-02-accounts-register.md": {
+    "mtime": 1792649282.3534195,
+    "seen": 1792649787.6429613,
+    "ast_hash": "c5106840e6f235048e6e350462ef0514",
+    "semantic_hash": ""
+  },
+  "docs/milestones/milestone-03-goals-and-assignment.md": {
+    "mtime": 1792593756.007011,
+    "seen": 1792643276.9358935,
+    "ast_hash": "f7584242da0317f2b5ea1e0866358506",
+    "semantic_hash": ""
+  },
+  "docs/milestones/milestone-04-scheduled-transactions.md": {
+    "mtime": 1792608699.4145823,
+    "seen": 1792643276.9358935,
+    "ast_hash": "1304d6a3d2ac40c0679d11051c5f28f5",
+    "semantic_hash": ""
+  },
+  "docs/milestones/milestone-05-credit-and-debt.md": {
+    "mtime": 1792593804.7957358,
+    "seen": 1792643276.9358935,
+    "ast_hash": "4b9a157d44fd82a4d50bf6996072801c",
+    "semantic_hash": ""
+  },
+  "docs/milestones/milestone-06-views-and-reports.md": {
+    "mtime": 1792593804.8050015,
+    "seen": 1792643276.9358935,
+    "ast_hash": "53166951d4418eb50aa20b3ea05c2d48",
+    "semantic_hash": ""
+  },
+  "docs/milestones/milestone-07-file-import.md": {
+    "mtime": 1792609900.6417458,
+    "seen": 1792643276.9358935,
+    "ast_hash": "62d5f66bd5e6f700d8508a5796e23e5d",
+    "semantic_hash": ""
+  },
+  "docs/milestones/milestone-08-identity-and-sharing.md": {
+    "mtime": 1792593804.8084815,
+    "seen": 1792643276.9358935,
+    "ast_hash": "72f5a9a7f624c447927646507b228996",
+    "semantic_hash": ""
+  },
+  "docs/milestones/milestone-09-cross-device-offline.md": {
+    "mtime": 1792593804.8110037,
+    "seen": 1792643276.9358935,
+    "ast_hash": "965b5ee39116d387e124b5e7f4f8a00d",
+    "semantic_hash": ""
+  },
+  "docs/milestones/milestone-10-linked-accounts.md": {
+    "mtime": 1792593804.8130045,
+    "seen": 1792643276.9358935,
+    "ast_hash": "0989df7c4f3b011beaa4d6faf0cbb2ea",
+    "semantic_hash": ""
+  },
+  "docs/milestones/milestone-11-anual-budget-planning.md": {
+    "mtime": 1792588849.8956368,
+    "seen": 1792643276.9358935,
+    "ast_hash": "597b92639d3b77b8582cc46a6156f43e",
+    "semantic_hash": ""
+  },
+  "docs/reference-analysis.md": {
+    "mtime": 1792567100.7950728,
+    "seen": 1792643276.9358935,
+    "ast_hash": "6aaac607bcbddb6b7960683e588ab9ea",
+    "semantic_hash": ""
+  },
+  "docs/roadmap.md": {
+    "mtime": 1792644731.6592789,
+    "seen": 1792649787.6429613,
+    "ast_hash": "e70849eed33db1d695df2fe6290ff2f5",
+    "semantic_hash": ""
+  },
+  "docs/testing.md": {
+    "mtime": 1792647756.566822,
+    "seen": 1792649787.6429613,
+    "ast_hash": "af64f588e4989b3eeffe8ea6466c016d",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/index.html": {
+    "mtime": 1792597168.3758943,
+    "seen": 1792643276.9358935,
+    "ast_hash": "bf3b5574048d02241871a0bfab7edec2",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/public/icon-bank.svg": {
+    "mtime": 1792564631.0061762,
+    "seen": 1792643276.9358935,
+    "ast_hash": "22642fca3a030e1d3bfb9a9263b7d1c7",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/public/icon-chart.svg": {
+    "mtime": 1792564630.9951742,
+    "seen": 1792643276.9358935,
+    "ast_hash": "7f0e8ed9f0cc8d774dde806d17fee7ac",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/public/icon-plan.svg": {
+    "mtime": 1792564630.9941697,
+    "seen": 1792643276.9358935,
+    "ast_hash": "934dc9a267572e1344bc19e0cb0b4f9b",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/public/referral-heart.svg": {
+    "mtime": 1792564295.5537312,
+    "seen": 1792643276.9358935,
+    "ast_hash": "9ff299b78b6ccec5db42281d995483e5",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/public/ynab-logo.svg": {
+    "mtime": 1792564355.631837,
+    "seen": 1792643276.9358935,
+    "ast_hash": "5070c2a0da491faa7a2b0a9a5b11717f",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261022044755_CategoryMoves.Designer.cs": {
+    "mtime": 1792644475.8565638,
+    "seen": 1792649787.6429613,
+    "ast_hash": "56881fb1e9a11922ef4bb66fc6340b3e",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261022044755_CategoryMoves.cs": {
+    "mtime": 1792644475.8555632,
+    "seen": 1792649787.6429613,
+    "ast_hash": "d11852efbe2de56fb176877b2cb5b105",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/PlanTransactionList.tsx": {
+    "mtime": 1792644228.6461887,
+    "seen": 1792649787.6429613,
+    "ast_hash": "bbbfc98f37a785da62e688ad78e02fd0",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/planHelpers.test.ts": {
+    "mtime": 1792644504.557395,
+    "seen": 1792649787.6429613,
+    "ast_hash": "85ca75787ed906fc6f88a9e4f417cef6",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/src/planHelpers.ts": {
+    "mtime": 1792644489.6011455,
+    "seen": 1792649787.6429613,
+    "ast_hash": "9f41912d31ea4c4f2f8ddc5f71ad0424",
+    "semantic_hash": ""
+  }
+}

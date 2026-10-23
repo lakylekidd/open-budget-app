@@ -107,7 +107,7 @@ it('keeps invalid assigned input visible and never sends a silent zero assignmen
 it('does not allow editing stale category assignments while the requested month is loading',async()=>{
   const original=vi.mocked(fetch).getMockImplementation()!;let complete:((response:Response)=>void)|undefined;
   vi.stubGlobal('fetch',vi.fn(async(path:string,init?:RequestInit)=>path==='/api/budget/2026-10'&&!init?.method?new Promise<Response>(resolve=>{complete=resolve;}):original(path,init)));
-  render(<App/>);expect(screen.getByRole('button',{name:'Edit assigned for Electricity & water'})).toBeDisabled();await waitFor(()=>expect(complete).toBeDefined());complete!(response(months['2026-10']));await saved();expect(screen.getByRole('button',{name:'Edit assigned for Electricity'})).toBeEnabled();
+  render(<App/>);expect(screen.queryByRole('button',{name:'Edit assigned for Electricity & water'})).not.toBeInTheDocument();await waitFor(()=>expect(complete).toBeDefined());complete!(response(months['2026-10']));await saved();expect(screen.getByRole('button',{name:'Edit assigned for Electricity'})).toBeEnabled();
 });
 
 it('opens category activity and takes a reconciled transaction to its account despite saved filters',async()=>{
