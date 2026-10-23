@@ -171,6 +171,46 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
     }
 
     [Fact]
+    public async Task Session_cookie_is_secure_and_state_changes_require_a_matching_origin_or_referer()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        using (var scope = app.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<OpenBudgetUser>>();
+            Assert.True((await users.CreateAsync(new OpenBudgetUser { UserName = "alice", Email = "alice@example.test", EmailConfirmed = true }, "Strong-pass1!")).Succeeded);
+        }
+        using var client = app.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = false });
+        client.DefaultRequestHeaders.Add("X-Forwarded-Proto", "https");
+        client.DefaultRequestHeaders.Add("Origin", "https://localhost");
+        using var login = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("alice", "Strong-pass1!"));
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        var setCookie = Assert.Single(login.Headers.GetValues("Set-Cookie"));
+        Assert.Contains("httponly", setCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("samesite=strict", setCookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("secure", setCookie, StringComparison.OrdinalIgnoreCase);
+        client.DefaultRequestHeaders.Add("Cookie", setCookie.Split(';', 2)[0]);
+
+        client.DefaultRequestHeaders.Remove("Origin");
+        client.DefaultRequestHeaders.Add("Origin", "https://attacker.example");
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.PutAsJsonAsync("/api/auth/profile", new UpdateProfileRequest("blocked"))).StatusCode);
+
+        var environment = app.Services.GetRequiredService<IWebHostEnvironment>();
+        var originalEnvironment = environment.EnvironmentName;
+        environment.EnvironmentName = Environments.Production;
+        try
+        {
+            client.DefaultRequestHeaders.Remove("Origin");
+            Assert.Equal(HttpStatusCode.Forbidden, (await client.PutAsJsonAsync("/api/auth/profile", new UpdateProfileRequest("missing-origin"))).StatusCode);
+            client.DefaultRequestHeaders.Add("Referer", "https://localhost/profile");
+            Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync("/api/auth/profile", new UpdateProfileRequest("alice-secure"))).StatusCode);
+        }
+        finally
+        {
+            environment.EnvironmentName = originalEnvironment;
+        }
+    }
+
+    [Fact]
     public async Task Suspended_users_cannot_login()
     {
         await using var app = await fixture.CreateAppAsync();

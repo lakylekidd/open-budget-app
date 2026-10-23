@@ -24,6 +24,8 @@ In the Compose resource:
 
 The Compose file contains health checks for PostgreSQL, the API, and the UI. The API check calls `/health`, which verifies database connectivity. The UI check reaches the same endpoint through nginx.
 
+Keep the API reachable only from the Compose network behind the `ui` nginx proxy. Nginx forwards the original Host and HTTPS scheme so the API can set Secure cookies and validate Origin/Referer on authenticated writes. Do not publish the API port as a public service.
+
 ## 3. Create the Coolify webhook
 
 In Coolify, open the resource’s **Webhooks** or deployment webhook settings and copy the deploy URL. The URL must be the resource’s deploy endpoint, for example:

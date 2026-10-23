@@ -236,7 +236,7 @@ Existing categories and groups must be updated to reference the appropriate budg
 
 **Acceptance criteria**
 
-- [ ] Authentication uses secure HttpOnly cookies with appropriate SameSite, CSRF and HTTPS protections.
+- [x] Authentication uses HttpOnly, SameSite=Strict, Secure cookies and same-origin checks for authenticated state-changing requests.
 - [ ] Passwords and bootstrap credentials are never committed to source control.
 - [ ] Session invalidation works after logout, suspension and security-sensitive account changes.
 - [ ] Automated integration tests verify login, registration controls, lockout, account suspension and administrative authorization.

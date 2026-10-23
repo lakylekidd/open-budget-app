@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.HttpOverrides;
 using OpenBudget.Api;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,6 +9,17 @@ var connectionString = builder.Configuration.GetConnectionString("budgetdatabase
     ?? "Host=localhost;Port=5432;Database=budgetboard;Username=budgetboard;Password=budgetboard_dev";
 builder.Services.AddDbContext<BudgetDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddOpenBudgetIdentity(builder.Environment);
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedProto;
+    if (builder.Environment.IsProduction())
+    {
+        // The API is only reachable on the private Compose network behind the UI proxy.
+        // The proxy IP is dynamic, so trust forwarded headers only at this unexposed backend boundary.
+        options.KnownIPNetworks.Clear();
+        options.KnownProxies.Clear();
+    }
+});
 builder.Services.AddScoped<BudgetService>();
 builder.Services.AddScoped<BudgetOwnershipService>();
 builder.Services.AddScoped<LongTermPlanningService>();
@@ -21,6 +33,7 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
     .AllowAnyHeader().AllowAnyMethod()));
 
 var app = builder.Build();
+app.UseForwardedHeaders();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -42,13 +55,24 @@ app.UseRateLimiter();
 app.Use(async (context, next) =>
 {
     if (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method) ||
-        HttpMethods.IsOptions(context.Request.Method) || HttpMethods.IsTrace(context.Request.Method) ||
-        !context.Request.Headers.TryGetValue("Origin", out var origin) || string.IsNullOrEmpty(origin))
+        HttpMethods.IsOptions(context.Request.Method) || HttpMethods.IsTrace(context.Request.Method))
     {
         await next(context);
         return;
     }
-    if (!Uri.TryCreate(origin.ToString(), UriKind.Absolute, out var source) ||
+    var hasOrigin = context.Request.Headers.TryGetValue("Origin", out var origin) && !string.IsNullOrWhiteSpace(origin);
+    var hasReferer = context.Request.Headers.TryGetValue("Referer", out var referer) && !string.IsNullOrWhiteSpace(referer);
+    if (!hasOrigin && !hasReferer)
+    {
+        if (app.Environment.IsProduction() && context.User.Identity?.IsAuthenticated == true)
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+        await next(context);
+        return;
+    }
+    if (!Uri.TryCreate(hasOrigin ? origin.ToString() : referer.ToString(), UriKind.Absolute, out var source) ||
         !string.Equals(source.Authority, context.Request.Host.Value, StringComparison.OrdinalIgnoreCase) ||
         !string.Equals(source.Scheme, context.Request.Scheme, StringComparison.OrdinalIgnoreCase))
     {
