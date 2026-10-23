@@ -138,9 +138,9 @@
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/App.tsx": {
-    "mtime": 1792692751.8880908,
-    "seen": 1792692763.6164515,
-    "ast_hash": "8dc7d36da9183ca44badc019ce1e0cd5",
+    "mtime": 1792695752.704931,
+    "seen": 1792695802.2349584,
+    "ast_hash": "22a27ed9b832033ab2a2b079fb586adb",
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/main.tsx": {
@@ -366,9 +366,9 @@
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/App.test.tsx": {
-    "mtime": 1792692751.8827631,
-    "seen": 1792692763.6164515,
-    "ast_hash": "edeed8e0cb7fe5fea760f5d4735afdae",
+    "mtime": 1792695752.7069402,
+    "seen": 1792695802.2349584,
+    "ast_hash": "66f1761f269cd099d23f6c31a5680463",
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/budgetMoney.test.ts": {
@@ -648,9 +648,9 @@
     "semantic_hash": ""
   },
   ".github/workflows/test.yml": {
-    "mtime": 1792597170.399074,
-    "seen": 1792643276.9358935,
-    "ast_hash": "295e77682dcd488b1da0d9d80233c73c",
+    "mtime": 1792694269.6780193,
+    "seen": 1792694275.6597261,
+    "ast_hash": "cc7f4f26e0cf58707531b3c1cd88b498",
     "semantic_hash": ""
   },
   "AGENTS.md": {
@@ -666,9 +666,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1792692751.8620522,
-    "seen": 1792692763.6164515,
-    "ast_hash": "85f72f7a74bef96f5af0374c283bf98c",
+    "mtime": 1792695872.527427,
+    "seen": 1792695885.7947378,
+    "ast_hash": "fac9e77bb56189deca3c4e0cd1f275ab",
     "semantic_hash": ""
   },
   "docs/README.md": {
@@ -708,9 +708,9 @@
     "semantic_hash": ""
   },
   "docs/developer-guide.md": {
-    "mtime": 1792692751.869283,
-    "seen": 1792692763.6164515,
-    "ast_hash": "9fcf4911af3afc8414e4acd28a08cbdb",
+    "mtime": 1792697261.5106955,
+    "seen": 1792697281.142159,
+    "ast_hash": "4a698992dd1709e9eadb2d8ab85c1ffd",
     "semantic_hash": ""
   },
   "docs/milestones/milestone-00-foundation.md": {
@@ -804,9 +804,9 @@
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/index.html": {
-    "mtime": 1792597168.3758943,
-    "seen": 1792643276.9358935,
-    "ast_hash": "bf3b5574048d02241871a0bfab7edec2",
+    "mtime": 1792695744.5411375,
+    "seen": 1792695802.2349584,
+    "ast_hash": "542a4383c21ef5309ff6ebd35835cc53",
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/public/icon-bank.svg": {
@@ -831,12 +831,6 @@
     "mtime": 1792564295.5537312,
     "seen": 1792643276.9358935,
     "ast_hash": "9ff299b78b6ccec5db42281d995483e5",
-    "semantic_hash": ""
-  },
-  "src/OpenBudget.UI/public/ynab-logo.svg": {
-    "mtime": 1792564355.631837,
-    "seen": 1792643276.9358935,
-    "ast_hash": "5070c2a0da491faa7a2b0a9a5b11717f",
     "semantic_hash": ""
   },
   "src/OpenBudget.Api/Migrations/20261022044755_CategoryMoves.Designer.cs": {
@@ -939,6 +933,24 @@
     "mtime": 1792692751.898232,
     "seen": 1792692763.6164515,
     "ast_hash": "749dd3a1c8715f12b2164f410ec79c7c",
+    "semantic_hash": ""
+  },
+  ".github/workflows/release.yml": {
+    "mtime": 1792696494.142605,
+    "seen": 1792696500.3078814,
+    "ast_hash": "246cecc27a153959c7751ff19f077546",
+    "semantic_hash": ""
+  },
+  "docker-compose.yml": {
+    "mtime": 1792697261.5106955,
+    "seen": 1792697281.142159,
+    "ast_hash": "d9833f16d99bf069306ac0a211ec7e22",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/public/openbudget-logo.svg": {
+    "mtime": 1792695744.5411375,
+    "seen": 1792695802.2349584,
+    "ast_hash": "607e95fe3d0de7127efb550b4d147748",
     "semantic_hash": ""
   }
 }
