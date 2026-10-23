@@ -23,6 +23,9 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__budgetdatabase: Host=postgres;Port=5432;Database=budgetboard;Username=budgetboard;Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Coolify}
+      BootstrapAdmin__Username: ${BootstrapAdmin__Username:?Set BootstrapAdmin__Username in Coolify}
+      BootstrapAdmin__Email: ${BootstrapAdmin__Email:?Set BootstrapAdmin__Email in Coolify}
+      BootstrapAdmin__Password: ${BootstrapAdmin__Password:?Set BootstrapAdmin__Password in Coolify}
     depends_on:
       postgres:
         condition: service_healthy

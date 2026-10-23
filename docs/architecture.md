@@ -23,6 +23,7 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Persistence | EF Core 10, Npgsql EF provider, PostgreSQL 17 |
 | Local orchestration | .NET Aspire 13.6.2 AppHost, PostgreSQL and JavaScript/Vite integrations |
 | API contract | Budget identity plus versioned monthly snapshot |
+| Authentication | ASP.NET Core Identity with cookie sessions, verified registration, password recovery and administrator role |
 
 ## Implemented user path
 
@@ -57,15 +58,16 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Bank linking, credit/debt accounts | Future milestones |
 | Targets and assignment recommendations | Basic static target/progress display only |
 | Reflect reports | Not implemented; entry remains a placeholder |
-| Authentication, household sharing, multi-user conflict handling | Not implemented |
+| Identity sign-in, bootstrap administrators, verified registration/recovery and audited account lifecycle administration | Implemented |
+| Owner-scoped budget identity, archive/restore, membership limits, monthly Plan snapshots, ledger/planning isolation and active budget selection | Implemented |
 
 ## Design limits to address
 
 - `App.tsx` currently combines navigation, state, dialogs, table rendering, and data access. Split feature UI and API client code as slices grow.
 - Activity combines an explicit legacy baseline with ledger-derived activity. New cash flows come from account transactions; prototype manual funds are preserved read-only.
-- Monthly writes replace the editable snapshot and use optimistic concurrency; membership/authorization boundaries are not implemented.
-- The app currently supports one default budget identity. Multiple budgets and household access are planned for Milestone 8.
-- No authorization boundary protects the API. Do not connect real financial accounts or expose the API beyond the local machine until identity, tenant isolation, and security review are delivered.
+- Monthly writes replace the editable snapshot and use optimistic concurrency; owner checks protect budget-scoped Plan routes.
+- Budget identity, monthly Plan snapshots, ledger resources and long-term planning are owner-scoped to the active budget. The UI persists selection locally and sends a budget cookie that the API validates against the authenticated owner. Legacy default budget routes remain administrator-only.
+- Membership plans seed Free/Plus/Pro and enforce active-budget limits; administrators can assign tiers and per-user overrides from the admin panel.
 
 ## Cash ledger slice
 
@@ -73,7 +75,7 @@ The frontend ledger lives in `src/ledger/` with a typed API client, reusable acc
 
 `LedgerService` applies domain rules and month projection; `LedgerGate` orders month initialization, Plan writes and ledger commands under a PostgreSQL row lock/transaction. The global ledger revision detects stale edits. Before/after audit receipts, transfer legs, reconciliation and month changes commit together. Register and account snapshots share the same revision. Lost-response retries reuse the original command; conflicts require reload/review.
 
-Account balances are queried from the ledger. Projection recalculates initialized months and propagates ledger balance deltas into later opening values, preserving explicit assignments. This single-budget implementation favors explicit correctness; incremental projection is an optimization if measured scale requires it. Reconciled entries require explicit edit confirmation; snapshots are retained/inactivated and changes audited. Forecasts stay outside actual totals until their due day or explicit Enter Now; due-day entries require approval. A scoped background worker/read catch-up shares the normal application-service transaction path. Account view preferences, notes, adjustments and named flags persist on the server.
+Account balances are queried from the active budget's ledger. Projection recalculates initialized months and propagates ledger balance deltas into later opening values, preserving explicit assignments. The budget-specific database gate favors explicit correctness; incremental projection is an optimization if measured scale requires it. Reconciled entries require explicit edit confirmation; snapshots are retained/inactivated and changes audited. Forecasts stay outside actual totals until their due day or explicit Enter Now; due-day entries require approval. A scoped background worker/read catch-up shares the normal application-service transaction path. Account view preferences, notes, adjustments and named flags persist on the server within each budget.
 
 Domain unit tests, disposable-PostgreSQL HTTP integration tests and React workflow tests cover this slice. See [testing](testing.md).
 

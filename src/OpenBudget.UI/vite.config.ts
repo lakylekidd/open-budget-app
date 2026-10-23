@@ -7,8 +7,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/api': apiTarget,
-      '/health': apiTarget,
+      // Preserve the browser-facing host for the API's same-origin write checks.
+      // Vite's string shorthand enables changeOrigin and replaces it with port 5080.
+      '/api': { target: apiTarget, changeOrigin: false },
+      '/health': { target: apiTarget, changeOrigin: false },
     },
   },
 });

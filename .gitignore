@@ -8,6 +8,10 @@ src/OpenBudget.UI/.vite/
 **/bin/
 **/obj/
 **/TestResults/
+/artifacts/
+
+# Local Graphify runtime interpreter path
+/graphify-out/.graphify_python
 
 # IDE and local-only settings
 .vs/

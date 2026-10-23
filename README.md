@@ -23,6 +23,7 @@ OpenBudget is a budgeting app with a React UI, .NET API, and PostgreSQL database
 - Cash accounts with a searchable register, transfers, splits, and reconciliation
 - Scheduled transactions, payee management, and audit history
 - Long-Term Planning with annual forecasts and monthly actuals
+- Identity sign-in, verified registration and recovery email, plus audited administrator account controls
 
 ## Quick start
 
@@ -35,6 +36,7 @@ dotnet run --project src/OpenBudget.AppHost
 ```
 
 Open the `ui` endpoint in the Aspire dashboard, or visit `http://127.0.0.1:5173/`.
+The local Development administrator is `admin` / `admin`. Production deployments require `BootstrapAdmin__Username`, `BootstrapAdmin__Email`, and `BootstrapAdmin__Password`; see the [release deployment guide](docs/release-deployment.md#2-configure-coolify).
 
 ## Documentation
 
@@ -46,4 +48,4 @@ Open the `ui` endpoint in the Aspire dashboard, or visit `http://127.0.0.1:5173/
 
 ## Project status
 
-OpenBudget is under active development. It currently uses one local budget and has no user authentication. Keep deployments private until identity and authorization are implemented. See the [architecture](docs/architecture.md) and [roadmap](docs/roadmap.md) for current scope and planned work.
+OpenBudget is under active development. Milestone 2a is implemented: authentication, administrator controls, owner-scoped budgets, monthly Plan snapshots, and budget-isolated ledger and long-term planning data are in place. See the [architecture](docs/architecture.md) and [roadmap](docs/roadmap.md) for current capabilities and planned work.

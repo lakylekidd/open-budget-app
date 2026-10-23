@@ -62,7 +62,7 @@ public sealed partial class LedgerService
                 throw new LedgerException("Scheduled transfers require different accounts, an outflow and no category.");
             await OpenAccountAsync(toAccountId.Value, ct);
         }
-        var month = await budgets.GetMonthAsync(Month(date), ct);
+        var month = await budgets.GetMonthAsync(db.ActiveBudgetId, Month(date), ct);
         var ids = (template.Splits ?? []).Select(s => s.CategoryId).Concat(template.CategoryId is null ? [] : [template.CategoryId]);
         foreach (var id in ids)
             if (!month.Groups.Any(g => !g.IsArchived && g.Categories.Any(c => c.Id == id && !c.IsArchived)))

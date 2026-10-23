@@ -39,7 +39,7 @@ public sealed partial class LedgerService
                         throw new LedgerException("This payee has transaction history or a schedule. Hide it to keep that history.");
                     db.Payees.Remove(row); continue;
                 }
-                if (p.CategoryMode == "always" && !await db.Categories.AnyAsync(c => c.Id == p.DefaultCategoryId && !c.IsArchived, ct))
+                if (p.CategoryMode == "always" && !await db.Categories.AnyAsync(c => c.BudgetId == db.ActiveBudgetId && c.Id == p.DefaultCategoryId && !c.IsArchived, ct))
                     throw new LedgerException("Choose an existing active default category.");
                 var oldName = row.Name;
                 row.Name = p.Name.Trim(); row.NormalizedName = row.Name.ToUpperInvariant(); row.IsHidden = p.IsHidden;
@@ -84,7 +84,7 @@ public sealed partial class LedgerService
         var category = payee.CategoryMode == "always" ? payee.DefaultCategoryId : PayeeRules.HistoryCategory(
             await db.Transactions.Where(t => t.PayeeId == payee.Id && !t.IsDeleted && !t.IsOpening && t.TransferId == null)
                 .OrderByDescending(t => t.Date).ThenBy(t => t.Id).Take(3).Select(t => t.CategoryId).ToListAsync(ct));
-        return category is not null && await db.Categories.AnyAsync(c => c.BudgetMonth == Month(date) && c.Id == category && !c.IsArchived && db.CategoryGroups.Any(g => g.BudgetMonth == c.BudgetMonth && g.Id == c.GroupId && !g.IsArchived), ct) ? category : null;
+        return category is not null && await db.Categories.AnyAsync(c => c.BudgetId == db.ActiveBudgetId && c.BudgetMonth == Month(date) && c.Id == category && !c.IsArchived && db.CategoryGroups.Any(g => g.BudgetId == db.ActiveBudgetId && g.BudgetMonth == c.BudgetMonth && g.Id == c.GroupId && !g.IsArchived), ct) ? category : null;
     }
 }
 

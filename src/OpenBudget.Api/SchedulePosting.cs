@@ -39,16 +39,42 @@ public sealed partial class LedgerService
             return new Change(entry.TransferId??id,before,rows.Select(ToDto).ToList());
         },ct);
 }
-public sealed class SchedulePostingWorker(IServiceScopeFactory scopes,ILogger<SchedulePostingWorker> logger):BackgroundService
+public sealed class SchedulePostingService(IServiceScopeFactory scopes, ILogger<SchedulePostingService> logger)
+{
+    public async Task ProcessAllBudgetsAsync(CancellationToken cancellationToken)
+    {
+        await using var listingScope = scopes.CreateAsyncScope();
+        var budgetIds = await listingScope.ServiceProvider.GetRequiredService<BudgetDbContext>().BudgetPlans
+            .AsNoTracking().Where(plan => !plan.IsArchived).Select(plan => plan.Id).ToListAsync(cancellationToken);
+        foreach (var budgetId in budgetIds)
+        {
+            try
+            {
+                await using var budgetScope = scopes.CreateAsyncScope();
+                budgetScope.ServiceProvider.GetRequiredService<BudgetRequestContext>().BudgetId = budgetId;
+                await budgetScope.ServiceProvider.GetRequiredService<LedgerService>().PostDueSchedulesAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception) { logger.LogWarning("Scheduled posting could not complete for one budget; it will retry on the next pass."); }
+        }
+    }
+}
+
+public sealed class SchedulePostingWorker(IServiceScopeFactory scopes, ILogger<SchedulePostingWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while(!stoppingToken.IsCancellationRequested)
+        while (!stoppingToken.IsCancellationRequested)
         {
-            try {await using var scope=scopes.CreateAsyncScope();await scope.ServiceProvider.GetRequiredService<LedgerService>().PostDueSchedulesAsync(stoppingToken);}
-            catch(OperationCanceledException)when(stoppingToken.IsCancellationRequested){break;}
-            catch(Exception){logger.LogWarning("Scheduled posting could not complete; it will retry on the next pass.");}
-            try{await Task.Delay(TimeSpan.FromSeconds(30),stoppingToken);}catch(OperationCanceledException)when(stoppingToken.IsCancellationRequested){break;}
+            try
+            {
+                await using var scope = scopes.CreateAsyncScope();
+                await scope.ServiceProvider.GetRequiredService<SchedulePostingService>().ProcessAllBudgetsAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (Exception) { logger.LogWarning("Scheduled posting could not enumerate budgets; it will retry on the next pass."); }
+            try { await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
         }
     }
 }

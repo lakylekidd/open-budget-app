@@ -38,6 +38,28 @@ UI tests use Vitest, jsdom and Testing Library with controlled API responses. Th
 | Money precision, exact splits, refund/transfer rules, cleared balances | `LedgerRulesTests` and money-input unit tests |
 | Loading/error/empty, safe replay after reload, audit/deletion confirmation, keyboard closure | `AccountsPage.test.tsx` and `TransactionForm.test.tsx` |
 | Inline transaction Tab order skips dropdown arrows and proceeds to the next field | `AccountsPage.test.tsx` |
+| Independent administrator/user cookie sessions, login, logout, lockout, username/profile change, password change/reset invalidation across concurrent sessions, audit privacy and protection of the shared legacy budget | `AuthenticationApiTests.Login_session_logout_and_lockout_use_identity_cookie_and_persisted_user`; `AuthenticationApiTests.Admin_user_lifecycle_is_role_protected_and_audited`; `AuthenticationApiTests.Admin_password_reset_sends_expiring_link_without_disclosing_token_or_existing_password`; `Suspended_users_cannot_login`; `ProfileSettings.test.tsx`; `AuthGate.test.tsx` |
+| Production bootstrap administrator uses configured credentials, receives administrator/Pro membership, owns the legacy budget and its financial rows, can change credentials securely, and keeps the changed password across startup reruns | `AuthenticationApiTests.Production_bootstrap_admin_uses_configured_credentials_and_preserves_existing_data_on_restart` |
+| Non-Development startup rejects missing bootstrap credentials without provisioning the Development-only `admin` account | `AuthenticationApiTests.Non_development_bootstrap_requires_configured_credentials_and_does_not_create_development_admin` |
+| Identity and budget-scope migrations preserve legacy assignments, account/transaction rows, and assign the default budget to the configured bootstrap administrator | `AuthenticationApiTests.Identity_and_budget_scope_migrations_preserve_legacy_financial_data_and_assign_it_to_development_admin` |
+| Owner-only budget/month reads and writes, including administrator denial of another user's private Plan data; legacy ledger isolation, unique month snapshots, budget switching, persisted selection, create/rename/archive/restore/delete UI and versioned deletion | `AuthenticationApiTests.Admin_user_lifecycle_is_role_protected_and_audited`; `BudgetOwnershipApiTests.Legacy_ledger_recalculation_and_planning_reads_do_not_cross_owned_budget_snapshots`; `BudgetOwnershipApiTests.Owner_can_permanently_delete_a_budget_and_its_plan_only_with_current_version`; `App.test.tsx` |
+| Membership downgrade retains existing budgets while blocking creation over the new limit | `AuthenticationApiTests.Admin_user_lifecycle_is_role_protected_and_audited` |
+
+## Milestone 2a final verification (2026-10-23)
+
+- Solution build: zero warnings and errors.
+- .NET tests: 95 unit and 83 PostgreSQL integration tests passed, including required non-Development bootstrap configuration.
+- UI: 178 tests passed; TypeScript/Vite production build passed.
+- Deployment configuration: `docker compose config --quiet` passed with the required PostgreSQL and bootstrap-admin values supplied.
+- Aspire smoke: API health reported a connected database and the UI returned HTTP 200.
+| Membership subscription metadata validates ordered dates and persists start, expiration, provider and external ID through the administrator API/UI | `AuthenticationApiTests.Admin_user_lifecycle_is_role_protected_and_audited`; `AdminPanel.test.tsx` |
+| Membership entitlements default to deny, tier settings and user allow/deny overrides drive authorization requirements, clearing an override restores the tier default, and admin changes are audited | `MembershipEntitlementApiTests.Plan_entitlements_and_user_overrides_drive_reusable_authorization_requirements`; `EntitlementKeyTests` |
+| Registration disabled by default, email verification, password recovery and single-use reset tokens | `AuthenticationApiTests.Registration_is_disabled_by_default_and_open_registration_requires_email_confirmation`; `AuthGate.test.tsx` |
+| New users receive membership but no budget until they explicitly create one | `AuthenticationApiTests.Registration_is_disabled_by_default_and_open_registration_requires_email_confirmation` |
+| Administrator role boundary, dashboard status/budget/tier counts, recent registrations and security events, user search/status filters, registration mode, approval, suspension/reactivation, bootstrap protection, unlock behavior and audit | `AuthenticationApiTests.Admin_user_lifecycle_is_role_protected_and_audited`; `AdminPanel.test.tsx` |
+| Administrator invitation creates an unverified account with the selected membership, sends an expiring verification link without exposing credentials, enforces the role boundary, audits the action and removes the account when email delivery fails | `AuthenticationApiTests.Administrator_invites_verified_email_user_without_exposing_a_password_or_token`; `AdminPanel.test.tsx` |
+| Administrator can inspect a bounded account history containing only that user's lifecycle events; other roles and unknown IDs are denied | `AuthenticationApiTests.Admin_user_lifecycle_is_role_protected_and_audited`; `AdminPanel.test.tsx` |
+| Administrator password reset sends the expiring Identity token only by email, never reveals a password/token in the API response, and records initiation | `AuthenticationApiTests.Admin_password_reset_sends_expiring_link_without_disclosing_token_or_existing_password`; `AdminPanel.test.tsx` |
 
 `FailureInjector` throws on the final receipt/audit save after financial rows have already been saved within the open transaction. Fresh HTTP/database assertions prove rollback, rather than just observing an exception.
 

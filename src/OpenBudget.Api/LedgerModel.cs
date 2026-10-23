@@ -4,6 +4,7 @@ namespace OpenBudget.Api;
 
 public sealed class AccountEntity
 {
+    public string BudgetId { get; set; } = BudgetRequestContext.DefaultBudgetId;
     public string Notes { get; set; } = "";
     public Guid Id { get; set; }
     public string Name { get; set; } = "";
@@ -14,6 +15,7 @@ public sealed class AccountEntity
 
 public sealed class PayeeEntity
 {
+    public string BudgetId { get; set; } = BudgetRequestContext.DefaultBudgetId;
     public bool IsHidden { get; set; }
     public string CategoryMode { get; set; } = "history";
     public string? DefaultCategoryId { get; set; }
@@ -25,6 +27,7 @@ public sealed class PayeeEntity
 
 public sealed class TransactionEntity
 {
+    public string BudgetId { get; set; } = BudgetRequestContext.DefaultBudgetId;
     public bool IsApproved { get; set; } = true;
     public Guid? ScheduleId { get; set; }
     public string? FlagColor { get; set; }
@@ -54,6 +57,7 @@ public sealed class SplitEntity
 
 public sealed class LedgerStateEntity
 {
+    public string BudgetId { get; set; } = BudgetRequestContext.DefaultBudgetId;
     public int Id { get; set; } = 1;
     public long Version { get; set; } = 1;
 }
@@ -61,6 +65,7 @@ public sealed class LedgerStateEntity
 // A command receipt is also the append-only audit record. Financial rows are soft deleted.
 public sealed class LedgerCommandEntity
 {
+    public string BudgetId { get; set; } = BudgetRequestContext.DefaultBudgetId;
     public Guid Id { get; set; }
     public Guid ResourceId { get; set; }
     public string Kind { get; set; } = "";
@@ -73,6 +78,7 @@ public sealed class LedgerCommandEntity
 
 public sealed class ReconciliationEntity
 {
+    public string BudgetId { get; set; } = BudgetRequestContext.DefaultBudgetId;
     public bool IsInvalidated { get; set; }
     public Guid Id { get; set; }
     public Guid AccountId { get; set; }
@@ -86,7 +92,7 @@ public static class LedgerModel
     {
         model.Entity<AccountEntity>(e =>
         {
-            e.HasKey(x => x.Id); e.Property(x => x.Name).HasMaxLength(120);
+            e.HasKey(x => x.Id); e.Property(x => x.BudgetId).HasMaxLength(100); e.Property(x => x.Name).HasMaxLength(120);
             e.Property(x => x.AccountType).HasMaxLength(20).HasDefaultValue("checking");
         });
         model.Entity<PayeeEntity>(e =>
@@ -94,14 +100,14 @@ public static class LedgerModel
             e.Property(x => x.CategoryMode).HasMaxLength(12).HasDefaultValue("history");
             e.Property(x => x.DefaultCategoryId).HasMaxLength(100);
             e.Property(x => x.RulesJson).HasDefaultValue("[]");
-            e.HasKey(x => x.Id);
+            e.HasKey(x => x.Id); e.Property(x => x.BudgetId).HasMaxLength(100);
             e.Property(x => x.Name).HasMaxLength(160);
             e.Property(x => x.NormalizedName).HasMaxLength(160);
-            e.HasIndex(x => x.NormalizedName).IsUnique();
+            e.HasIndex(x => new { x.BudgetId, x.NormalizedName }).IsUnique();
         });
         model.Entity<TransactionEntity>(e =>
         {
-            e.HasKey(x => x.Id);
+            e.HasKey(x => x.Id); e.Property(x => x.BudgetId).HasMaxLength(100);
             e.Property(x => x.IsApproved).HasDefaultValue(true);
             e.Property(x => x.Amount).HasPrecision(14, 2);
             e.Property(x => x.Memo).HasMaxLength(1000);
@@ -120,17 +126,17 @@ public static class LedgerModel
             e.Property(x => x.CategoryId).HasMaxLength(100);
             e.Property(x => x.Amount).HasPrecision(14, 2);
         });
-        model.Entity<LedgerStateEntity>(e => { e.HasKey(x => x.Id); e.Property(x => x.Version).IsConcurrencyToken(); e.HasData(new LedgerStateEntity()); });
+        model.Entity<LedgerStateEntity>(e => { e.HasKey(x => new { x.BudgetId, x.Id }); e.Property(x => x.BudgetId).HasMaxLength(100); e.Property(x => x.Version).IsConcurrencyToken(); e.HasData(new LedgerStateEntity()); });
         model.Entity<LedgerCommandEntity>(e =>
         {
-            e.HasKey(x => x.Id);
+            e.HasKey(x => x.Id); e.Property(x => x.BudgetId).HasMaxLength(100);
             e.Property(x => x.Kind).HasMaxLength(100);
             e.Property(x => x.Fingerprint).HasMaxLength(64);
             e.HasIndex(x => new { x.ResourceId, x.Version });
         });
         model.Entity<ReconciliationEntity>(e =>
         {
-            e.HasKey(x => x.Id);
+            e.HasKey(x => x.Id); e.Property(x => x.BudgetId).HasMaxLength(100);
             e.Property(x => x.StatementBalance).HasPrecision(14, 2);
             e.HasOne<AccountEntity>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
         });
@@ -139,6 +145,7 @@ public static class LedgerModel
 
 public sealed class RegisterViewEntity
 {
+    public string BudgetId { get; set; } = BudgetRequestContext.DefaultBudgetId;
     public string Scope { get; set; } = "";
     public long Version { get; set; }
     public string DatePreset { get; set; } = "allDates";
@@ -153,6 +160,7 @@ public sealed class RegisterViewEntity
 
 public sealed class FlagDefinitionEntity
 {
+    public string BudgetId { get; set; } = BudgetRequestContext.DefaultBudgetId;
     public string Color { get; set; } = "";
     public string Name { get; set; } = "";
 }

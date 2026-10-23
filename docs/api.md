@@ -6,6 +6,60 @@ Local Aspire development exposes the UI at `http://127.0.0.1:5173` and the API a
 
 Checks PostgreSQL connectivity. Success: `{ "status": "ok", "database": "connected" }`. Returns 503 when PostgreSQL is unavailable.
 
+## Authentication
+
+Outside the Testing environment, API requests require an authenticated Identity session. Budget-management, monthly Plan, ledger and long-term planning APIs are available to authenticated users and enforce ownership of the selected active budget. Requests without a valid owned-budget selection fall back to `default`, whose legacy routes remain administrator-only. Sign-in creates an HttpOnly, SameSite=Strict cookie; login failures return the same 401 response for unknown, invalid, locked, or suspended accounts. Identity lockout is configured for five failed attempts and 15 minutes.
+
+| Method/path | Behavior |
+|---|---|
+| `POST /api/auth/login` | Accepts `{ "userNameOrEmail", "password", "rememberMe" }`; returns the signed-in user's ID, username, email and administrator flag. |
+| `GET /api/auth/session` | Returns the current session identity or 401. |
+| `POST /api/auth/logout` | Invalidates the current cookie session. |
+| `GET /api/auth/profile` | Returns the signed-in user's profile summary. |
+| `PUT /api/auth/profile` | Accepts `{ "userName": "new-name" }`, updates the signed-in user's unique username, refreshes the session cookie and records a profile audit event. Email remains unchanged and must use its verification flow. |
+| `POST /api/auth/change-password` | Accepts current and new passwords; updates the password, audits the action without credential data, and invalidates all sessions using the prior security stamp. |
+| `GET /api/auth/registration-mode` | Publicly reports Disabled, ApprovalRequired, or Open. Defaults to Disabled. |
+| `POST /api/auth/register` | Creates an account only when registration is enabled and SMTP is configured; sends a two-hour email-verification link. |
+| `POST /api/auth/confirm-email` | Accepts user ID and URL-safe verification token. |
+| `POST /api/auth/forgot-password` | Sends a reset link when the address belongs to a verified account; always returns the same response. |
+| `POST /api/auth/reset-password` | Resets a password using a two-hour, URL-safe Identity token; the token can be used once and reset completion is audited without token or password data. |
+| `PUT /api/admin/settings/registration-mode` | Administrator-only; accepts Disabled, ApprovalRequired, or Open. |
+| `POST /api/admin/users/{id}/approve` | Administrator-only; approves a user after email verification. |
+| `POST /api/admin/users/{id}/reject` | Administrator-only; rejects a pending registration and records an audit event. |
+| `GET /api/admin/users?q={search}&status={status}` | Administrator-only; searches up to 100 users and returns safe account metadata/status. Status filter accepts Active, Pending, Locked or Suspended. |
+| `POST /api/admin/users/invite` | Administrator-only; accepts `{ "userName": "alex", "email": "alex@example.com", "membershipPlanId": "free" }`, creates an unverified account, assigns membership, audits the invite and emails a two-hour verification link. The API never returns a password or token. After verification, the invited user sets a password through Forgot password. Email delivery must be configured. |
+| `GET /api/admin/dashboard` | Administrator-only; returns user status and total/active budget counts, users by membership tier, the five newest registrations (username, date and status), and the ten newest administration/security audit events. It does not include users' budget or financial data. |
+| `POST /api/admin/users/{id}/suspend` / `reactivate` | Administrator-only; changes account access and records an audit event. The bootstrap administrator cannot be suspended. |
+| `POST /api/admin/users/{id}/unlock` | Administrator-only; clears Identity lockout without changing suspension status. |
+| `POST /api/admin/users/{id}/password-reset` | Administrator-only; emails a two-hour Identity reset link to the user's verified email and audits initiation. The response never contains a reset token or password. |
+| `GET /api/admin/users/{id}/history` | Administrator-only; returns the latest 50 audit events for that user, newest first. Unknown users return 404. |
+| `GET /api/admin/membership-plans/{id}/entitlements` | Administrator-only; lists the feature keys and enabled defaults for a membership tier. |
+| `PUT /api/admin/membership-plans/{id}/entitlements` | Administrator-only; replaces the tier's entitlement defaults with `{ "entitlements": [{ "entitlementKey": "ledger.export", "isEnabled": true }] }`. Keys must be unique and use lowercase letters, digits, dots, underscores or hyphens. |
+| `PUT /api/admin/users/{id}/entitlements/{key}` | Administrator-only; accepts `{ "isEnabled": true }` to create or update that user's allow/deny override. |
+| `DELETE /api/admin/users/{id}/entitlements/{key}` | Administrator-only; clears the user override so the assigned tier default applies again. |
+| `GET /api/admin/audit` | Administrator-only; returns the latest 100 administration audit events. |
+
+The Identity cookie is HttpOnly, SameSite=Strict and Secure in shared environments. State-changing requests with an Origin or Referer must match the forwarded request scheme and host; authenticated state-changing requests in production require one of those headers. The API processes forwarded scheme/host headers from the private Compose proxy boundary so HTTPS termination is reflected in cookie and CSRF checks. Registration and reset email delivery require SMTP configuration; shared environments also require the trusted `AccountEmail__PublicOrigin` HTTPS setting. Registration and recovery email requests are limited to five per minute per client IP. Identity verification and password reset tokens expire after two hours. Registration mode changes and user lifecycle actions commit together with their audit entry. The `/admin` UI supports user search, approval/rejection, password reset, suspension/reactivation, unlock, registration settings and recent audit history.
+
+The `/admin` UI also supports email invitations, membership assignment and per-user account history. Invitees verify their email, then use Forgot password to choose their initial password.
+
+## Owned budgets and memberships
+
+`GET /api/budgets?includeArchived=false` lists the authenticated user's budgets and effective membership limit. New registrations receive a membership but no budget; users explicitly create a budget or choose a template when that flow is available. `POST /api/budgets` creates a budget with `{ "name": "Household", "currency": "EUR" }`. `PUT /api/budgets/{id}` renames an owned budget with `{ "name": "New name", "version": 1 }`. `POST /api/budgets/{id}/archive` and `/restore` retain data while changing active-budget count; the legacy `default` budget cannot be archived during the transition. `DELETE /api/budgets/{id}` permanently removes an owned budget and its Plan and financial data when sent `{ "version": 1 }`; the UI requires confirmation, stale versions return 409, and `default` cannot be deleted. Unknown or foreign budget IDs return 404. New budgets are owner-scoped; creation and restore serialize by user before checking the membership limit. The seeded Free, Plus and Pro tiers allow 1, 3 and unlimited active budgets. Registration assigns Free, while the configured bootstrap administrator receives Pro. An individual limit override is stored on the membership row.
+
+Administrators can read `GET /api/admin/membership-plans` and update a user's membership with `PUT /api/admin/users/{id}/membership` using `{ "membershipPlanId": "plus", "budgetLimitOverride": 2, "startsOn": "2026-10-01", "expiresOn": "2027-10-01", "billingProvider": "provider-name", "externalSubscriptionId": "provider-subscription-id" }`. Subscription metadata fields are optional; dates must be ordered, provider is limited to 80 characters and external ID to 160. Use `null` for the override to apply the tier's limit. Updates are role-protected and written to the administration audit log. These fields do not connect to or charge a payment provider.
+
+Feature checks can use the reusable `RequireEntitlement("ledger.export")` endpoint requirement. A user's explicit allow/deny override wins over the assigned membership plan's entitlement; missing plan entries deny access. Entitlement configuration and overrides are audited, and no feature is restricted by a plan until an endpoint opts into a requirement.
+
+The budget-scoped Plan endpoints are also available to the owner:
+
+| Method/path | Behavior |
+|---|---|
+| `GET /api/budgets/{id}/months/{YYYY-MM}` | Reads or initializes a month inside an owned budget. |
+| `PUT /api/budgets/{id}/months/{YYYY-MM}` | Saves that budget's monthly Plan snapshot with optimistic concurrency. |
+
+Foreign or archived budget IDs return 404. Monthly rows, groups and categories use composite budget/month keys; carry-forward queries stay within the selected budget. The UI loads this list, allows budget creation, selection, rename, archive, restore and confirmed deletion, and persists the selected ID in local storage and the `openbudget.activeBudgetId` cookie. For authenticated financial requests, the API verifies that this cookie names an active budget owned by the current user. Account, transaction, register, transfer, schedule, payee, flag, reconciliation, ledger audit and long-term planning endpoints then operate within that budget. Requests without a valid owned-budget selection fall back to `default`, whose legacy APIs remain administrator-only.
+
 ## `GET /api/budget`
 
 Returns the default budget identity:
@@ -48,11 +102,11 @@ All planning values share an optimistic `version`. A successful write returns th
 
 ## Boundaries
 
-There is one local default budget and no authentication. Cash ledger behavior is described below; credit/debt and bank links are future milestones. See [data model](data-model.md) for migration and calculations.
+Cash ledger endpoints use the authenticated user's validated active budget; legacy `/api/budget` identity and month routes remain administrator-only and target `default`. Credit/debt and bank links are future milestones. See [data model](data-model.md) for migration and calculations.
 
 ## Ledger command protocol
 
-Every ledger write includes `commandId` (nonempty UUID) and `version` (current global ledger revision from an accounts/register response). Success returns `{ "id": "uuid", "version": 2 }`. Use a new command ID for each action; retry a lost response with the identical path/body, original version and command ID. Exact replay returns the original result without applying it again, even after the ledger revision changes. Reusing an ID for different input returns 409.
+Every ledger write includes `commandId` (nonempty UUID) and `version` (current revision for the active budget from an accounts/register response). Success returns `{ "id": "uuid", "version": 2 }`. Use a new command ID for each action; retry a lost response with the identical path/body, original version and command ID. Exact replay returns the original result without applying it again, even after the ledger revision changes. Reusing an ID for different input returns 409.
 
 Stale writes return 409 `{ "error": "..." }`; reload and review before sending a new command. Validation returns 400 and missing resources 404. A failure rolls back financial rows, projected months, reconciliation and audit receipts together. Transaction/opening dates use `YYYY-MM-DD`, from 1900-01-01 through 9998-12-31. Money inputs have at most two decimal places and an absolute maximum of 999,999,999.99.
 
@@ -106,7 +160,7 @@ Items contain `id`, `resourceId`, `kind`, `version`, UTC `createdAt`, `beforeJso
 
 `PUT /api/register-views/{scope}` accepts the same complete object with its expected version. Presets are `thisMonth`, `lastMonth`, `latest3Months`, `thisYear`, `lastYear`, `allDates`, or `custom`. Month bounds are nullable `YYYY-MM` (1900–9998); custom requires both and From <= To. All switches and the stored month selectors are saved atomically. Success returns the incremented view version. A stale edit returns 409; reload saved options, review, and apply a new draft. Exact retry of the immediately preceding identical saved selection returns its existing result, handling a lost response without another write. Invalid input returns 400 without partial changes.
 
-View settings use their own version and the shared database gate. They do not increment the financial ledger revision, alter balances/month projections or create financial audit commands. Preferences are shared by clients of this single-budget server; they are not browser-local or copied between separate server databases.
+View settings use their own version and the active budget's database gate. They do not increment the financial ledger revision, alter balances/month projections or create financial audit commands. Preferences are shared by clients of the same owned budget, not across budgets.
 
 The UI resolves rolling presets using the viewing browser's current local calendar date. Latest 3 Months includes this month and the preceding two. Custom bounds include the complete first and last months, including leap days. All Dates applies no date bound and retains the stored selectors. Show Reconciled filters on the server; the other switches hide/show existing table columns. Flag and image editing/attachments remain future functionality.
 

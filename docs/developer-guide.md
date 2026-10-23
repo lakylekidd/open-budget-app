@@ -26,6 +26,10 @@ dotnet run --project src/OpenBudget.AppHost
 
 Aspire provisions PostgreSQL, waits for the database, starts the API, then starts Vite. Use the `ui` HTTP endpoint in the Aspire dashboard; its stable local endpoint is `http://127.0.0.1:5173/`. The API is available at `http://127.0.0.1:5080/` and PostgreSQL at `127.0.0.1:5432` through Aspire's local endpoint.
 
+In the Development environment only, OpenBudget provisions the local administrator as `admin` / `admin` when no `BootstrapAdmin` settings are supplied. These defaults are not used in Staging or Production. For the first deployment against a database, set `BootstrapAdmin__Username`, `BootstrapAdmin__Email`, and `BootstrapAdmin__Password` in the deployment environment or secret store. Startup applies database migrations and then creates that permanent administrator. Keep the settings available on later starts: provisioning is idempotent, and an existing administrator's changed password is never reset.
+
+To enable registration and account verification/recovery mail, configure `Smtp__Host`, `Smtp__Port`, `Smtp__From`, optional `Smtp__Username` / `Smtp__Password`, and optional `Smtp__EnableSsl` in the deployment secret store. In shared environments also set `AccountEmail__PublicOrigin` to the app's trusted HTTPS origin so emailed links never use an untrusted request host. The production API is private to the Compose network behind the UI nginx proxy; nginx forwards the external host and HTTPS scheme for secure cookies and origin checks. Do not publish the API port directly. Registration remains disabled until an administrator selects a mode. Verification and reset tokens expire after two hours and are never returned by API responses. Registration and recovery email requests are limited to five per minute per client IP.
+
 The AppHost attaches PostgreSQL to the existing named volume `ynab-clone_budget-board-data`; the volume survives AppHost restarts and container recreation. The legacy volume and database role names are retained to preserve local data; application folders, assemblies, and C# namespaces use `OpenBudget`. PostgreSQL is pinned to major version 17 for compatibility with that data directory.
 
 ## Build commands
@@ -48,13 +52,15 @@ The local connection string comes from Aspire's `budgetdatabase` reference. For 
 
 ## Request flow
 
-The browser calls same-origin `/api/...` paths. Vite proxies those paths to the API on port 5080. In Aspire, the API and UI have stable local endpoints so the Vite proxy keeps working while Aspire controls startup and health ordering.
+The browser calls same-origin `/api/...` paths. Vite proxies those paths to the API on port 5080 with `changeOrigin: false`, preserving the UI host for the API's origin checks. Do not replace the proxy options with Vite's string shorthand: it rewrites the host, causing browser writes (including login) to return 403. In Aspire, the API and UI have stable local endpoints so the Vite proxy keeps working while Aspire controls startup and health ordering.
+
+The Plan screen starts with an empty loading state and renders budget amounts only after the monthly budget response arrives. This prevents placeholder/demo values from appearing briefly during a reload.
 
 ## Current development boundaries
 
-- There is no authentication or user/tenant boundary yet. Keep this local and synthetic until the roadmap's identity and authorization work is complete.
-- The Plan API stores versioned editable monthly snapshots. The cash ledger uses replay-safe commands and shared revisions, but there is no authenticated multi-user boundary.
-- Long-Term Planning stores versioned category budget overrides, projects income and expenses from active scheduled ledger transactions, and reads existing actual snapshots without initializing missing months. It remains scoped to the local default budget.
+- Sign-in uses ASP.NET Core Identity and an HttpOnly, SameSite=Strict cookie. Authenticated users can manage owned budget identities and use owner-checked monthly Plan, ledger and long-term planning routes. The UI supports budget creation, rename, selection and persisted active-budget choice. Legacy `default` routes remain administrator-only.
+- The Plan API stores versioned editable monthly snapshots per budget. The cash ledger uses replay-safe commands and shared revisions; financial rows and revisions are isolated by budget.
+- Long-Term Planning stores versioned category budget overrides, projects income and expenses from active scheduled ledger transactions, and reads existing actual snapshots without initializing missing months. Its requests are scoped to the selected active budget.
 - Cash account/sidebar balances and monthly activity are ledger-backed; Reflect, credit/debt and linking remain future milestones; scheduling/approval and payee management are implemented register extensions.
 - Every feature requires unit/integration tests and UI workflow coverage, as specified in `AGENTS.md` and [testing](testing.md).
 

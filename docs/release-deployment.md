@@ -18,11 +18,14 @@ Create a **Docker Compose** resource from the repository and use the root `docke
 In the Compose resource:
 
 1. Set `POSTGRES_PASSWORD` under **Environment Variables**.
-2. Add the application domain to the `ui` service on port `80`.
-3. Keep the `openbudget-data` volume.
-4. Confirm the Compose file is saved and deploy once manually.
+2. Set `BootstrapAdmin__Username`, `BootstrapAdmin__Email`, and `BootstrapAdmin__Password` under **Environment Variables**. Use a unique username, an administrator email address, and a strong password; store the password as a secret. The Compose file requires these values, and the API uses them to create the initial administrator after applying migrations on the first deployment. Keep the values configured for later starts; they do not overwrite a changed password.
+3. Add the application domain to the `ui` service on port `80`.
+4. Keep the `openbudget-data` volume.
+5. Confirm the Compose file is saved and deploy once manually.
 
 The Compose file contains health checks for PostgreSQL, the API, and the UI. The API check calls `/health`, which verifies database connectivity. The UI check reaches the same endpoint through nginx.
+
+Keep the API reachable only from the Compose network behind the `ui` nginx proxy. Nginx forwards the original Host and HTTPS scheme so the API can set Secure cookies and validate Origin/Referer on authenticated writes. Do not publish the API port as a public service.
 
 ## 3. Create the Coolify webhook
 

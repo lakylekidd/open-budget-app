@@ -57,18 +57,18 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
         var ids = items.Select(t => t.Id).ToArray();
         // Compute the full account history BEFORE filtering/page selection. Reverse display
         // ordering within a date so the first displayed row has the latest running balance.
-        var running = await db.Database.SqlQueryRaw<LedgerBalanceRow>("""
+        var running = await db.Database.SqlQuery<LedgerBalanceRow>($"""
             SELECT "Id", SUM("Amount") OVER (
                 PARTITION BY "AccountId" ORDER BY "Date" ASC, "Id" DESC
                 ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS "Balance"
-            FROM "Transactions" WHERE NOT "IsDeleted"
+            FROM "Transactions" WHERE NOT "IsDeleted" AND "BudgetId" = {db.ActiveBudgetId}
             """).Where(r => ids.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.Balance, ct);
         var transferIds = items.Where(t => t.TransferId != null).Select(t => t.TransferId!.Value).Distinct().ToArray();
         var legs = await db.Transactions.Where(t => !t.IsDeleted && t.TransferId != null && transferIds.Contains(t.TransferId.Value))
             .Select(t => new { t.Id, t.TransferId, t.Status, t.Account.Name, t.Account.IsClosed }).ToListAsync(ct);
         var months = items.Select(t => Month(t.Date)).Distinct().ToArray();
-        var labels = await db.Categories.Where(c => months.Contains(c.BudgetMonth))
-            .Join(db.CategoryGroups, c => new { c.BudgetMonth, Id = c.GroupId }, g => new { g.BudgetMonth, g.Id },
+        var labels = await db.Categories.Where(c => c.BudgetId == db.ActiveBudgetId && months.Contains(c.BudgetMonth))
+            .Join(db.CategoryGroups.Where(g => g.BudgetId == db.ActiveBudgetId), c => new { c.BudgetId, c.BudgetMonth, Id = c.GroupId }, g => new { g.BudgetId, g.BudgetMonth, g.Id },
                 (c, g) => new { c.BudgetMonth, c.Id, Name = g.Name + ": " + c.Name })
             .ToDictionaryAsync(c => (c.BudgetMonth, c.Id), c => c.Name, ct);
         return new(accounts.Version, page, pageSize, total, items.Select(entry =>
@@ -98,7 +98,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             ValidateName(request.Name);
             ValidateAccountType(request.AccountType);
             if (request.Date.Year is < 1900 or > 9998 || !LedgerRules.IsMoney(request.OpeningBalance)) throw new LedgerException("Opening date or balance is invalid.");
-            await budgets.GetMonthAsync(Month(request.Date), ct);
+            await budgets.GetMonthAsync(db.ActiveBudgetId, Month(request.Date), ct);
             var account = new AccountEntity { Id = Guid.NewGuid(), Name = request.Name.Trim(), AccountType = request.AccountType };
             db.Accounts.Add(account);
             TransactionEntity? opening = null;
@@ -140,7 +140,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             account.Notes=request.Notes??account.Notes;
             if(difference!=0) {
                 var date=DateOnly.FromDateTime(clock.GetLocalNow().DateTime);
-                await budgets.GetMonthAsync(Month(date),ct);
+                await budgets.GetMonthAsync(db.ActiveBudgetId, Month(date),ct);
                 adjustment=new TransactionEntity{Id=Guid.NewGuid(),AccountId=id,Date=date,Amount=difference,Payee=await GetPayeeAsync("Balance Adjustment",ct),Memo="Account working balance adjustment",Status="cleared"};
                 db.Transactions.Add(adjustment);
             }
@@ -155,7 +155,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             var error = LedgerRules.Validate(openingZero ? request with { Amount = 0.01m } : request);
             if (error is not null) throw new LedgerException(error);
             await OpenAccountAsync(request.AccountId, ct);
-            var month = await budgets.GetMonthAsync(Month(request.Date), ct);
+            var month = await budgets.GetMonthAsync(db.ActiveBudgetId, Month(request.Date), ct);
             var resolvedPayee = imported ? await ResolveImportedPayeeAsync(request.Payee, ct) : await GetPayeeAsync(request.Payee, ct);
             if (imported && request.CategoryId is null && request.Splits?.Count is not > 0)
                 request = request with { CategoryId = await SuggestedCategoryAsync(resolvedPayee, request.Date, ct) };
@@ -209,7 +209,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
                 throw new LedgerException("A transfer needs two different open accounts, a valid date, and a positive amount with two decimal places.");
             await OpenAccountAsync(request.FromAccountId, ct);
             await OpenAccountAsync(request.ToAccountId, ct);
-            await budgets.GetMonthAsync(Month(request.Date), ct);
+            await budgets.GetMonthAsync(db.ActiveBudgetId, Month(request.Date), ct);
             List<Guid> invalidated = [];
             List<TransactionEntity> pair;
             List<TransactionDto>? before = null;
@@ -307,7 +307,8 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
 
     private async Task RecalculateMonthsAsync(CancellationToken ct)
     {
-        var months = await db.Budgets.Include(b => b.Groups).ThenInclude(g => g.Categories).OrderBy(b => b.Month).ToListAsync(ct);
+        var months = await db.Budgets.Where(b => b.BudgetId == db.ActiveBudgetId)
+            .Include(b => b.Groups).ThenInclude(g => g.Categories).OrderBy(b => b.Month).ToListAsync(ct);
         var entries = await Entries.Where(t => !t.IsDeleted).ToListAsync(ct);
         var byMonth = entries.GroupBy(t => Month(t.Date)).ToDictionary(g => g.Key, g => g.ToList());
         decimal rtaDelta = 0;

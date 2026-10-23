@@ -6,13 +6,17 @@ import App from './App';
 type Month={month:string;note:string;version:number;fundsAdded:number;openingReadyToAssign:number;ledgerIncome:number;readyToAssign:number;groups:{id:string;name:string;sortOrder:number;isArchived:boolean;categories:{id:string;name:string;assigned:number;activity:number;available:number;target:number;icon:string;snoozed:boolean;sortOrder:number;isArchived:boolean}[]}[]};
 const budget=(month:string,assigned=0,activity=0,available=0):Month=>({month,note:'',version:1,fundsAdded:0,openingReadyToAssign:500,ledgerIncome:0,readyToAssign:500-assigned,groups:[{id:'home',name:'Home',sortOrder:0,isArchived:false,categories:[{id:'utilities',name:'Electricity',assigned,activity,available,target:0,icon:'',snoozed:false,sortOrder:0,isArchived:false}]}]});
 const response=(data:unknown)=>new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
-let months:Record<string,Month>;let writes:Record<string,unknown>[];let releaseSave:(()=>void)|undefined;let holdSave:boolean;let focusRows:Record<string,unknown>[];let focusAccounts:Record<string,unknown>[];let scheduleRows:Record<string,unknown>[];
+let months:Record<string,Month>;let ownedBudgets:{id:string;name:string;currency:string;version:number;isArchived:boolean;createdAt:string}[];let archivedBudgets:{id:string;name:string;currency:string;version:number;isArchived:boolean;createdAt:string}[];let writes:Record<string,unknown>[];let releaseSave:(()=>void)|undefined;let holdSave:boolean;let focusRows:Record<string,unknown>[];let focusAccounts:Record<string,unknown>[];let scheduleRows:Record<string,unknown>[];
 beforeEach(()=>{
   window.history.replaceState(null, '', '/');
-  months={'2026-08':budget('2026-08',50,-35,15),'2026-09':budget('2026-09',0,0,15),'2026-10':budget('2026-10',0,0,15),'2026-11':budget('2026-11',0,0,15)};writes=[];holdSave=false;releaseSave=undefined;focusRows=[];focusAccounts=[];scheduleRows=[];
+  window.localStorage.clear();ownedBudgets=[{id:'default',name:'Test budget',currency:'EUR',version:1,isArchived:false,createdAt:'2026-01-01T00:00:00Z'}];archivedBudgets=[];months={'2026-08':budget('2026-08',50,-35,15),'2026-09':budget('2026-09',0,0,15),'2026-10':budget('2026-10',0,0,15),'2026-11':budget('2026-11',0,0,15)};writes=[];holdSave=false;releaseSave=undefined;focusRows=[];focusAccounts=[];scheduleRows=[];
   vi.stubGlobal('fetch',vi.fn(async(path:string,init?:RequestInit)=>{
     if(path==='/api/accounts')return response({version:1,accounts:focusAccounts});
-    if(path==='/api/budget')return response({id:'default',name:'Test budget',version:1,currency:'EUR'});
+    if(path==='/api/budgets'&&init?.method==='POST')return response({id:'new-budget',name:JSON.parse(String(init.body)).name,currency:'EUR',version:1,isArchived:false,createdAt:'2026-10-01T00:00:00Z'});
+    if(path.startsWith('/api/budgets/')&&init?.method==='DELETE'){const id=path.split('/')[3];ownedBudgets=ownedBudgets.filter(item=>item.id!==id);archivedBudgets=archivedBudgets.filter(item=>item.id!==id);return new Response(null,{status:204});}
+    if(path.startsWith('/api/budgets/')&&path.endsWith('/archive')){const id=path.split('/')[3];const budget=ownedBudgets.find(item=>item.id===id);if(budget){ownedBudgets=ownedBudgets.filter(item=>item.id!==id);archivedBudgets.push({...budget,isArchived:true,version:budget.version+1});}return new Response(null,{status:204});}
+    if(path.startsWith('/api/budgets/')&&path.endsWith('/restore')){const id=path.split('/')[3];const budget=archivedBudgets.find(item=>item.id===id);if(budget){archivedBudgets=archivedBudgets.filter(item=>item.id!==id);ownedBudgets.push({...budget,isArchived:false,version:budget.version+1});}return new Response(null,{status:204});}
+    if(path==='/api/budgets?includeArchived=true')return response({budgets:[...ownedBudgets,...archivedBudgets],limit:{membership:'pro',membershipName:'Pro',maxActiveBudgets:null,activeBudgets:ownedBudgets.length,budgetLimitOverride:null}});
     if(path.startsWith('/api/long-term-planning/')){
       const year=Number(path.split('/').at(-1));
       return response({year,version:1,hasPlanningData:false,months:Array.from({length:12},(_,index)=>({month:`${year}-${String(index+1).padStart(2,'0')}`,expectedIncome:0,hasExpectedIncome:false,expectedExpenses:0,remaining:0,hasActualData:false})),groups:[]});
@@ -25,8 +29,8 @@ beforeEach(()=>{
       const items=query.has('accountId')?focusRows:focusRows.filter(item=>(item as {categoryId?:string}).categoryId===query.get('categoryId'));
       return response({version:1,page:Number(query.get('page')??1),pageSize:Number(query.get('pageSize')??100),total:items.length,items,accounts:{version:1,accounts:focusAccounts}});
     }
-    if(path.startsWith('/api/budget/')){
-      const month=path.slice('/api/budget/'.length);
+    if(path.startsWith('/api/budgets/')&&path.includes('/months/')){
+      const month=path.slice(path.lastIndexOf('/months/')+'/months/'.length);
       if(init?.method==='PUT'){
         const request=JSON.parse(String(init.body));writes.push(request);
         if(holdSave)await new Promise<void>(resolve=>{releaseSave=resolve;});
@@ -36,6 +40,10 @@ beforeEach(()=>{
         else {months[month]=budget(month,amount,0,amount);months['2026-11']=budget('2026-11',0,0,amount);}
         months[month].version++;
       }
+      return response(months[month]);
+    }
+    if(path.startsWith('/api/budget/')){
+      const month=path.slice('/api/budget/'.length);
       return response(months[month]);
     }
     throw new Error('Unexpected request '+path);
@@ -49,7 +57,8 @@ async function assign(value:string){await userEvent.click(screen.getByRole('butt
 it('shows the all-money-assigned summary at zero and restores the income action in a funded month',async()=>{
   months['2026-10'].readyToAssign=0;
   render(<App/>);await saved();
-  expect(screen.getByRole('button',{name:/Test budget/}).querySelector('img')).toHaveAttribute('src','/openbudget-logo.svg');
+  expect(screen.getByRole('combobox',{name:'Active budget'})).toHaveValue('default');
+  expect(screen.getByRole('button',{name:'Rename budget'}).parentElement?.querySelector('img')).toHaveAttribute('src','/openbudget-logo.svg');
   const summary=within(screen.getByRole('region',{name:'Ready to assign'}));
   expect(summary.getByText('€0.00')).toBeInTheDocument();
   expect(summary.getByText('All Money Assigned')).toBeInTheDocument();
@@ -57,6 +66,60 @@ it('shows the all-money-assigned summary at zero and restores the income action 
   await next('Next','Nov 2026');
   expect(summary.queryByText('All Money Assigned')).not.toBeInTheDocument();
   expect(summary.getByRole('button',{name:'Record income'})).toBeEnabled();
+});
+
+it('switches between owned budgets and remembers the selected budget',async()=>{
+  ownedBudgets.push({id:'second',name:'Travel',currency:'EUR',version:1,isArchived:false,createdAt:'2026-02-01T00:00:00Z'});
+  render(<App/>);await saved();
+  await userEvent.selectOptions(screen.getByRole('combobox',{name:'Active budget'}),'second');
+  await waitFor(()=>expect(screen.getByRole('combobox',{name:'Active budget'})).toHaveValue('second'));
+  await waitFor(()=>expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/budgets/second/months/2026-10',expect.objectContaining({signal:expect.any(AbortSignal)})));
+  expect(window.localStorage.getItem('openbudget.activeBudgetId')).toBe('second');
+  expect(document.cookie).toContain('openbudget.activeBudgetId=second');
+});
+
+it('restores the remembered owned budget on page load',async()=>{
+  ownedBudgets.push({id:'second',name:'Travel',currency:'EUR',version:1,isArchived:false,createdAt:'2026-02-01T00:00:00Z'});
+  window.localStorage.setItem('openbudget.activeBudgetId','second');
+  render(<App/>);await saved();
+  expect(screen.getByRole('combobox',{name:'Active budget'})).toHaveValue('second');
+  expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/budgets/second/months/2026-10',expect.objectContaining({signal:expect.any(AbortSignal)}));
+  expect(document.cookie).toContain('openbudget.activeBudgetId=second');
+});
+
+it('archives the selected budget after confirmation and restores it from the archived list',async()=>{
+  ownedBudgets.push({id:'second',name:'Travel',currency:'EUR',version:1,isArchived:false,createdAt:'2026-02-01T00:00:00Z'});
+  window.localStorage.setItem('openbudget.activeBudgetId','second');
+  vi.spyOn(window,'confirm').mockReturnValue(true);
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Archive budget'}));
+  await waitFor(()=>expect(screen.getByRole('combobox',{name:'Active budget'})).toHaveValue('default'));
+  expect(screen.getByRole('combobox',{name:'Archived budget'})).toHaveValue('second');
+  expect(window.localStorage.getItem('openbudget.activeBudgetId')).toBe('default');
+  await userEvent.click(screen.getByRole('button',{name:'Restore'}));
+  await waitFor(()=>expect(screen.getByRole('combobox',{name:'Archived budget'})).toHaveValue(''));
+  expect(screen.getByRole('option',{name:'Travel'}).closest('select')).toHaveAttribute('aria-label','Active budget');
+});
+
+it('requires confirmation before permanently deleting the active budget',async()=>{
+  ownedBudgets.push({id:'second',name:'Travel',currency:'EUR',version:3,isArchived:false,createdAt:'2026-02-01T00:00:00Z'});
+  window.localStorage.setItem('openbudget.activeBudgetId','second');
+  vi.spyOn(window,'confirm').mockReturnValue(true);
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Delete budget'}));
+  await waitFor(()=>expect(screen.getByRole('combobox',{name:'Active budget'})).toHaveValue('default'));
+  expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('all of its Plan and financial data'));
+  expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/budgets/second',expect.objectContaining({method:'DELETE',body:JSON.stringify({version:3})}));
+  expect(window.localStorage.getItem('openbudget.activeBudgetId')).toBe('default');
+});
+
+it('creates a budget and selects it as the active plan',async()=>{
+  vi.spyOn(window,'prompt').mockReturnValue('Travel');
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Create budget'}));
+  await waitFor(()=>expect(screen.getByRole('combobox',{name:'Active budget'})).toHaveValue('new-budget'));
+  expect(window.localStorage.getItem('openbudget.activeBudgetId')).toBe('new-budget');
+  await waitFor(()=>expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/budgets/new-budget/months/2026-10',expect.objectContaining({signal:expect.any(AbortSignal)})));
 });
 
 it('selects the entire existing assignment when its editor opens',async()=>{
@@ -106,8 +169,8 @@ it('keeps invalid assigned input visible and never sends a silent zero assignmen
 
 it('does not allow editing stale category assignments while the requested month is loading',async()=>{
   const original=vi.mocked(fetch).getMockImplementation()!;let complete:((response:Response)=>void)|undefined;
-  vi.stubGlobal('fetch',vi.fn(async(path:string,init?:RequestInit)=>path==='/api/budget/2026-10'&&!init?.method?new Promise<Response>(resolve=>{complete=resolve;}):original(path,init)));
-  render(<App/>);expect(screen.getByRole('button',{name:'Edit assigned for Electricity & water'})).toBeDisabled();await waitFor(()=>expect(complete).toBeDefined());complete!(response(months['2026-10']));await saved();expect(screen.getByRole('button',{name:'Edit assigned for Electricity'})).toBeEnabled();
+  vi.stubGlobal('fetch',vi.fn(async(path:string,init?:RequestInit)=>path==='/api/budgets/default/months/2026-10'&&!init?.method?new Promise<Response>(resolve=>{complete=resolve;}):original(path,init)));
+  render(<App/>);expect(screen.queryByRole('button',{name:'Edit assigned for Electricity & water'})).not.toBeInTheDocument();await waitFor(()=>expect(complete).toBeDefined());complete!(response(months['2026-10']));await saved();expect(screen.getByRole('button',{name:'Edit assigned for Electricity'})).toBeEnabled();
 });
 
 it('opens category activity and takes a reconciled transaction to its account despite saved filters',async()=>{

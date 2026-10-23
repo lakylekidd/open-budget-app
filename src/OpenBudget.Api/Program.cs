@@ -1,4 +1,6 @@
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Authorization;
 using OpenBudget.Api;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,10 +9,27 @@ var connectionString = builder.Configuration.GetConnectionString("budgetdatabase
     ?? builder.Configuration.GetConnectionString("BudgetDatabase")
     ?? "Host=localhost;Port=5432;Database=budgetboard;Username=budgetboard;Password=budgetboard_dev";
 builder.Services.AddDbContext<BudgetDbContext>(options => options.UseNpgsql(connectionString));
+builder.Services.AddScoped<BudgetRequestContext>();
+builder.Services.AddOpenBudgetIdentity(builder.Environment);
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedProto;
+    if (builder.Environment.IsProduction())
+    {
+        // The API is only reachable on the private Compose network behind the UI proxy.
+        // The proxy IP is dynamic, so trust forwarded headers only at this unexposed backend boundary.
+        options.KnownIPNetworks.Clear();
+        options.KnownProxies.Clear();
+    }
+});
 builder.Services.AddScoped<BudgetService>();
+builder.Services.AddScoped<BudgetOwnershipService>();
+builder.Services.AddScoped<EntitlementService>();
+builder.Services.AddScoped<IAuthorizationHandler, EntitlementAuthorizationHandler>();
 builder.Services.AddScoped<LongTermPlanningService>();
 builder.Services.AddScoped<LedgerService>();
 builder.Services.AddScoped<LedgerGate>();
+builder.Services.AddScoped<SchedulePostingService>();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<SchedulePostingWorker>();
 builder.Services.AddScoped<RegisterViewService>();
@@ -19,7 +38,85 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
     .AllowAnyHeader().AllowAnyMethod()));
 
 var app = builder.Build();
+app.UseForwardedHeaders();
 app.UseCors();
+app.UseAuthentication();
+app.Use(async (context, next) =>
+{
+    if (context.User.Identity?.IsAuthenticated == true)
+    {
+        var requestBudget = context.Request.Cookies["openbudget.activeBudgetId"];
+        var budgetId = string.IsNullOrWhiteSpace(requestBudget) ? BudgetRequestContext.DefaultBudgetId : requestBudget.Trim();
+        if (budgetId.Length > 100 || !System.Text.RegularExpressions.Regex.IsMatch(budgetId, "^[A-Za-z0-9_-]+$"))
+        {
+            budgetId = BudgetRequestContext.DefaultBudgetId;
+        }
+        var budgetContext = context.RequestServices.GetRequiredService<BudgetRequestContext>();
+        budgetContext.BudgetId = budgetId;
+        if (budgetId != BudgetRequestContext.DefaultBudgetId)
+        {
+            var userId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var db = context.RequestServices.GetRequiredService<BudgetDbContext>();
+            var owned = userId is not null && await db.BudgetPlans.AsNoTracking()
+                .AnyAsync(x => x.Id == budgetId && x.OwnerUserId == userId && !x.IsArchived, context.RequestAborted);
+            if (!owned)
+            {
+                budgetContext.BudgetId = BudgetRequestContext.DefaultBudgetId;
+                context.Response.Cookies.Delete("openbudget.activeBudgetId", new CookieOptions { Path = "/", SameSite = SameSiteMode.Strict });
+            }
+        }
+    }
+    await next(context);
+});
+app.UseAuthorization();
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path;
+    var isFinancialApi = path.StartsWithSegments("/api") &&
+        !path.StartsWithSegments("/api/auth") && !path.StartsWithSegments("/api/admin") &&
+        !path.StartsWithSegments("/api/budgets");
+    var isLegacyDefaultBudgetApi = path.StartsWithSegments("/api/budget") && !path.StartsWithSegments("/api/budgets");
+    if (context.User.Identity?.IsAuthenticated == true &&
+        ((isFinancialApi && context.RequestServices.GetRequiredService<BudgetRequestContext>().BudgetId == BudgetRequestContext.DefaultBudgetId &&
+            !context.User.IsInRole(AuthenticationSetup.AdministratorRole)) ||
+         (isLegacyDefaultBudgetApi && (!context.User.IsInRole(AuthenticationSetup.AdministratorRole) ||
+            context.RequestServices.GetRequiredService<BudgetRequestContext>().BudgetId != BudgetRequestContext.DefaultBudgetId))))
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return;
+    }
+    await next(context);
+});
+app.UseRateLimiter();
+app.Use(async (context, next) =>
+{
+    if (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method) ||
+        HttpMethods.IsOptions(context.Request.Method) || HttpMethods.IsTrace(context.Request.Method))
+    {
+        await next(context);
+        return;
+    }
+    var hasOrigin = context.Request.Headers.TryGetValue("Origin", out var origin) && !string.IsNullOrWhiteSpace(origin);
+    var hasReferer = context.Request.Headers.TryGetValue("Referer", out var referer) && !string.IsNullOrWhiteSpace(referer);
+    if (!hasOrigin && !hasReferer)
+    {
+        if (app.Environment.IsProduction() && context.User.Identity?.IsAuthenticated == true)
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+        await next(context);
+        return;
+    }
+    if (!Uri.TryCreate(hasOrigin ? origin.ToString() : referer.ToString(), UriKind.Absolute, out var source) ||
+        !string.Equals(source.Authority, context.Request.Host.Value, StringComparison.OrdinalIgnoreCase) ||
+        !string.Equals(source.Scheme, context.Request.Scheme, StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return;
+    }
+    await next(context);
+});
 app.Use(async (context, next) =>
 {
     try { await next(context); }
@@ -35,7 +132,11 @@ app.Use(async (context, next) =>
     }
 });
 await using (var scope = app.Services.CreateAsyncScope())
+{
     await scope.ServiceProvider.GetRequiredService<BudgetDbContext>().Database.MigrateAsync();
+    if (!app.Environment.IsEnvironment("Testing"))
+        await AuthenticationSetup.EnsureBootstrapAdministratorAsync(scope.ServiceProvider, app.Configuration, app.Environment);
+}
 
 app.MapGet("/health", async (BudgetDbContext db, CancellationToken cancellationToken) =>
 {
@@ -49,7 +150,11 @@ app.MapGet("/health", async (BudgetDbContext db, CancellationToken cancellationT
     {
         return Results.Problem("Database is unavailable", statusCode: 503);
     }
-});
+}).AllowAnonymous();
+
+app.MapAuthenticationEndpoints();
+EntitlementService.MapEndpoints(app);
+BudgetOwnershipService.MapEndpoints(app);
 
 app.MapGet("/api/budget/{month}", async (string month, BudgetService budgets, LedgerGate gate, CancellationToken cancellationToken) =>
 {

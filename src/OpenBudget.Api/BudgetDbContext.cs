@@ -1,9 +1,13 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 
 namespace OpenBudget.Api;
 
-public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) : DbContext(options)
+public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, BudgetRequestContext budgetContext) : IdentityDbContext<OpenBudgetUser>(options)
 {
+    public BudgetDbContext(DbContextOptions<BudgetDbContext> options) : this(options, new BudgetRequestContext()) { }
+    private readonly BudgetRequestContext budgetContext = budgetContext;
+    public string ActiveBudgetId => budgetContext.BudgetId;
     public DbSet<BudgetPlanEntity> BudgetPlans => Set<BudgetPlanEntity>();
     public DbSet<LongTermPlanningStateEntity> LongTermPlanningStates => Set<LongTermPlanningStateEntity>();
     public DbSet<LongTermPlanningIncomeEntity> LongTermPlanningIncomes => Set<LongTermPlanningIncomeEntity>();
@@ -21,24 +25,37 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) :
     public DbSet<LedgerStateEntity> LedgerStates => Set<LedgerStateEntity>();
     public DbSet<LedgerCommandEntity> LedgerCommands => Set<LedgerCommandEntity>();
     public DbSet<ReconciliationEntity> Reconciliations => Set<ReconciliationEntity>();
+    public DbSet<ApplicationSettingEntity> ApplicationSettings => Set<ApplicationSettingEntity>();
+    public DbSet<AdminAuditLogEntity> AdminAuditLogs => Set<AdminAuditLogEntity>();
+    public DbSet<MembershipPlanEntity> MembershipPlans => Set<MembershipPlanEntity>();
+    public DbSet<UserMembershipEntity> UserMemberships => Set<UserMembershipEntity>();
+    public DbSet<MembershipPlanEntitlementEntity> MembershipPlanEntitlements => Set<MembershipPlanEntitlementEntity>();
+    public DbSet<UserEntitlementOverrideEntity> UserEntitlementOverrides => Set<UserEntitlementOverrideEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        base.OnModelCreating(modelBuilder);
         LedgerModel.Configure(modelBuilder);
+        modelBuilder.Entity<ApplicationSettingEntity>(e => { e.HasKey(x => x.Key); e.Property(x => x.Key).HasMaxLength(100); e.Property(x => x.Value).HasMaxLength(500); });
+        modelBuilder.Entity<AdminAuditLogEntity>(e => { e.HasKey(x => x.Id); e.Property(x => x.ActorUserId).HasMaxLength(450); e.Property(x => x.TargetUserId).HasMaxLength(450); e.Property(x => x.Action).HasMaxLength(80); e.HasIndex(x => x.CreatedAt); });
+        modelBuilder.Entity<MembershipPlanEntity>(e => { e.HasKey(x => x.Id); e.Property(x => x.Id).HasMaxLength(40); e.Property(x => x.Name).HasMaxLength(80); e.Property(x => x.MaxActiveBudgets).IsRequired(false); e.HasData(new MembershipPlanEntity { Id = "free", Name = "Free", MaxActiveBudgets = 1 }, new MembershipPlanEntity { Id = "plus", Name = "Plus", MaxActiveBudgets = 3 }, new MembershipPlanEntity { Id = "pro", Name = "Pro", MaxActiveBudgets = null }); });
+        modelBuilder.Entity<UserMembershipEntity>(e => { e.HasKey(x => x.UserId); e.Property(x => x.UserId).HasMaxLength(450); e.Property(x => x.MembershipPlanId).HasMaxLength(40); e.Property(x => x.BillingProvider).HasMaxLength(80); e.Property(x => x.ExternalSubscriptionId).HasMaxLength(160); e.Property(x => x.Version).IsConcurrencyToken(); e.HasOne<OpenBudgetUser>().WithOne().HasForeignKey<UserMembershipEntity>(x => x.UserId).OnDelete(DeleteBehavior.Cascade); e.HasOne<MembershipPlanEntity>().WithMany().HasForeignKey(x => x.MembershipPlanId).OnDelete(DeleteBehavior.Restrict); });
+        modelBuilder.Entity<MembershipPlanEntitlementEntity>(e => { e.HasKey(x => new { x.MembershipPlanId, x.EntitlementKey }); e.Property(x => x.MembershipPlanId).HasMaxLength(40); e.Property(x => x.EntitlementKey).HasMaxLength(80); e.HasOne<MembershipPlanEntity>().WithMany().HasForeignKey(x => x.MembershipPlanId).OnDelete(DeleteBehavior.Cascade); });
+        modelBuilder.Entity<UserEntitlementOverrideEntity>(e => { e.HasKey(x => new { x.UserId, x.EntitlementKey }); e.Property(x => x.UserId).HasMaxLength(450); e.Property(x => x.EntitlementKey).HasMaxLength(80); e.HasOne<OpenBudgetUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade); });
         modelBuilder.Entity<FlagDefinitionEntity>(e => {
-            e.HasKey(x=>x.Color); e.Property(x=>x.Color).HasMaxLength(10); e.Property(x=>x.Name).HasMaxLength(40);
-            e.HasData(LedgerService.FlagColors.Select(color=>new FlagDefinitionEntity{Color=color,Name=char.ToUpperInvariant(color[0])+color[1..]}));
+            e.HasKey(x=>new { x.BudgetId, x.Color }); e.Property(x=>x.BudgetId).HasMaxLength(100); e.Property(x=>x.Color).HasMaxLength(10); e.Property(x=>x.Name).HasMaxLength(40);
+            e.HasData(LedgerService.FlagColors.Select(color=>new FlagDefinitionEntity{BudgetId=BudgetRequestContext.DefaultBudgetId,Color=color,Name=char.ToUpperInvariant(color[0])+color[1..]}));
         });
         modelBuilder.Entity<ScheduleEntity>(e => {
-            e.HasKey(x => x.Id); e.HasIndex(x => new { x.AccountId, x.NextDate });
+            e.HasKey(x => x.Id); e.Property(x => x.BudgetId).HasMaxLength(100); e.HasIndex(x => new { x.BudgetId, x.AccountId, x.NextDate });
             e.HasOne<AccountEntity>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<AccountEntity>().WithMany().HasForeignKey(x => x.ToAccountId).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<ScheduleOccurrenceEntity>(e => {
-            e.HasKey(x => x.Id); e.HasIndex(x => new { x.ScheduleId, x.Sequence }).IsUnique();
+            e.HasKey(x => x.Id); e.Property(x => x.BudgetId).HasMaxLength(100); e.HasIndex(x => new { x.BudgetId, x.ScheduleId, x.Sequence }).IsUnique();
             e.HasOne<ScheduleEntity>().WithMany().HasForeignKey(x => x.ScheduleId).OnDelete(DeleteBehavior.Restrict);
         });
-        modelBuilder.Entity<RegisterViewEntity>(e => { e.HasKey(x => x.Scope); e.Property(x => x.Scope).HasMaxLength(36); e.Property(x => x.Version).IsConcurrencyToken(); });
+        modelBuilder.Entity<RegisterViewEntity>(e => { e.HasKey(x => new { x.BudgetId, x.Scope }); e.Property(x => x.BudgetId).HasMaxLength(100); e.Property(x => x.Scope).HasMaxLength(36); e.Property(x => x.Version).IsConcurrencyToken(); });
         modelBuilder.Entity<BudgetPlanEntity>(entity =>
         {
             entity.HasKey(x => x.Id);
@@ -46,24 +63,31 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) :
             entity.Property(x => x.Name).HasMaxLength(120);
             entity.Property(x => x.Currency).HasMaxLength(3);
             entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.Property(x => x.OwnerUserId).HasMaxLength(450);
+            entity.Property(x => x.Name).HasMaxLength(120);
+            entity.HasIndex(x => new { x.OwnerUserId, x.IsArchived });
+            entity.HasOne<OpenBudgetUser>().WithMany().HasForeignKey(x => x.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasMany(x => x.Months).WithOne(x => x.Plan).HasForeignKey(x => x.BudgetId).OnDelete(DeleteBehavior.Restrict);
         });
         modelBuilder.Entity<LongTermPlanningStateEntity>(entity =>
         {
-            entity.HasKey(x => x.Id);
+            entity.HasKey(x => new { x.BudgetId, x.Id });
+            entity.Property(x => x.BudgetId).HasMaxLength(100);
             entity.Property(x => x.Id).HasMaxLength(100);
             entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasData(new LongTermPlanningStateEntity { Id = "default", Version = 1 });
         });
         modelBuilder.Entity<LongTermPlanningIncomeEntity>(entity =>
         {
-            entity.HasKey(x => x.Month);
+            entity.HasKey(x => new { x.BudgetId, x.Month });
+            entity.Property(x => x.BudgetId).HasMaxLength(100);
             entity.Property(x => x.Month).HasMaxLength(7);
             entity.Property(x => x.ExpectedIncome).HasPrecision(14, 2);
         });
         modelBuilder.Entity<LongTermPlanningCategoryEntity>(entity =>
         {
-            entity.HasKey(x => new { x.Month, x.CategoryId });
+            entity.HasKey(x => new { x.BudgetId, x.Month, x.CategoryId });
+            entity.Property(x => x.BudgetId).HasMaxLength(100);
             entity.Property(x => x.Month).HasMaxLength(7);
             entity.Property(x => x.CategoryId).HasMaxLength(100);
             entity.Property(x => x.PlannedBudgetOverride).HasPrecision(14, 2);
@@ -71,7 +95,7 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) :
         });
         modelBuilder.Entity<BudgetEntity>(entity =>
         {
-            entity.HasKey(x => x.Month);
+            entity.HasKey(x => new { x.BudgetId, x.Month });
             entity.Property(x => x.Month).HasMaxLength(7);
             entity.Property(x => x.BudgetId).HasMaxLength(100);
             entity.Property(x => x.Note).HasMaxLength(1000);
@@ -79,18 +103,20 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) :
             entity.Property(x => x.LedgerIncome).HasPrecision(14, 2);
             entity.Property(x => x.OpeningReadyToAssign).HasPrecision(14, 2);
             entity.Property(x => x.Version).IsConcurrencyToken();
-            entity.HasMany(x => x.Groups).WithOne().HasForeignKey(x => x.BudgetMonth).OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(x => x.Groups).WithOne().HasForeignKey(x => new { x.BudgetId, x.BudgetMonth }).HasPrincipalKey(x => new { x.BudgetId, x.Month }).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<CategoryGroupEntity>(entity =>
         {
-            entity.HasKey(x => new { x.BudgetMonth, x.Id });
+            entity.HasKey(x => new { x.BudgetId, x.BudgetMonth, x.Id });
+            entity.Property(x => x.BudgetId).HasMaxLength(100);
             entity.Property(x => x.Id).HasMaxLength(100);
             entity.Property(x => x.Name).HasMaxLength(120);
-            entity.HasMany(x => x.Categories).WithOne().HasForeignKey(x => new { x.BudgetMonth, x.GroupId }).OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(x => x.Categories).WithOne().HasForeignKey(x => new { x.BudgetId, x.BudgetMonth, x.GroupId }).HasPrincipalKey(x => new { x.BudgetId, x.BudgetMonth, x.Id }).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<CategoryEntity>(entity =>
         {
-            entity.HasKey(x => new { x.BudgetMonth, x.Id });
+            entity.HasKey(x => new { x.BudgetId, x.BudgetMonth, x.Id });
+            entity.Property(x => x.BudgetId).HasMaxLength(100);
             entity.Property(x => x.Id).HasMaxLength(100);
             entity.Property(x => x.GroupId).HasMaxLength(100);
             entity.Property(x => x.Name).HasMaxLength(160);
@@ -101,23 +127,90 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) :
             entity.Property(x => x.LegacyActivity).HasPrecision(14, 2);
             entity.Property(x => x.Target).HasPrecision(14, 2);
         });
+
+        modelBuilder.Entity<AccountEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
+        modelBuilder.Entity<PayeeEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
+        modelBuilder.Entity<TransactionEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
+        modelBuilder.Entity<LedgerStateEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
+        modelBuilder.Entity<LedgerCommandEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
+        modelBuilder.Entity<ReconciliationEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
+        modelBuilder.Entity<RegisterViewEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
+        modelBuilder.Entity<FlagDefinitionEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
+        modelBuilder.Entity<ScheduleEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
+        modelBuilder.Entity<ScheduleOccurrenceEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
+        modelBuilder.Entity<LongTermPlanningStateEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
+        modelBuilder.Entity<LongTermPlanningIncomeEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
+        modelBuilder.Entity<LongTermPlanningCategoryEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
     }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        StampBudgetId();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        StampBudgetId();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void StampBudgetId()
+    {
+        foreach (var entry in ChangeTracker.Entries().Where(x => x.State == EntityState.Added))
+        {
+            switch (entry.Entity)
+            {
+                case AccountEntity row: row.BudgetId = budgetContext.BudgetId; break;
+                case PayeeEntity row: row.BudgetId = budgetContext.BudgetId; break;
+                case TransactionEntity row: row.BudgetId = budgetContext.BudgetId; break;
+                case LedgerStateEntity row: row.BudgetId = budgetContext.BudgetId; break;
+                case LedgerCommandEntity row: row.BudgetId = budgetContext.BudgetId; break;
+                case ReconciliationEntity row: row.BudgetId = budgetContext.BudgetId; break;
+                case RegisterViewEntity row: row.BudgetId = budgetContext.BudgetId; break;
+                case FlagDefinitionEntity row: row.BudgetId = budgetContext.BudgetId; break;
+                case ScheduleEntity row: row.BudgetId = budgetContext.BudgetId; break;
+                case ScheduleOccurrenceEntity row: row.BudgetId = budgetContext.BudgetId; break;
+                case LongTermPlanningStateEntity row: row.BudgetId = budgetContext.BudgetId; break;
+                case LongTermPlanningIncomeEntity row: row.BudgetId = budgetContext.BudgetId; break;
+                case LongTermPlanningCategoryEntity row: row.BudgetId = budgetContext.BudgetId; break;
+            }
+        }
+    }
+}
+
+public sealed class ApplicationSettingEntity
+{
+    public string Key { get; set; } = "";
+    public string Value { get; set; } = "";
+}
+
+public sealed class AdminAuditLogEntity
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string ActorUserId { get; set; } = "";
+    public string TargetUserId { get; set; } = "";
+    public string Action { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
 public sealed class LongTermPlanningStateEntity
 {
+    public string BudgetId { get; set; } = BudgetRequestContext.DefaultBudgetId;
     public string Id { get; set; } = "default";
     public long Version { get; set; } = 1;
 }
 
 public sealed class LongTermPlanningIncomeEntity
 {
+    public string BudgetId { get; set; } = BudgetRequestContext.DefaultBudgetId;
     public string Month { get; set; } = "";
     public decimal ExpectedIncome { get; set; }
 }
 
 public sealed class LongTermPlanningCategoryEntity
 {
+    public string BudgetId { get; set; } = BudgetRequestContext.DefaultBudgetId;
     public string Month { get; set; } = "";
     public string CategoryId { get; set; } = "";
     public decimal? PlannedBudgetOverride { get; set; }
@@ -127,10 +220,46 @@ public sealed class LongTermPlanningCategoryEntity
 public sealed class BudgetPlanEntity
 {
     public string Id { get; set; } = "default";
+    public string? OwnerUserId { get; set; }
     public string Name { get; set; } = "My Budget";
     public string Currency { get; set; } = "EUR";
+    public bool IsArchived { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public long Version { get; set; } = 1;
     public List<BudgetEntity> Months { get; set; } = [];
+}
+
+public sealed class MembershipPlanEntity
+{
+    public string Id { get; set; } = "free";
+    public string Name { get; set; } = "Free";
+    public int? MaxActiveBudgets { get; set; }
+}
+
+public sealed class UserMembershipEntity
+{
+    public string UserId { get; set; } = "";
+    public string MembershipPlanId { get; set; } = "free";
+    public int? BudgetLimitOverride { get; set; }
+    public DateOnly? StartsOn { get; set; }
+    public DateOnly? ExpiresOn { get; set; }
+    public string? BillingProvider { get; set; }
+    public string? ExternalSubscriptionId { get; set; }
+    public long Version { get; set; } = 1;
+}
+
+public sealed class MembershipPlanEntitlementEntity
+{
+    public string MembershipPlanId { get; set; } = "free";
+    public string EntitlementKey { get; set; } = "";
+    public bool IsEnabled { get; set; }
+}
+
+public sealed class UserEntitlementOverrideEntity
+{
+    public string UserId { get; set; } = "";
+    public string EntitlementKey { get; set; } = "";
+    public bool IsEnabled { get; set; }
 }
 
 public sealed class BudgetEntity
@@ -148,6 +277,7 @@ public sealed class BudgetEntity
 
 public sealed class CategoryGroupEntity
 {
+    public string BudgetId { get; set; } = "default";
     public string BudgetMonth { get; set; } = "";
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
@@ -158,6 +288,7 @@ public sealed class CategoryGroupEntity
 
 public sealed class CategoryEntity
 {
+    public string BudgetId { get; set; } = "default";
     public string BudgetMonth { get; set; } = "";
     public string GroupId { get; set; } = "";
     public string Id { get; set; } = "";

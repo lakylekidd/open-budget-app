@@ -22,6 +22,138 @@ namespace OpenBudget.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("NormalizedName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique()
+                        .HasDatabaseName("RoleNameIndex");
+
+                    b.ToTable("AspNetRoles", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ClaimType")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ClaimValue")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RoleId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoleId");
+
+                    b.ToTable("AspNetRoleClaims", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<string>", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ClaimType")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ClaimValue")
+                        .HasColumnType("text");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("AspNetUserClaims", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<string>", b =>
+                {
+                    b.Property<string>("LoginProvider")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProviderKey")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProviderDisplayName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("LoginProvider", "ProviderKey");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("AspNetUserLogins", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserRole<string>", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RoleId")
+                        .HasColumnType("text");
+
+                    b.HasKey("UserId", "RoleId");
+
+                    b.HasIndex("RoleId");
+
+                    b.ToTable("AspNetUserRoles", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<string>", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("LoginProvider")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Value")
+                        .HasColumnType("text");
+
+                    b.HasKey("UserId", "LoginProvider", "Name");
+
+                    b.ToTable("AspNetUserTokens", (string)null);
+                });
+
             modelBuilder.Entity("OpenBudget.Api.AccountEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -34,6 +166,11 @@ namespace OpenBudget.Api.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasDefaultValue("checking");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<bool>("IsClosed")
                         .HasColumnType("boolean");
@@ -55,16 +192,62 @@ namespace OpenBudget.Api.Migrations
                     b.ToTable("Accounts");
                 });
 
+            modelBuilder.Entity("OpenBudget.Api.AdminAuditLogEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("ActorUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TargetUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.ToTable("AdminAuditLogs");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.ApplicationSettingEntity", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("ApplicationSettings");
+                });
+
             modelBuilder.Entity("OpenBudget.Api.BudgetEntity", b =>
                 {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Month")
                         .HasMaxLength(7)
                         .HasColumnType("character varying(7)");
-
-                    b.Property<string>("BudgetId")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
 
                     b.Property<decimal>("FundsAdded")
                         .HasPrecision(14, 2)
@@ -87,9 +270,7 @@ namespace OpenBudget.Api.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
 
-                    b.HasKey("Month");
-
-                    b.HasIndex("BudgetId");
+                    b.HasKey("BudgetId", "Month");
 
                     b.ToTable("Budgets");
                 });
@@ -100,15 +281,25 @@ namespace OpenBudget.Api.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Currency")
                         .IsRequired()
                         .HasMaxLength(3)
                         .HasColumnType("character varying(3)");
 
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
+
+                    b.Property<string>("OwnerUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
@@ -116,11 +307,17 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("OwnerUserId", "IsArchived");
+
                     b.ToTable("BudgetPlans");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.CategoryEntity", b =>
                 {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("BudgetMonth")
                         .HasColumnType("character varying(7)");
 
@@ -171,15 +368,19 @@ namespace OpenBudget.Api.Migrations
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)");
 
-                    b.HasKey("BudgetMonth", "Id");
+                    b.HasKey("BudgetId", "BudgetMonth", "Id");
 
-                    b.HasIndex("BudgetMonth", "GroupId");
+                    b.HasIndex("BudgetId", "BudgetMonth", "GroupId");
 
                     b.ToTable("Categories");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.CategoryGroupEntity", b =>
                 {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("BudgetMonth")
                         .HasColumnType("character varying(7)");
 
@@ -198,13 +399,17 @@ namespace OpenBudget.Api.Migrations
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer");
 
-                    b.HasKey("BudgetMonth", "Id");
+                    b.HasKey("BudgetId", "BudgetMonth", "Id");
 
                     b.ToTable("CategoryGroups");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.FlagDefinitionEntity", b =>
                 {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Color")
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
@@ -214,38 +419,44 @@ namespace OpenBudget.Api.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
-                    b.HasKey("Color");
+                    b.HasKey("BudgetId", "Color");
 
                     b.ToTable("FlagDefinitions");
 
                     b.HasData(
                         new
                         {
+                            BudgetId = "default",
                             Color = "red",
                             Name = "Red"
                         },
                         new
                         {
+                            BudgetId = "default",
                             Color = "orange",
                             Name = "Orange"
                         },
                         new
                         {
+                            BudgetId = "default",
                             Color = "yellow",
                             Name = "Yellow"
                         },
                         new
                         {
+                            BudgetId = "default",
                             Color = "green",
                             Name = "Green"
                         },
                         new
                         {
+                            BudgetId = "default",
                             Color = "blue",
                             Name = "Blue"
                         },
                         new
                         {
+                            BudgetId = "default",
                             Color = "purple",
                             Name = "Purple"
                         });
@@ -264,6 +475,11 @@ namespace OpenBudget.Api.Migrations
                     b.Property<string>("BeforeJson")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -293,23 +509,25 @@ namespace OpenBudget.Api.Migrations
 
             modelBuilder.Entity("OpenBudget.Api.LedgerStateEntity", b =>
                 {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
 
-                    b.HasKey("Id");
+                    b.HasKey("BudgetId", "Id");
 
                     b.ToTable("LedgerStates");
 
                     b.HasData(
                         new
                         {
+                            BudgetId = "default",
                             Id = 1,
                             Version = 1L
                         });
@@ -317,6 +535,10 @@ namespace OpenBudget.Api.Migrations
 
             modelBuilder.Entity("OpenBudget.Api.LongTermPlanningCategoryEntity", b =>
                 {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Month")
                         .HasMaxLength(7)
                         .HasColumnType("character varying(7)");
@@ -333,13 +555,17 @@ namespace OpenBudget.Api.Migrations
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)");
 
-                    b.HasKey("Month", "CategoryId");
+                    b.HasKey("BudgetId", "Month", "CategoryId");
 
                     b.ToTable("LongTermPlanningCategories");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.LongTermPlanningIncomeEntity", b =>
                 {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Month")
                         .HasMaxLength(7)
                         .HasColumnType("character varying(7)");
@@ -348,13 +574,17 @@ namespace OpenBudget.Api.Migrations
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)");
 
-                    b.HasKey("Month");
+                    b.HasKey("BudgetId", "Month");
 
                     b.ToTable("LongTermPlanningIncomes");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.LongTermPlanningStateEntity", b =>
                 {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Id")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -363,16 +593,152 @@ namespace OpenBudget.Api.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
 
-                    b.HasKey("Id");
+                    b.HasKey("BudgetId", "Id");
 
                     b.ToTable("LongTermPlanningStates");
 
                     b.HasData(
                         new
                         {
+                            BudgetId = "default",
                             Id = "default",
                             Version = 1L
                         });
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.MembershipPlanEntitlementEntity", b =>
+                {
+                    b.Property<string>("MembershipPlanId")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("EntitlementKey")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("MembershipPlanId", "EntitlementKey");
+
+                    b.ToTable("MembershipPlanEntitlements");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.MembershipPlanEntity", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<int?>("MaxActiveBudgets")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MembershipPlans");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = "free",
+                            MaxActiveBudgets = 1,
+                            Name = "Free"
+                        },
+                        new
+                        {
+                            Id = "plus",
+                            MaxActiveBudgets = 3,
+                            Name = "Plus"
+                        },
+                        new
+                        {
+                            Id = "pro",
+                            Name = "Pro"
+                        });
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.OpenBudgetUser", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<int>("AccessFailedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ConcurrencyStamp")
+                        .IsConcurrencyToken()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<bool>("EmailConfirmed")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsBootstrapAdministrator")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsSuspended")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("LastLoginAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("LockoutEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("LockoutEnd")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("NormalizedEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("NormalizedUserName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("PasswordHash")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PhoneNumber")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("PhoneNumberConfirmed")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("RequiresApproval")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("SecurityStamp")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("TwoFactorEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("UserName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedEmail")
+                        .HasDatabaseName("EmailIndex");
+
+                    b.HasIndex("NormalizedUserName")
+                        .IsUnique()
+                        .HasDatabaseName("UserNameIndex");
+
+                    b.ToTable("AspNetUsers", (string)null);
                 });
 
             modelBuilder.Entity("OpenBudget.Api.PayeeEntity", b =>
@@ -380,6 +746,11 @@ namespace OpenBudget.Api.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("CategoryMode")
                         .IsRequired()
@@ -413,7 +784,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("NormalizedName")
+                    b.HasIndex("BudgetId", "NormalizedName")
                         .IsUnique();
 
                     b.ToTable("Payees");
@@ -427,6 +798,11 @@ namespace OpenBudget.Api.Migrations
 
                     b.Property<Guid>("AccountId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -447,6 +823,10 @@ namespace OpenBudget.Api.Migrations
 
             modelBuilder.Entity("OpenBudget.Api.RegisterViewEntity", b =>
                 {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Scope")
                         .HasMaxLength(36)
                         .HasColumnType("character varying(36)");
@@ -477,7 +857,7 @@ namespace OpenBudget.Api.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
 
-                    b.HasKey("Scope");
+                    b.HasKey("BudgetId", "Scope");
 
                     b.ToTable("RegisterViews");
                 });
@@ -493,6 +873,11 @@ namespace OpenBudget.Api.Migrations
 
                     b.Property<DateOnly>("AnchorDate")
                         .HasColumnType("date");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<int?>("Count")
                         .HasColumnType("integer");
@@ -534,9 +919,11 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AccountId");
+
                     b.HasIndex("ToAccountId");
 
-                    b.HasIndex("AccountId", "NextDate");
+                    b.HasIndex("BudgetId", "AccountId", "NextDate");
 
                     b.ToTable("Schedules");
                 });
@@ -546,6 +933,11 @@ namespace OpenBudget.Api.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<DateOnly?>("DeferredDate")
                         .HasColumnType("date");
@@ -571,7 +963,9 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ScheduleId", "Sequence")
+                    b.HasIndex("ScheduleId");
+
+                    b.HasIndex("BudgetId", "ScheduleId", "Sequence")
                         .IsUnique();
 
                     b.ToTable("ScheduleOccurrences");
@@ -611,6 +1005,11 @@ namespace OpenBudget.Api.Migrations
                     b.Property<decimal>("Amount")
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("CategoryId")
                         .HasMaxLength(100)
@@ -665,6 +1064,114 @@ namespace OpenBudget.Api.Migrations
                     b.ToTable("Transactions");
                 });
 
+            modelBuilder.Entity("OpenBudget.Api.UserEntitlementOverrideEntity", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("EntitlementKey")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("UserId", "EntitlementKey");
+
+                    b.ToTable("UserEntitlementOverrides");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.UserMembershipEntity", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("BillingProvider")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<int?>("BudgetLimitOverride")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly?>("ExpiresOn")
+                        .HasColumnType("date");
+
+                    b.Property<string>("ExternalSubscriptionId")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("MembershipPlanId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateOnly?>("StartsOn")
+                        .HasColumnType("date");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("MembershipPlanId");
+
+                    b.ToTable("UserMemberships");
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
+                {
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<string>", b =>
+                {
+                    b.HasOne("OpenBudget.Api.OpenBudgetUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<string>", b =>
+                {
+                    b.HasOne("OpenBudget.Api.OpenBudgetUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserRole<string>", b =>
+                {
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
+                        .WithMany()
+                        .HasForeignKey("RoleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OpenBudget.Api.OpenBudgetUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<string>", b =>
+                {
+                    b.HasOne("OpenBudget.Api.OpenBudgetUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("OpenBudget.Api.BudgetEntity", b =>
                 {
                     b.HasOne("OpenBudget.Api.BudgetPlanEntity", "Plan")
@@ -676,11 +1183,19 @@ namespace OpenBudget.Api.Migrations
                     b.Navigation("Plan");
                 });
 
+            modelBuilder.Entity("OpenBudget.Api.BudgetPlanEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.OpenBudgetUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("OpenBudget.Api.CategoryEntity", b =>
                 {
                     b.HasOne("OpenBudget.Api.CategoryGroupEntity", null)
                         .WithMany("Categories")
-                        .HasForeignKey("BudgetMonth", "GroupId")
+                        .HasForeignKey("BudgetId", "BudgetMonth", "GroupId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -689,7 +1204,16 @@ namespace OpenBudget.Api.Migrations
                 {
                     b.HasOne("OpenBudget.Api.BudgetEntity", null)
                         .WithMany("Groups")
-                        .HasForeignKey("BudgetMonth")
+                        .HasForeignKey("BudgetId", "BudgetMonth")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.MembershipPlanEntitlementEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.MembershipPlanEntity", null)
+                        .WithMany()
+                        .HasForeignKey("MembershipPlanId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -751,6 +1275,30 @@ namespace OpenBudget.Api.Migrations
                     b.Navigation("Account");
 
                     b.Navigation("Payee");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.UserEntitlementOverrideEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.OpenBudgetUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.UserMembershipEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.MembershipPlanEntity", null)
+                        .WithMany()
+                        .HasForeignKey("MembershipPlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("OpenBudget.Api.OpenBudgetUser", null)
+                        .WithOne()
+                        .HasForeignKey("OpenBudget.Api.UserMembershipEntity", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("OpenBudget.Api.BudgetEntity", b =>
