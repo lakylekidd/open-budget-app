@@ -126,6 +126,7 @@ Administrators can configure:
 - [x] Ordinary users receive HTTP 403 when accessing administrative APIs.
 - [x] Every implemented administrative action is enforced by backend authorization.
 - [x] Administrators can initiate a secure password reset; reset links are emailed and never expose passwords or tokens in API responses.
+- [x] Administrators cannot read another user's owned budget or monthly Plan data by default.
 - [ ] Administrators can search users and perform the listed management actions.
 - [x] Unlocking an account does not unintentionally reactivate a suspended account.
 - [ ] Administrative password resets never reveal an existing password.

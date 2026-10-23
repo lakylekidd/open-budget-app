@@ -266,6 +266,12 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         Assert.Equal(HttpStatusCode.Created, aliceBudgetTwo.StatusCode);
         var aliceBudgetOneDto = (await aliceBudgetOne.Content.ReadFromJsonAsync<OwnedBudgetDto>())!;
         var aliceBudgetTwoDto = (await aliceBudgetTwo.Content.ReadFromJsonAsync<OwnedBudgetDto>())!;
+        using var administratorBudgets = await adminClient.GetFromJsonAsync<JsonDocument>("/api/budgets?includeArchived=true");
+        var administratorBudgetIds = administratorBudgets!.RootElement.GetProperty("budgets").EnumerateArray()
+            .Select(budget => budget.GetProperty("id").GetString()).ToArray();
+        Assert.DoesNotContain(aliceBudgetOneDto.Id, administratorBudgetIds);
+        Assert.DoesNotContain(aliceBudgetTwoDto.Id, administratorBudgetIds);
+        Assert.Equal(HttpStatusCode.NotFound, (await adminClient.GetAsync($"/api/budgets/{aliceBudgetOneDto.Id}/months/2026-10")).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await adminClient.PutAsJsonAsync($"/api/admin/users/{aliceId}/membership", new AdminMembershipRequest("free", null))).StatusCode);
         using var afterLimitReduction = await userClient.GetFromJsonAsync<JsonDocument>("/api/budgets?includeArchived=true");
         var retained = afterLimitReduction!.RootElement.GetProperty("budgets").EnumerateArray().ToArray();
