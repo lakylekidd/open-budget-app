@@ -7,6 +7,7 @@ import { categoryProgress, categoryTransactionAmount, moveItem } from './planHel
 import { PlanTransactionList, type PlanTransactionItem } from './PlanTransactionList';
 import { LongTermPlanning } from './longTermPlanning/LongTermPlanning';
 import { AuthGate } from './AuthGate';
+import { AdminPanel } from './admin/AdminPanel';
 
 type Category = {
   id: string;
@@ -617,4 +618,7 @@ function BudgetApplication() {
   </div>;
 }
 
-export default function App() { return import.meta.env.MODE === 'test' ? <BudgetApplication /> : <AuthGate><BudgetApplication /></AuthGate>; }
+export default function App() {
+  const page = window.location.pathname === '/admin' ? <AdminPanel /> : <BudgetApplication />;
+  return import.meta.env.MODE === 'test' ? page : <AuthGate>{page}</AuthGate>;
+}

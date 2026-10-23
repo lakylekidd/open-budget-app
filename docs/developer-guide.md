@@ -28,6 +28,8 @@ Aspire provisions PostgreSQL, waits for the database, starts the API, then start
 
 In Development, OpenBudget provisions the initial administrator as `admin` / `admin`. Change this password before using any shared environment. Production startup requires `BootstrapAdmin__Username`, `BootstrapAdmin__Email`, and `BootstrapAdmin__Password` from the deployment secret store. The password is used only when the account is first created and is not reset on later starts.
 
+To enable registration and account verification/recovery mail, configure `Smtp__Host`, `Smtp__Port`, `Smtp__From`, optional `Smtp__Username` / `Smtp__Password`, and optional `Smtp__EnableSsl` in the deployment secret store. In shared environments also set `AccountEmail__PublicOrigin` to the app's trusted HTTPS origin so emailed links never use an untrusted request host. Registration remains disabled until an administrator selects a mode. Verification and reset tokens expire after two hours and are never returned by API responses. Registration and recovery email requests are limited to five per minute per client IP.
+
 The AppHost attaches PostgreSQL to the existing named volume `ynab-clone_budget-board-data`; the volume survives AppHost restarts and container recreation. The legacy volume and database role names are retained to preserve local data; application folders, assemblies, and C# namespaces use `OpenBudget`. PostgreSQL is pinned to major version 17 for compatibility with that data directory.
 
 ## Build commands
@@ -56,7 +58,7 @@ The Plan screen starts with an empty loading state and renders budget amounts on
 
 ## Current development boundaries
 
-- Sign-in uses ASP.NET Core Identity and an HttpOnly, SameSite=Strict cookie. Financial API requests require an authenticated session outside the Testing environment. Financial data remains in the legacy default budget until per-user budget ownership and isolation are implemented.
+- Sign-in uses ASP.NET Core Identity and an HttpOnly, SameSite=Strict cookie. Until per-user budget ownership and isolation are implemented, financial API requests are restricted to administrators to protect the shared legacy default budget; other authenticated accounts receive a budget-setup message.
 - The Plan API stores versioned editable monthly snapshots. The cash ledger uses replay-safe commands and shared revisions; ownership isolation is still pending.
 - Long-Term Planning stores versioned category budget overrides, projects income and expenses from active scheduled ledger transactions, and reads existing actual snapshots without initializing missing months. It remains scoped to the local default budget.
 - Cash account/sidebar balances and monthly activity are ledger-backed; Reflect, credit/debt and linking remain future milestones; scheduling/approval and payee management are implemented register extensions.

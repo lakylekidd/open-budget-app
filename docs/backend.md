@@ -26,7 +26,7 @@ The API applies EF Core migrations at startup. A single default budget owns mont
 
 `BudgetService` owns budget behavior. `LedgerService` owns accounts, transactions, payees, splits, paired transfers, cleared state, reconciliation, receipts, audit and projection. `LedgerGate` uses a database transaction plus the shared ledger-state row lock to order ledger commands, monthly initialization and Plan saves. Responses follow commit; financial rows, projection changes and audit receipts roll back together on failure. Ledger commands also use an optimistic revision and replay-safe command IDs.
 
-See [API contracts](api.md) for cash ledger endpoints and [testing](testing.md) for verification. This remains an unauthenticated local application; authorization and household isolation are planned for Milestone 8.
+See [API contracts](api.md) for cash ledger endpoints and [testing](testing.md) for verification. Financial endpoints require an authenticated Identity session outside Testing. Verified registration, password recovery and audited administrator lifecycle controls are implemented as early Milestone 2a slices. Financial storage still uses the legacy default budget; per-user budget ownership and isolation remain future work in Milestone 2a.
 
 
 The ledger application service also owns schedule rules/occurrences, named flags, review approval and account balance adjustments. A hosted worker and production read catch-up process due schedules via the same locked, idempotent command path. TimeProvider supplies server-local calendar dates; integration tests inject a clock and invoke processing over HTTP. Forecasts never change actual totals until posted; automatic posts are uncleared/unapproved, with independent review and clearing-as-approval.

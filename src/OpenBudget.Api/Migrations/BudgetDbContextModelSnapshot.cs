@@ -187,6 +187,53 @@ namespace OpenBudget.Api.Migrations
                     b.ToTable("Accounts");
                 });
 
+            modelBuilder.Entity("OpenBudget.Api.AdminAuditLogEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("ActorUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TargetUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.ToTable("AdminAuditLogs");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.ApplicationSettingEntity", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("ApplicationSettings");
+                });
+
             modelBuilder.Entity("OpenBudget.Api.BudgetEntity", b =>
                 {
                     b.Property<string>("Month")
@@ -535,6 +582,9 @@ namespace OpenBudget.Api.Migrations
                     b.Property<bool>("IsSuspended")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTimeOffset?>("LastLoginAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("boolean");
 
@@ -556,6 +606,9 @@ namespace OpenBudget.Api.Migrations
                         .HasColumnType("text");
 
                     b.Property<bool>("PhoneNumberConfirmed")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("RequiresApproval")
                         .HasColumnType("boolean");
 
                     b.Property<string>("SecurityStamp")

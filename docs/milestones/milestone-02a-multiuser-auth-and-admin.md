@@ -12,14 +12,14 @@ Implement authentication for all application users.
 **Acceptance criteria**
 
 - [x] A dedicated login screen is available at `/login`.
-- [ ] Users can log in using a username or email and password.
+- [x] Users can log in using a username or email and password.
 - [x] Authentication uses ASP.NET Core Identity or an equivalent secure identity framework.
 - [x] Passwords are securely hashed and never stored in plaintext.
 - [x] Sessions persist securely across page refreshes.
 - [x] Users can log out and invalidate their session.
 - [x] Unauthenticated users cannot access budgets or protected API endpoints.
 - [x] Failed login attempts are rate-limited, with configurable account lockout.
-- [ ] Password reset and recovery are supported through secure, expiring, single-use tokens.
+- [x] Password reset and recovery are supported through secure, expiring, single-use tokens.
 - [x] Suspended accounts cannot authenticate.
 - [ ] Authentication works independently for multiple concurrent users.
 
@@ -68,12 +68,12 @@ The default is **Disabled**.
 
 **Acceptance criteria**
 
-- [ ] Administrators can change the registration mode.
-- [ ] Registration is unavailable when disabled, including through direct API requests.
-- [ ] The registration screen validates required inputs and duplicate usernames/emails.
-- [ ] Accounts awaiting approval cannot access budgets.
-- [ ] Administrators can approve or reject pending registrations.
-- [ ] Email verification is required before new accounts become active.
+- [x] Administrators can change the registration mode.
+- [x] Registration is unavailable when disabled, including through direct API requests.
+- [x] The registration screen validates required inputs and duplicate usernames/emails.
+- [x] Accounts awaiting approval cannot authenticate or access protected APIs.
+- [x] Administrators can approve or reject pending registrations.
+- [x] Email verification is required before new accounts become active.
 - [ ] Users can update their profile and change their password.
 - [ ] Account statuses support `Pending`, `Active`, `Locked` and `Suspended`.
 - [ ] User registration and account status changes are audited.
@@ -120,15 +120,15 @@ Administrators can configure:
 
 **Acceptance criteria**
 
-- [ ] `/admin` uses a separate interface with its own navigation.
-- [ ] Only authenticated administrators can access administrative pages and APIs.
-- [ ] Ordinary users receive HTTP 403 when accessing administrative APIs.
-- [ ] Every administrative action is enforced by backend authorization.
+- [x] `/admin` uses a separate interface with its own navigation.
+- [x] Administrative APIs require an authenticated administrator; other sessions see an access-denied page.
+- [x] Ordinary users receive HTTP 403 when accessing administrative APIs.
+- [x] Every implemented administrative action is enforced by backend authorization.
 - [ ] Administrators can search users and perform the listed management actions.
-- [ ] Unlocking an account does not unintentionally reactivate a suspended account.
+- [x] Unlocking an account does not unintentionally reactivate a suspended account.
 - [ ] Administrative password resets never reveal an existing password.
-- [ ] Critical operations require confirmation.
-- [ ] Administrative changes are recorded in an audit log containing actor, action, target and timestamp.
+- [x] Critical implemented operations require confirmation.
+- [x] Registration policy and user lifecycle changes are recorded in an audit log containing actor, action, target and timestamp.
 - [ ] Administrators cannot read users' private budget information by default.
 
 ## 5. Multiple Budgets Per User

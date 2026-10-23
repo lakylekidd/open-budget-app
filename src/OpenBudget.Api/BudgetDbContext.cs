@@ -22,11 +22,15 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) :
     public DbSet<LedgerStateEntity> LedgerStates => Set<LedgerStateEntity>();
     public DbSet<LedgerCommandEntity> LedgerCommands => Set<LedgerCommandEntity>();
     public DbSet<ReconciliationEntity> Reconciliations => Set<ReconciliationEntity>();
+    public DbSet<ApplicationSettingEntity> ApplicationSettings => Set<ApplicationSettingEntity>();
+    public DbSet<AdminAuditLogEntity> AdminAuditLogs => Set<AdminAuditLogEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
         LedgerModel.Configure(modelBuilder);
+        modelBuilder.Entity<ApplicationSettingEntity>(e => { e.HasKey(x => x.Key); e.Property(x => x.Key).HasMaxLength(100); e.Property(x => x.Value).HasMaxLength(500); });
+        modelBuilder.Entity<AdminAuditLogEntity>(e => { e.HasKey(x => x.Id); e.Property(x => x.ActorUserId).HasMaxLength(450); e.Property(x => x.TargetUserId).HasMaxLength(450); e.Property(x => x.Action).HasMaxLength(80); e.HasIndex(x => x.CreatedAt); });
         modelBuilder.Entity<FlagDefinitionEntity>(e => {
             e.HasKey(x=>x.Color); e.Property(x=>x.Color).HasMaxLength(10); e.Property(x=>x.Name).HasMaxLength(40);
             e.HasData(LedgerService.FlagColors.Select(color=>new FlagDefinitionEntity{Color=color,Name=char.ToUpperInvariant(color[0])+color[1..]}));
@@ -104,6 +108,21 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) :
             entity.Property(x => x.Target).HasPrecision(14, 2);
         });
     }
+}
+
+public sealed class ApplicationSettingEntity
+{
+    public string Key { get; set; } = "";
+    public string Value { get; set; } = "";
+}
+
+public sealed class AdminAuditLogEntity
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string ActorUserId { get; set; } = "";
+    public string TargetUserId { get; set; } = "";
+    public string Action { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
 public sealed class LongTermPlanningStateEntity

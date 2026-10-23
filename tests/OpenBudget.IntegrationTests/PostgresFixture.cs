@@ -34,6 +34,7 @@ public sealed class TestApp(string connectionString) : WebApplicationFactory<Pro
     public string ConnectionString { get; } = connectionString;
     public FailureInjector Failure { get; } = new();
     public TestClock Clock { get; } = new();
+    public TestAccountEmailSender Email { get; } = new();
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -44,10 +45,23 @@ public sealed class TestApp(string connectionString) : WebApplicationFactory<Pro
             services.RemoveAll<BudgetDbContext>();
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(Clock);
+            services.RemoveAll<IAccountEmailSender>();
+            services.AddSingleton<IAccountEmailSender>(Email);
             services.AddDbContext<BudgetDbContext>(options => options.UseNpgsql(ConnectionString).AddInterceptors(Failure));
         });
     }
     public BudgetDbContext CreateDb() => new(new DbContextOptionsBuilder<BudgetDbContext>().UseNpgsql(ConnectionString).Options);
+}
+
+public sealed class TestAccountEmailSender : IAccountEmailSender
+{
+    public bool IsConfigured => true;
+    public List<(string To, string Subject, string Body)> Messages { get; } = [];
+    public Task SendAsync(string to, string subject, string body, CancellationToken cancellationToken)
+    {
+        Messages.Add((to, subject, body));
+        return Task.CompletedTask;
+    }
 }
 
 public sealed class FailureInjector : SaveChangesInterceptor

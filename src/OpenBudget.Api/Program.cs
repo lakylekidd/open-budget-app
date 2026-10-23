@@ -23,6 +23,19 @@ var app = builder.Build();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path;
+    var isFinancialApi = path.StartsWithSegments("/api") &&
+        !path.StartsWithSegments("/api/auth") && !path.StartsWithSegments("/api/admin");
+    if (isFinancialApi && context.User.Identity?.IsAuthenticated == true &&
+        !context.User.IsInRole(AuthenticationSetup.AdministratorRole))
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return;
+    }
+    await next(context);
+});
 app.UseRateLimiter();
 app.Use(async (context, next) =>
 {

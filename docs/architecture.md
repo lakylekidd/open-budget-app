@@ -23,7 +23,7 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Persistence | EF Core 10, Npgsql EF provider, PostgreSQL 17 |
 | Local orchestration | .NET Aspire 13.6.2 AppHost, PostgreSQL and JavaScript/Vite integrations |
 | API contract | Budget identity plus versioned monthly snapshot |
-| Authentication | ASP.NET Core Identity with cookie sessions and administrator role |
+| Authentication | ASP.NET Core Identity with cookie sessions, verified registration, password recovery and administrator role |
 
 ## Implemented user path
 
@@ -58,8 +58,8 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Bank linking, credit/debt accounts | Future milestones |
 | Targets and assignment recommendations | Basic static target/progress display only |
 | Reflect reports | Not implemented; entry remains a placeholder |
-| Sign-in, sign-out, Identity users, administrator bootstrap and API authentication boundary | Implemented foundation |
-| Per-user budgets, registration policy, recovery, admin management, memberships and ownership authorization | Not implemented; remaining Milestone 2a work |
+| Identity sign-in, bootstrap administrators, verified registration/recovery and audited account lifecycle administration | Implemented as initial Milestone 2a slices |
+| Per-user budgets, memberships and ownership authorization | Not implemented; remaining Milestone 2a work |
 
 ## Design limits to address
 
@@ -67,7 +67,7 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 - Activity combines an explicit legacy baseline with ledger-derived activity. New cash flows come from account transactions; prototype manual funds are preserved read-only.
 - Monthly writes replace the editable snapshot and use optimistic concurrency; membership/authorization boundaries are not implemented.
 - The app currently supports one shared legacy default budget identity. Per-user budget ownership and multiple budgets remain required to complete Milestone 2a.
-- API authentication is in place, but tenant isolation is not. Keep deployment access limited until budget ownership and resource authorization are delivered.
+- API authentication is in place, but tenant isolation is not. Financial endpoints are temporarily administrator-only until budget ownership and resource authorization are delivered.
 
 ## Cash ledger slice
 

@@ -8,15 +8,30 @@ Checks PostgreSQL connectivity. Success: `{ "status": "ok", "database": "connect
 
 ## Authentication
 
-Outside the Testing environment, API requests require an authenticated Identity session. Sign-in creates an HttpOnly, SameSite=Strict cookie; login failures return the same 401 response for unknown, invalid, locked, or suspended accounts. Identity lockout is configured for five failed attempts and 15 minutes.
+Outside the Testing environment, API requests require an authenticated Identity session. Until per-user budget ownership is implemented, financial APIs are restricted to administrators so registered users cannot see the shared legacy budget; the UI explains that budget access is pending. Sign-in creates an HttpOnly, SameSite=Strict cookie; login failures return the same 401 response for unknown, invalid, locked, or suspended accounts. Identity lockout is configured for five failed attempts and 15 minutes.
 
 | Method/path | Behavior |
 |---|---|
 | `POST /api/auth/login` | Accepts `{ "userNameOrEmail", "password", "rememberMe" }`; returns the signed-in user's ID, username, email and administrator flag. |
 | `GET /api/auth/session` | Returns the current session identity or 401. |
 | `POST /api/auth/logout` | Invalidates the current cookie session. |
+| `GET /api/auth/profile` | Returns the signed-in user's profile summary. |
+| `POST /api/auth/change-password` | Accepts current and new passwords; updates the password and invalidates the current session. |
+| `GET /api/auth/registration-mode` | Publicly reports Disabled, ApprovalRequired, or Open. Defaults to Disabled. |
+| `POST /api/auth/register` | Creates an account only when registration is enabled and SMTP is configured; sends a two-hour email-verification link. |
+| `POST /api/auth/confirm-email` | Accepts user ID and URL-safe verification token. |
+| `POST /api/auth/forgot-password` | Sends a reset link when the address belongs to a verified account; always returns the same response. |
+| `POST /api/auth/reset-password` | Resets a password using a two-hour, URL-safe Identity token. |
+| `PUT /api/admin/settings/registration-mode` | Administrator-only; accepts Disabled, ApprovalRequired, or Open. |
+| `POST /api/admin/users/{id}/approve` | Administrator-only; approves a user after email verification. |
+| `POST /api/admin/users/{id}/reject` | Administrator-only; rejects a pending registration and records an audit event. |
+| `GET /api/admin/users?q={search}&status={status}` | Administrator-only; searches up to 100 users and returns safe account metadata/status. Status filter accepts Active, Pending, Locked or Suspended. |
+| `GET /api/admin/dashboard` | Administrator-only; returns user status counts and current total/active budget counts. |
+| `POST /api/admin/users/{id}/suspend` / `reactivate` | Administrator-only; changes account access and records an audit event. The bootstrap administrator cannot be suspended. |
+| `POST /api/admin/users/{id}/unlock` | Administrator-only; clears Identity lockout without changing suspension status. |
+| `GET /api/admin/audit` | Administrator-only; returns the latest 100 administration audit events. |
 
-State-changing requests carrying an `Origin` header are rejected unless it matches the request scheme and host. Password recovery, registration, per-user budget ownership and admin management endpoints remain planned in [Milestone 2a](milestones/milestone-02a-multiuser-auth-and-admin.md).
+State-changing requests carrying an `Origin` header are rejected unless it matches the request scheme and host. Registration and reset email delivery require SMTP configuration; shared environments also require the trusted `AccountEmail__PublicOrigin` HTTPS setting. Registration and recovery email requests are limited to five per minute per client IP. Identity verification and password reset tokens expire after two hours. Registration mode changes and user lifecycle actions commit together with their audit entry. The `/admin` UI supports user search, approval/rejection, suspension/reactivation, unlock, registration settings and recent audit history. Per-user budget ownership remains planned in [Milestone 2a](milestones/milestone-02a-multiuser-auth-and-admin.md).
 
 ## `GET /api/budget`
 
