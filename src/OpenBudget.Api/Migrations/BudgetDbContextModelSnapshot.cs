@@ -571,6 +571,24 @@ namespace OpenBudget.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("OpenBudget.Api.MembershipPlanEntitlementEntity", b =>
+                {
+                    b.Property<string>("MembershipPlanId")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("EntitlementKey")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("MembershipPlanId", "EntitlementKey");
+
+                    b.ToTable("MembershipPlanEntitlements");
+                });
+
             modelBuilder.Entity("OpenBudget.Api.MembershipPlanEntity", b =>
                 {
                     b.Property<string>("Id")
@@ -978,6 +996,24 @@ namespace OpenBudget.Api.Migrations
                     b.ToTable("Transactions");
                 });
 
+            modelBuilder.Entity("OpenBudget.Api.UserEntitlementOverrideEntity", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("EntitlementKey")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("UserId", "EntitlementKey");
+
+                    b.ToTable("UserEntitlementOverrides");
+                });
+
             modelBuilder.Entity("OpenBudget.Api.UserMembershipEntity", b =>
                 {
                     b.Property<string>("UserId")
@@ -1105,6 +1141,15 @@ namespace OpenBudget.Api.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("OpenBudget.Api.MembershipPlanEntitlementEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.MembershipPlanEntity", null)
+                        .WithMany()
+                        .HasForeignKey("MembershipPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("OpenBudget.Api.ReconciliationEntity", b =>
                 {
                     b.HasOne("OpenBudget.Api.AccountEntity", null)
@@ -1162,6 +1207,15 @@ namespace OpenBudget.Api.Migrations
                     b.Navigation("Account");
 
                     b.Navigation("Payee");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.UserEntitlementOverrideEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.OpenBudgetUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("OpenBudget.Api.UserMembershipEntity", b =>

@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Authorization;
 using OpenBudget.Api;
 using Microsoft.EntityFrameworkCore;
 
@@ -22,6 +23,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 builder.Services.AddScoped<BudgetService>();
 builder.Services.AddScoped<BudgetOwnershipService>();
+builder.Services.AddScoped<EntitlementService>();
+builder.Services.AddScoped<IAuthorizationHandler, EntitlementAuthorizationHandler>();
 builder.Services.AddScoped<LongTermPlanningService>();
 builder.Services.AddScoped<LedgerService>();
 builder.Services.AddScoped<LedgerGate>();
@@ -117,6 +120,7 @@ app.MapGet("/health", async (BudgetDbContext db, CancellationToken cancellationT
 }).AllowAnonymous();
 
 app.MapAuthenticationEndpoints();
+EntitlementService.MapEndpoints(app);
 BudgetOwnershipService.MapEndpoints(app);
 
 app.MapGet("/api/budget/{month}", async (string month, BudgetService budgets, LedgerGate gate, CancellationToken cancellationToken) =>

@@ -192,7 +192,7 @@ Memberships are separate from authentication roles. An administrator may have a 
 - [x] The API enforces the effective budget limit for creation and restoration.
 - [x] When a limit is reached, the application displays the server's explanation.
 - [x] Memberships store optional start date, expiration date, billing provider and external subscription ID for future subscription integration.
-- [ ] An entitlement model supports future restrictions on additional features without redesigning authorization.
+- [x] Membership-plan entitlements and per-user overrides feed a reusable authorization requirement for future feature restrictions.
 - [x] No payment processor integration is required for Milestone 2a.
 
 ## 7. Database & API Changes
