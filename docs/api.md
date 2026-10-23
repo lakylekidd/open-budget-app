@@ -16,6 +16,7 @@ Outside the Testing environment, API requests require an authenticated Identity 
 | `GET /api/auth/session` | Returns the current session identity or 401. |
 | `POST /api/auth/logout` | Invalidates the current cookie session. |
 | `GET /api/auth/profile` | Returns the signed-in user's profile summary. |
+| `PUT /api/auth/profile` | Accepts `{ "userName": "new-name" }`, updates the signed-in user's unique username, refreshes the session cookie and records a profile audit event. Email remains unchanged and must use its verification flow. |
 | `POST /api/auth/change-password` | Accepts current and new passwords; updates the password and invalidates the current session. |
 | `GET /api/auth/registration-mode` | Publicly reports Disabled, ApprovalRequired, or Open. Defaults to Disabled. |
 | `POST /api/auth/register` | Creates an account only when registration is enabled and SMTP is configured; sends a two-hour email-verification link. |

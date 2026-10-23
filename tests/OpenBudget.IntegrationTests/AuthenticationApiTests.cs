@@ -95,6 +95,8 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
             var users = scope.ServiceProvider.GetRequiredService<UserManager<OpenBudgetUser>>();
             var create = await users.CreateAsync(new OpenBudgetUser { UserName = "alice", Email = "alice@example.test", EmailConfirmed = true }, "Strong-pass1!");
             Assert.True(create.Succeeded, string.Join(",", create.Errors.Select(error => error.Code)));
+            var other = await users.CreateAsync(new OpenBudgetUser { UserName = "bob", Email = "bob@example.test", EmailConfirmed = true }, "Strong-pass1!");
+            Assert.True(other.Succeeded, string.Join(",", other.Errors.Select(error => error.Code)));
         }
 
         using var client = app.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = true });
@@ -108,15 +110,23 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         Assert.False(session!.IsAdministrator);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/budget")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/auth/profile")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync("/api/auth/profile", new UpdateProfileRequest("bob"))).StatusCode);
+        Assert.Equal("alice", (await client.GetFromJsonAsync<UserSessionDto>("/api/auth/session"))?.UserName);
+        var updatedProfile = await client.PutAsJsonAsync("/api/auth/profile", new UpdateProfileRequest("  alice-renamed  "));
+        Assert.Equal(HttpStatusCode.OK, updatedProfile.StatusCode);
+        Assert.Equal("alice-renamed", (await updatedProfile.Content.ReadFromJsonAsync<UserSessionDto>())?.UserName);
+        var refreshedSession = await client.GetFromJsonAsync<UserSessionDto>("/api/auth/session");
+        Assert.Equal("alice-renamed", refreshedSession?.UserName);
+        Assert.Equal("alice@example.test", refreshedSession?.Email);
 
         Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync("/api/auth/logout", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/auth/session")).StatusCode);
 
-        await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("alice", "Strong-pass1!"));
+        await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("alice-renamed", "Strong-pass1!"));
         Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsJsonAsync("/api/auth/change-password", new ChangePasswordRequest("Strong-pass1!", "New-strong1!"))).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/auth/session")).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("alice", "Strong-pass1!"))).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("alice", "New-strong1!"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("alice-renamed", "Strong-pass1!"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("alice-renamed", "New-strong1!"))).StatusCode);
     }
 
     [Fact]

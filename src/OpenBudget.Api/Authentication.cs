@@ -22,6 +22,7 @@ public sealed class OpenBudgetUser : IdentityUser
 public sealed record LoginRequest(string UserNameOrEmail, string Password, bool RememberMe = false);
 public sealed record UserSessionDto(string Id, string UserName, string? Email, bool IsAdministrator);
 public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+public sealed record UpdateProfileRequest(string UserName);
 public sealed record RegisterRequest(string UserName, string Email, string Password);
 public sealed record TokenRequest(string UserId, string Token);
 public sealed record ResetPasswordRequest(string UserId, string Token, string NewPassword);
@@ -451,6 +452,24 @@ public static class AuthenticationSetup
         {
             var user = await users.GetUserAsync(principal);
             if (user is null) return Results.Unauthorized();
+            var roles = await users.GetRolesAsync(user);
+            return Results.Ok(new UserSessionDto(user.Id, user.UserName!, user.Email, roles.Contains(AdministratorRole)));
+        }).RequireAuthorization();
+        auth.MapPut("/profile", async (UpdateProfileRequest request, ClaimsPrincipal principal, BudgetDbContext db, UserManager<OpenBudgetUser> users, SignInManager<OpenBudgetUser> signIn, CancellationToken ct) =>
+        {
+            var user = await users.GetUserAsync(principal);
+            if (user is null) return Results.Unauthorized();
+            var userName = request.UserName?.Trim();
+            if (string.IsNullOrWhiteSpace(userName) || userName.Length > 64)
+                return Results.BadRequest(new { error = "Username is required and must be no longer than 64 characters." });
+            if (string.Equals(user.UserName, userName, StringComparison.Ordinal))
+                return Results.Ok(new UserSessionDto(user.Id, user.UserName!, user.Email, await users.IsInRoleAsync(user, AdministratorRole)));
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            var result = await users.SetUserNameAsync(user, userName);
+            if (!result.Succeeded) return Results.BadRequest(new { errors = result.Errors.Select(error => error.Code) });
+            await AddAdminAuditAsync(db, principal, user.Id, "user.profile.update", ct);
+            await transaction.CommitAsync(ct);
+            await signIn.RefreshSignInAsync(user);
             var roles = await users.GetRolesAsync(user);
             return Results.Ok(new UserSessionDto(user.Id, user.UserName!, user.Email, roles.Contains(AdministratorRole)));
         }).RequireAuthorization();

@@ -74,7 +74,7 @@ The default is **Disabled**.
 - [x] Accounts awaiting approval cannot authenticate or access protected APIs.
 - [x] Administrators can approve or reject pending registrations.
 - [x] Email verification is required before new accounts become active.
-- [ ] Users can update their profile and change their password.
+- [x] Users can update their username and change their password from profile settings.
 - [ ] Account statuses support `Pending`, `Active`, `Locked` and `Suspended`.
 - [ ] User registration and account status changes are audited.
 
