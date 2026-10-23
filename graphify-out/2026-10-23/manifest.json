@@ -666,9 +666,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1792791092.377672,
-    "seen": 1792791309.6336527,
-    "ast_hash": "16827abb1a42dc6e9682d3f208e03e18",
+    "mtime": 1792791369.2792625,
+    "seen": 1792791383.3705893,
+    "ast_hash": "baaea41fe8a3669e9562899d19b13ebe",
     "semantic_hash": ""
   },
   "docs/README.md": {
@@ -678,21 +678,21 @@
     "semantic_hash": ""
   },
   "docs/api.md": {
-    "mtime": 1792790589.5262637,
-    "seen": 1792790810.0911138,
-    "ast_hash": "6094cc58620a24f0b66d4edf375c2b21",
+    "mtime": 1792791369.2708154,
+    "seen": 1792791383.3705893,
+    "ast_hash": "da9144584d7d3a8ba51d0691efa6bf01",
     "semantic_hash": ""
   },
   "docs/architecture.md": {
-    "mtime": 1792790260.213689,
-    "seen": 1792790810.0911138,
-    "ast_hash": "dc260c749fe445dd7181b93be19f1f06",
+    "mtime": 1792791369.273811,
+    "seen": 1792791383.3705893,
+    "ast_hash": "748d64e3714925e6d3381e6865463d80",
     "semantic_hash": ""
   },
   "docs/backend.md": {
-    "mtime": 1792790544.3582995,
-    "seen": 1792790810.0911138,
-    "ast_hash": "db34426b1c1c92e78e7bc174be324c5d",
+    "mtime": 1792791369.2748106,
+    "seen": 1792791383.3705893,
+    "ast_hash": "f449b635b7dff342e90bade4166980ec",
     "semantic_hash": ""
   },
   "docs/conventions.md": {
@@ -708,9 +708,9 @@
     "semantic_hash": ""
   },
   "docs/developer-guide.md": {
-    "mtime": 1792791092.375648,
-    "seen": 1792791309.6336527,
-    "ast_hash": "2dd0cc76eebe2e678b05168349ee6bb5",
+    "mtime": 1792791369.2728124,
+    "seen": 1792791383.3705893,
+    "ast_hash": "67e49d114c92318793fe79f6519f4c7c",
     "semantic_hash": ""
   },
   "docs/milestones/milestone-00-foundation.md": {
@@ -792,15 +792,15 @@
     "semantic_hash": ""
   },
   "docs/roadmap.md": {
-    "mtime": 1792787726.764256,
-    "seen": 1792787732.3454177,
-    "ast_hash": "2184805480161380ebf25fb94d185fdb",
+    "mtime": 1792791369.277254,
+    "seen": 1792791383.3705893,
+    "ast_hash": "912552eed24e8cf483867ec6b7420f01",
     "semantic_hash": ""
   },
   "docs/testing.md": {
-    "mtime": 1792791092.377672,
-    "seen": 1792791309.6336527,
-    "ast_hash": "1bcd42f56f2f2e012cc9adc4b0b2b206",
+    "mtime": 1792791369.27663,
+    "seen": 1792791383.3705893,
+    "ast_hash": "460f9ca439860e28df71f11a9a523d12",
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/index.html": {

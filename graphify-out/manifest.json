@@ -162,10 +162,10 @@
     "semantic_hash": "d4c0ee5a4ebaeff6771f14852a1196b3"
   },
   "src/OpenBudget.UI/vite.config.ts": {
-    "mtime": 1792566653.9938421,
-    "seen": 1792595096.316828,
-    "ast_hash": "529faf2bc180125281428dede6e0a9dc",
-    "semantic_hash": "529faf2bc180125281428dede6e0a9dc"
+    "mtime": 1792792402.5222733,
+    "seen": 1792792630.8201482,
+    "ast_hash": "722682b189db17424e7cb58e103d6af1",
+    "semantic_hash": ""
   },
   "src/OpenBudget.Api/BudgetCarryForward.cs": {
     "mtime": 1792785642.0474057,
@@ -708,9 +708,9 @@
     "semantic_hash": ""
   },
   "docs/developer-guide.md": {
-    "mtime": 1792791369.2728124,
-    "seen": 1792791383.3705893,
-    "ast_hash": "67e49d114c92318793fe79f6519f4c7c",
+    "mtime": 1792792444.2406785,
+    "seen": 1792792630.8201482,
+    "ast_hash": "09d0673223a0f28b4ac1cda4ef775a00",
     "semantic_hash": ""
   },
   "docs/milestones/milestone-00-foundation.md": {
@@ -971,36 +971,6 @@
     "ast_hash": "cf1687dafb66d0367cf40b67ced5c4d6",
     "semantic_hash": ""
   },
-  "artifacts/auth-build/OpenBudget.Api.deps.json": {
-    "mtime": 1792780878.812948,
-    "seen": 1792783181.4804132,
-    "ast_hash": "cb73b58cab5fe612b5acd0aa2f8f88ff",
-    "semantic_hash": ""
-  },
-  "artifacts/auth-build/OpenBudget.Api.runtimeconfig.json": {
-    "mtime": 1792780878.8531811,
-    "seen": 1792783181.4804132,
-    "ast_hash": "37595336dae30b037bd95e5047b95825",
-    "semantic_hash": ""
-  },
-  "artifacts/auth-build/OpenBudget.Api.staticwebassets.endpoints.json": {
-    "mtime": 1792564931.3771152,
-    "seen": 1792783181.4804132,
-    "ast_hash": "f44ca44dd881261586b84442f2201257",
-    "semantic_hash": ""
-  },
-  "artifacts/auth-build/appsettings.Development.json": {
-    "mtime": 1792566975.3696136,
-    "seen": 1792783181.4804132,
-    "ast_hash": "804b473502a4c415cf75db61c56c32aa",
-    "semantic_hash": ""
-  },
-  "artifacts/auth-build/appsettings.json": {
-    "mtime": 1792566975.372606,
-    "seen": 1792783181.4804132,
-    "ast_hash": "025da8b3723e340cb6f05940be34802e",
-    "semantic_hash": ""
-  },
   "src/OpenBudget.Api/Authentication.cs": {
     "mtime": 1792791092.3676972,
     "seen": 1792791309.6336527,
@@ -1020,14 +990,14 @@
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/AuthGate.test.tsx": {
-    "mtime": 1792784289.3920727,
-    "seen": 1792784846.9800599,
+    "mtime": 1792792305.474147,
+    "seen": 1792792630.8201482,
     "ast_hash": "ab3df8e9a72eb1df1679cf19c25ff2ea",
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/AuthGate.tsx": {
-    "mtime": 1792784214.9419665,
-    "seen": 1792784846.9800599,
+    "mtime": 1792792305.4673321,
+    "seen": 1792792630.8201482,
     "ast_hash": "ab8546003a0f44ef205d1d2a7d4422a8",
     "semantic_hash": ""
   },
@@ -1179,6 +1149,12 @@
     "mtime": 1792790456.8739002,
     "seen": 1792790810.0911138,
     "ast_hash": "5daa6e855580fa75845c2f5a6e6c3ce8",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.UI/vite-proxy.test.ts": {
+    "mtime": 1792792461.815019,
+    "seen": 1792792630.8201482,
+    "ast_hash": "0ddc9eaa0af364b3960533f408b7c526",
     "semantic_hash": ""
   }
 }
