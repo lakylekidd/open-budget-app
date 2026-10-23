@@ -44,6 +44,7 @@ public sealed record AdminDashboardDto(
     IReadOnlyList<AdminRegistrationDto> RecentRegistrations,
     IReadOnlyList<AdminAuditDto> RecentSecurityEvents);
 public sealed record AdminMembershipRequest(string MembershipPlanId, int? BudgetLimitOverride);
+public sealed record AdminInviteUserRequest(string UserName, string Email, string MembershipPlanId = "free");
 
 public interface IAccountEmailSender
 {
@@ -352,6 +353,42 @@ public static class AuthenticationSetup
                 rows.Add(new AdminUserDto(user.Id, user.UserName!, user.Email, user.CreatedAt, user.LastLoginAt, userStatus, user.IsBootstrapAdministrator, user.LockoutEnd, membership?.MembershipPlanId ?? "free", membership?.BudgetLimitOverride));
             }
             return Results.Ok(rows);
+        }).RequireAuthorization(policy => policy.RequireRole(AdministratorRole));
+        app.MapPost("/api/admin/users/invite", async (AdminInviteUserRequest request, ClaimsPrincipal principal, BudgetDbContext db,
+            UserManager<OpenBudgetUser> users, IAccountEmailSender email, HttpContext context, IConfiguration configuration,
+            IWebHostEnvironment environment, CancellationToken ct) =>
+        {
+            var userName = request.UserName?.Trim();
+            var address = request.Email?.Trim();
+            if (string.IsNullOrWhiteSpace(userName) || userName.Length > 64 || string.IsNullOrWhiteSpace(address) || address.Length > 256)
+                return Results.BadRequest(new { error = "Username and email are required and must be within supported lengths." });
+            if (!await db.MembershipPlans.AnyAsync(plan => plan.Id == request.MembershipPlanId, ct))
+                return Results.BadRequest(new { error = "The selected membership tier does not exist." });
+            if (!email.IsConfigured)
+                return Results.Problem("Account email delivery is not configured.", statusCode: StatusCodes.Status503ServiceUnavailable);
+
+            var user = new OpenBudgetUser { UserName = userName, Email = address };
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            var temporaryPassword = Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)) + "Aa1!";
+            var created = await users.CreateAsync(user, temporaryPassword);
+            if (!created.Succeeded) return Results.BadRequest(new { errors = created.Errors.Select(error => error.Code) });
+            db.UserMemberships.Add(new UserMembershipEntity { UserId = user.Id, MembershipPlanId = request.MembershipPlanId });
+            await AddAdminAuditAsync(db, principal, user.Id, "user.invite", ct);
+            await transaction.CommitAsync(ct);
+
+            try
+            {
+                var token = await users.GenerateEmailConfirmationTokenAsync(user);
+                var link = BuildLink(context, "/confirm-email", user.Id, token, configuration, environment);
+                await email.SendAsync(user.Email!, "You are invited to OpenBudget",
+                    $"Verify your email using this link: {link}\n\nAfter verification, use Forgot password on the sign-in page to set your password.", ct);
+                return Results.Accepted(value: new { message = "An account verification link has been sent." });
+            }
+            catch
+            {
+                await users.DeleteAsync(user);
+                return Results.Problem("Invitation email could not be sent. Try again later.", statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
         }).RequireAuthorization(policy => policy.RequireRole(AdministratorRole));
         app.MapGet("/api/admin/membership-plans", async (BudgetDbContext db, CancellationToken ct) =>
             Results.Ok(await db.MembershipPlans.AsNoTracking().OrderBy(plan => plan.Id).ToListAsync(ct)))

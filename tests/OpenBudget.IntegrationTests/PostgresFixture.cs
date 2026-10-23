@@ -55,10 +55,12 @@ public sealed class TestApp(string connectionString) : WebApplicationFactory<Pro
 
 public sealed class TestAccountEmailSender : IAccountEmailSender
 {
-    public bool IsConfigured => true;
+    public bool IsConfigured { get; set; } = true;
+    public bool FailSending { get; set; }
     public List<(string To, string Subject, string Body)> Messages { get; } = [];
     public Task SendAsync(string to, string subject, string body, CancellationToken cancellationToken)
     {
+        if (FailSending) throw new InvalidOperationException("Simulated email delivery failure.");
         Messages.Add((to, subject, body));
         return Task.CompletedTask;
     }

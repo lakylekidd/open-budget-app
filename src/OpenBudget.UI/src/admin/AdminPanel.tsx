@@ -36,10 +36,14 @@ export function AdminPanel() {
   const [mode, setMode] = useState('Disabled');
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('All');
+  const [inviteUserName, setInviteUserName] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteMembership, setInviteMembership] = useState('free');
   const [summary, setSummary] = useState<AdminSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [forbidden, setForbidden] = useState(false);
 
   const load = useCallback(async (search: string, filter: string) => {
@@ -110,11 +114,32 @@ export function AdminPanel() {
     finally { setBusy(''); }
   }
 
+  async function inviteUser(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!window.confirm(`Invite ${inviteUserName.trim()} at ${inviteEmail.trim()}?`)) return;
+    setBusy('invite'); setError(''); setNotice('');
+    try {
+      const response = await fetch('/api/admin/users/invite', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userName: inviteUserName.trim(), email: inviteEmail.trim(), membershipPlanId: inviteMembership }),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(result?.error ?? (response.status === 503 ? 'Email delivery is not configured.' : 'The invitation could not be sent.'));
+      }
+      setInviteUserName(''); setInviteEmail('');
+      setNotice('Verification link sent. The account will be active after the user verifies their email.');
+      await load(query, status);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'The invitation could not be sent.'); }
+    finally { setBusy(''); }
+  }
+
   if (forbidden) return <main className="admin-screen"><header><a href="/">← OpenBudget</a><h1>Administration</h1></header><section className="admin-card"><h2>Access denied</h2><p>An administrator account is required to open this page.</p></section></main>;
 
   return <main className="admin-screen">
     <header><a href="/">← OpenBudget</a><div><span className="eyebrow">OPENBUDGET CONTROL</span><h1>Administration</h1><p>Manage accounts and registration policy.</p></div></header>
     {error && <p className="admin-error" role="alert">{error}<button onClick={() => void load(query, status)}>Retry</button></p>}
+    {notice && <p className="admin-notice" role="status">{notice}</p>}
     <section className="admin-card"><div className="admin-section-head"><div><h2>Registration</h2><p>New users must verify their email before signing in.</p></div><label>Registration mode<select aria-label="Registration mode" value={mode} disabled={busy === 'settings'} onChange={event => void saveMode(event.target.value)}>{modes.map(item => <option key={item} value={item}>{item === 'ApprovalRequired' ? 'Approval required' : item}</option>)}</select></label></div></section>
     <section className="admin-card"><h2>Dashboard</h2>{loading || !summary ? <p>Loading statistics…</p> : <>
       <div className="admin-stats">{[['Registered users', summary.totalUsers], ['Active', summary.activeUsers], ['Pending', summary.pendingUsers], ['Locked', summary.lockedUsers], ['Suspended', summary.suspendedUsers], ['Total budgets', summary.totalBudgets], ['Active budgets', summary.activeBudgets]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}</div>
@@ -123,6 +148,12 @@ export function AdminPanel() {
         <section><h3>Recent registrations</h3>{summary.recentRegistrations.length === 0 ? <p>No registrations yet.</p> : <ul>{summary.recentRegistrations.map(item => <li key={item.userId}><span>{item.userName}<small>{new Date(item.createdAt).toLocaleString()}</small></span><span className={`admin-status status-${item.status.toLowerCase()}`}>{item.status}</span></li>)}</ul>}</section>
       </div>
     </>}</section>
+    <section className="admin-card"><h2>Invite a user</h2><p>They will receive an expiring email verification link. No password is shared.</p><form className="admin-search" onSubmit={event => void inviteUser(event)}>
+      <label>Username<input aria-label="Invitation username" autoComplete="off" maxLength={64} required value={inviteUserName} onChange={event => setInviteUserName(event.target.value)} /></label>
+      <label>Email<input aria-label="Invitation email" type="email" autoComplete="email" maxLength={256} required value={inviteEmail} onChange={event => setInviteEmail(event.target.value)} /></label>
+      <label>Membership<select aria-label="Invitation membership" value={inviteMembership} onChange={event => setInviteMembership(event.target.value)}>{membershipPlans.map(plan => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></label>
+      <button type="submit" disabled={busy === 'invite' || loading}>Send invitation</button>
+    </form></section>
     <section className="admin-card"><div className="admin-section-head"><div><h2>Users</h2><p>{users.length} accounts shown · newest first</p></div><form className="admin-search" onSubmit={event => { event.preventDefault(); void load(query, status); }}><label>Search users<input aria-label="Search users" value={query} onChange={event => setQuery(event.target.value)} placeholder="Name or email" /></label><label>Status<select aria-label="Filter status" value={status} onChange={event => setStatus(event.target.value)}>{['All', 'Active', 'Pending', 'Locked', 'Suspended'].map(item => <option key={item}>{item}</option>)}</select></label><button type="submit">Apply</button></form></div>
       {loading ? <p aria-busy="true">Loading users…</p> : users.length === 0 ? <p>No matching users.</p> : <div className="admin-table-wrap"><table><thead><tr><th>User</th><th>Status</th><th>Membership</th><th>Created</th><th>Last sign-in</th><th>Actions</th></tr></thead><tbody>{users.map(user => { const draft = membershipDrafts[user.id] ?? { membershipPlanId: user.membershipPlanId, budgetLimitOverride: user.budgetLimitOverride?.toString() ?? '' }; return <tr key={user.id}><td><strong>{user.userName}{user.isBootstrapAdministrator ? ' · Permanent admin' : ''}</strong><small>{user.email}</small></td><td><span className={`admin-status status-${user.status.toLowerCase()}`}>{user.status}</span></td><td className="admin-membership"><label>Tier<select aria-label={`Membership for ${user.userName}`} value={draft.membershipPlanId} disabled={busy === user.id} onChange={event => setMembershipDrafts(current => ({ ...current, [user.id]: { ...draft, membershipPlanId: event.target.value } }))}>{membershipPlans.map(plan => <option key={plan.id} value={plan.id}>{plan.name} · {plan.maxActiveBudgets ?? 'Unlimited'} budgets</option>)}</select></label><label>Limit override<input aria-label={`Budget limit override for ${user.userName}`} type="number" min="1" max="1000" value={draft.budgetLimitOverride} disabled={busy === user.id} placeholder="Tier default" onChange={event => setMembershipDrafts(current => ({ ...current, [user.id]: { ...draft, budgetLimitOverride: event.target.value } }))} /></label><button disabled={busy === user.id} onClick={() => void saveMembership(user)}>Save membership</button></td><td>{new Date(user.createdAt).toLocaleDateString()}</td><td>{user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleDateString() : 'Never'}</td><td className="admin-actions">{user.email && user.status !== 'Pending' && <button disabled={busy === user.id} onClick={() => void action(user, 'reset-password')}>Send reset link</button>}{user.status === 'Pending' && <><button disabled={busy === user.id} onClick={() => void action(user, 'approve')}>Approve</button><button disabled={busy === user.id} onClick={() => void action(user, 'reject')}>Reject</button></>}{user.status === 'Active' && !user.isBootstrapAdministrator && <button disabled={busy === user.id} onClick={() => void action(user, 'suspend')}>Suspend</button>}{user.status === 'Suspended' && <button disabled={busy === user.id} onClick={() => void action(user, 'reactivate')}>Reactivate</button>}{user.status === 'Locked' && <><button disabled={busy === user.id} onClick={() => void action(user, 'unlock')}>Unlock</button>{!user.isBootstrapAdministrator && <button disabled={busy === user.id} onClick={() => void action(user, 'suspend')}>Suspend</button>}</>}</td></tr>; })}</tbody></table></div>}
     </section>

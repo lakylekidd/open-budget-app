@@ -435,4 +435,70 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         Assert.Contains(audit!, item => item.TargetUserId == aliceId && item.Action == "user.membership.update");
         Assert.Contains(audit!, item => item.Action == "settings.registration-mode");
     }
+
+    [Fact]
+    public async Task Administrator_invites_verified_email_user_without_exposing_a_password_or_token()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        string adminId;
+        await using (var scope = app.Services.CreateAsyncScope())
+        {
+            var roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<OpenBudgetUser>>();
+            await roles.CreateAsync(new IdentityRole(AuthenticationSetup.AdministratorRole));
+            var admin = new OpenBudgetUser { UserName = "root", Email = "root@example.test", EmailConfirmed = true, IsBootstrapAdministrator = true };
+            Assert.True((await users.CreateAsync(admin, "Strong-pass1!")).Succeeded);
+            await users.AddToRoleAsync(admin, AuthenticationSetup.AdministratorRole);
+            adminId = admin.Id;
+            var ordinary = new OpenBudgetUser { UserName = "ordinary", Email = "ordinary@example.test", EmailConfirmed = true };
+            Assert.True((await users.CreateAsync(ordinary, "Strong-pass1!")).Succeeded);
+        }
+
+        using var anonymous = app.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsJsonAsync("/api/admin/users/invite", new AdminInviteUserRequest("new-user", "new@example.test"))).StatusCode);
+        using var ordinaryClient = app.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = true });
+        Assert.Equal(HttpStatusCode.OK, (await ordinaryClient.PostAsJsonAsync("/api/auth/login", new LoginRequest("ordinary", "Strong-pass1!"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await ordinaryClient.PostAsJsonAsync("/api/admin/users/invite", new AdminInviteUserRequest("new-user", "new@example.test"))).StatusCode);
+
+        using var adminClient = app.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = true });
+        Assert.Equal(HttpStatusCode.OK, (await adminClient.PostAsJsonAsync("/api/auth/login", new LoginRequest("root", "Strong-pass1!"))).StatusCode);
+        app.Email.IsConfigured = false;
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await adminClient.PostAsJsonAsync("/api/admin/users/invite", new AdminInviteUserRequest("no-email", "no-email@example.test"))).StatusCode);
+        await using (var db = app.CreateDb())
+            Assert.False(await db.Users.AnyAsync(user => user.UserName == "no-email"));
+        app.Email.IsConfigured = true;
+        Assert.Equal(HttpStatusCode.BadRequest, (await adminClient.PostAsJsonAsync("/api/admin/users/invite", new AdminInviteUserRequest("new-user", "new@example.test", "missing"))).StatusCode);
+        using var response = await adminClient.PostAsJsonAsync("/api/admin/users/invite", new AdminInviteUserRequest("new-user", "new@example.test", "plus"));
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var responseBody = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("token", responseBody, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("password", responseBody, StringComparison.OrdinalIgnoreCase);
+
+        var invite = Assert.Single(app.Email.Messages);
+        Assert.Equal("new@example.test", invite.To);
+        Assert.Contains("Verify your email", invite.Body);
+        Assert.Contains("Forgot password", invite.Body);
+        var inviteUri = new Uri(invite.Body.Split("Verify your email using this link: ")[1].Split('\n')[0]);
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(inviteUri.Query);
+        var invitedId = query["userId"].ToString();
+        var encodedToken = query["token"].ToString();
+        Assert.NotEqual(adminId, invitedId);
+
+        await using (var db = app.CreateDb())
+        {
+            var invited = await db.Users.SingleAsync(user => user.Id == invitedId);
+            Assert.False(invited.EmailConfirmed);
+            Assert.False(invited.RequiresApproval);
+            Assert.Equal("plus", (await db.UserMemberships.SingleAsync(membership => membership.UserId == invitedId)).MembershipPlanId);
+            Assert.Contains(db.AdminAuditLogs, entry => entry.ActorUserId == adminId && entry.TargetUserId == invitedId && entry.Action == "user.invite");
+        }
+        Assert.Equal(HttpStatusCode.BadRequest, (await anonymous.PostAsJsonAsync("/api/auth/confirm-email", new TokenRequest(invitedId, encodedToken + "invalid"))).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await anonymous.PostAsJsonAsync("/api/auth/confirm-email", new TokenRequest(invitedId, encodedToken))).StatusCode);
+
+        app.Email.FailSending = true;
+        using var failedInvite = await adminClient.PostAsJsonAsync("/api/admin/users/invite", new AdminInviteUserRequest("delivery-failure", "delivery-failure@example.test"));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, failedInvite.StatusCode);
+        await using var verify = app.CreateDb();
+        Assert.False(await verify.Users.AnyAsync(user => user.UserName == "delivery-failure"));
+    }
 }

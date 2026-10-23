@@ -21,7 +21,7 @@ it('shows pending users and requires confirmation before approval', async () => 
   vi.stubGlobal('confirm', confirmMock);
   render(<AdminPanel />);
   expect(await screen.findByRole('heading', { name: 'Users by membership' })).toBeInTheDocument();
-  expect(screen.getByText('Free')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Users by membership' }).parentElement).toHaveTextContent('Free');
   expect(screen.getByRole('heading', { name: 'Recent registrations' })).toBeInTheDocument();
   expect(screen.getByText('user.register')).toBeInTheDocument();
   const user = userEvent.setup();
@@ -81,4 +81,31 @@ it('denies access when the API does not grant the administrator role', async () 
     : String(input) === '/api/admin/dashboard' ? Response.json({ totalUsers: 0, activeUsers: 0, pendingUsers: 0, lockedUsers: 0, suspendedUsers: 0, totalBudgets: 1, activeBudgets: 1, usersByMembership: [], recentRegistrations: [], recentSecurityEvents: [] }) : Response.json({ mode: 'Disabled' })));
   render(<AdminPanel />);
   expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument();
+});
+
+it('invites a user by email without entering or returning a password', async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === '/api/admin/users/invite') return Response.json({ message: 'An account verification link has been sent.' }, { status: 202 });
+    if (url.startsWith('/api/admin/users')) return Response.json([]);
+    if (url === '/api/auth/registration-mode') return Response.json({ mode: 'Disabled' });
+    if (url === '/api/admin/dashboard') return Response.json({ totalUsers: 0, activeUsers: 0, pendingUsers: 0, lockedUsers: 0, suspendedUsers: 0, totalBudgets: 0, activeBudgets: 0, usersByMembership: [], recentRegistrations: [], recentSecurityEvents: [] });
+    if (url === '/api/admin/membership-plans') return Response.json([{ id: 'free', name: 'Free', maxActiveBudgets: 1 }]);
+    return new Response(null, { status: 404 });
+  });
+  const confirmMock = vi.fn(() => true);
+  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('confirm', confirmMock);
+  render(<AdminPanel />);
+  const user = userEvent.setup();
+  await user.type(await screen.findByLabelText('Invitation username'), 'new-user');
+  await user.type(screen.getByLabelText('Invitation email'), 'new@example.test');
+  await user.click(screen.getByRole('button', { name: 'Send invitation' }));
+  expect(confirmMock).toHaveBeenCalledWith('Invite new-user at new@example.test?');
+  expect(fetchMock).toHaveBeenCalledWith('/api/admin/users/invite', expect.objectContaining({
+    method: 'POST',
+    body: JSON.stringify({ userName: 'new-user', email: 'new@example.test', membershipPlanId: 'free' }),
+  }));
+  expect(await screen.findByRole('status')).toHaveTextContent('Verification link sent');
+  expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
 });
