@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 
 namespace OpenBudget.Api;
@@ -10,6 +11,9 @@ public sealed record BudgetLimitDto(string Membership, string MembershipName, in
 
 public sealed class BudgetOwnershipService(BudgetDbContext db)
 {
+    public Task<bool> OwnsBudgetAsync(string userId, string budgetId, CancellationToken cancellationToken) =>
+        db.BudgetPlans.AnyAsync(x => x.Id == budgetId && x.OwnerUserId == userId && !x.IsArchived, cancellationToken);
+
     public async Task<IResult> ListAsync(string userId, bool includeArchived, CancellationToken cancellationToken)
     {
         var budgets = await db.BudgetPlans.AsNoTracking()
@@ -138,5 +142,27 @@ public sealed class BudgetOwnershipService(BudgetDbContext db)
             var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
             return userId is null ? (IResult)Results.Unauthorized() : await service.SetArchivedAsync(userId, id, false, ct);
         });
+        budgets.MapGet("/{id}/months/{month}", async (string id, string month, ClaimsPrincipal principal, BudgetOwnershipService ownership, BudgetService service, LedgerGate gate, CancellationToken ct) =>
+        {
+            if (!IsMonth(month)) return Results.BadRequest(new { error = "Month must use YYYY-MM format." });
+            var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (userId is null) return Results.Unauthorized();
+            if (!await ownership.OwnsBudgetAsync(userId, id, ct)) return Results.NotFound();
+            return await gate.RunAsync(async () => Results.Ok(BudgetDto.From(await service.GetMonthAsync(id, month, ct))), ct);
+        });
+        budgets.MapPut("/{id}/months/{month}", async (string id, string month, BudgetUpdateDto request, ClaimsPrincipal principal, BudgetOwnershipService ownership, BudgetService service, LedgerGate gate, CancellationToken ct) =>
+        {
+            if (!IsMonth(month)) return Results.BadRequest(new { error = "Month must use YYYY-MM format." });
+            if (request.Month != month) return Results.BadRequest(new { error = "Route month must match payload month." });
+            var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (userId is null) return Results.Unauthorized();
+            if (!await ownership.OwnsBudgetAsync(userId, id, ct)) return Results.NotFound();
+            var result = await gate.RunAsync(() => service.UpdateMonthAsync(id, request, ct), ct, value => value.Error is null && !value.IsConflict);
+            if (result.IsConflict) return Results.Conflict(new { error = "This month changed in another session.", current = result.Budget });
+            if (result.Error is not null) return Results.BadRequest(new { error = result.Error });
+            return Results.Ok(result.Budget);
+        });
     }
+
+    private static bool IsMonth(string month) => Regex.IsMatch(month, @"^\d{4}-(0[1-9]|1[0-2])$") && DateOnly.TryParseExact($"{month}-01", "yyyy-MM-dd", out _);
 }

@@ -20,11 +20,11 @@ public static class BudgetCarryForward
                 var group = month.Groups.SingleOrDefault(g => g.Id == sourceGroup.Id);
                 if (group is null)
                 {
-                    group = new CategoryGroupEntity { BudgetMonth = month.Month, Id = sourceGroup.Id, Name = sourceGroup.Name,
+                    group = new CategoryGroupEntity { BudgetId = month.BudgetId, BudgetMonth = month.Month, Id = sourceGroup.Id, Name = sourceGroup.Name,
                         IsArchived = sourceGroup.IsArchived, SortOrder = month.Groups.Count == 0 ? 0 : month.Groups.Max(g => g.SortOrder) + 1 };
                     month.Groups.Add(group);
                 }
-                category = new CategoryEntity { BudgetMonth = month.Month, GroupId = group.Id, Id = original.Id, Name = original.Name,
+                category = new CategoryEntity { BudgetId = month.BudgetId, BudgetMonth = month.Month, GroupId = group.Id, Id = original.Id, Name = original.Name,
                     Target = original.Target, Icon = original.Icon, Snoozed = original.Snoozed, IsArchived = original.IsArchived,
                     SortOrder = group.Categories.Count == 0 ? 0 : group.Categories.Max(c => c.SortOrder) + 1 };
                 group.Categories.Add(category);

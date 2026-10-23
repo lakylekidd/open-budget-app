@@ -12,7 +12,7 @@ ASP.NET Core Identity stores users, password hashes, roles, lockout state, email
 
 `BudgetPlans` stores a globally unique ID, display name, currency, nullable owner during the legacy-data transition, archive state, creation timestamp and concurrency version. Startup assigns the existing `default` plan to the configured bootstrap administrator. `MembershipPlans` seeds Free (1 active budget), Plus (3) and Pro (unlimited); `UserMemberships` assigns a tier and optional per-user active-budget override. Registration assigns Free; the bootstrap administrator receives Pro. Budget-management reads and writes filter by authenticated owner, and budget creation/restoration serializes quota checks per user.
 
-This is an ownership foundation only: `Budgets`, ledger resources and long-term planning tables still have the legacy single-budget keys. Their APIs remain administrator-only while the next Milestone 2a slice scopes those rows and endpoints.
+Monthly Plan snapshots, groups and categories now use composite budget/month keys and foreign keys. The legacy snapshot rows remain attached to `default`; each new budget initializes and carries its own month/category history. Owner-checked Plan routes filter by the budget ID. Ledger resources and long-term planning tables still have the legacy single-budget keys, so their APIs remain administrator-only pending their own isolation slice.
 
 ### Long-Term Planning
 
@@ -24,11 +24,11 @@ Actual assigned and activity come from stored category snapshots. Actual expense
 
 ### `Budgets`
 
-One row per `YYYY-MM` snapshot, linked to a budget plan. `OpeningReadyToAssign`, preserved legacy `FundsAdded`, and materialized `LedgerIncome` are inputs to Ready to Assign; `Version` guards concurrent edits; `Note` stores the month note.
+One row per budget and `YYYY-MM` snapshot, with primary key `(BudgetId, Month)`, linked to a budget plan. `OpeningReadyToAssign`, preserved legacy `FundsAdded`, and materialized `LedgerIncome` are inputs to Ready to Assign; `Version` guards concurrent edits; `Note` stores the month note.
 
 ### `CategoryGroups` and `Categories`
 
-Groups are ordered and can be archived. Categories have a month-scoped stable ID and a mutable group membership/order, so moving one between active groups preserves its identity and ledger links. Categories store assignment, target, icon, snooze, archive state, `OpeningAvailable`, and `LegacyActivity`. Materialized `Activity` is legacy activity plus nondeleted, non-transfer single-category/split ledger amounts in that month. `Available = OpeningAvailable + Assigned + Activity`; calculated fields are not accepted from browser writes.
+Groups and categories are keyed by `(BudgetId, BudgetMonth, Id)` and their foreign keys include the budget ID. Groups are ordered and can be archived. Categories have a month-scoped stable ID and a mutable group membership/order, so moving one between active groups preserves its identity and ledger links. Categories store assignment, target, icon, snooze, archive state, `OpeningAvailable`, and `LegacyActivity`. Materialized `Activity` is legacy activity plus nondeleted, non-transfer single-category/split ledger amounts in that month. `Available = OpeningAvailable + Assigned + Activity`; calculated fields are not accepted from browser writes.
 
 ### Register view preferences
 
@@ -59,7 +59,7 @@ Groups are ordered and can be archived. Categories have a month-scoped stable ID
 
 ## Limitations and direction
 
-One local default budget has no authentication/membership boundary, credit/debt accounting, bank connections, imports or target rules. Account balances are ledger queries; monthly projection currently reads initialized months and the local ledger on writes, favoring explicit correctness over speculative incremental infrastructure. Authorization and budget isolation belong to Milestone 8. Persist money as fixed-precision decimals, never binary floating point.
+Budget identity and monthly Plan snapshots have an owner/membership boundary. Ledger resources and long-term planning are still global to the legacy default budget, and the UI has no budget selector yet. Credit/debt accounting, bank connections, imports and target rules also remain outside this slice. Account balances are ledger queries; monthly projection currently reads initialized months and the local ledger on writes, favoring explicit correctness over speculative incremental infrastructure. Persist money as fixed-precision decimals, never binary floating point.
 
 ### Scheduling and flag storage
 

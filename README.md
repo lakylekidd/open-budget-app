@@ -47,4 +47,4 @@ Open the `ui` endpoint in the Aspire dashboard, or visit `http://127.0.0.1:5173/
 
 ## Project status
 
-OpenBudget is under active development. Authentication, administrator account controls and owner-scoped budget identity/limits are in place, while Plan, ledger and planning data still use the legacy single-budget model. Keep deployments private until financial-data isolation is implemented. See the [architecture](docs/architecture.md) and [roadmap](docs/roadmap.md) for current scope and planned work.
+OpenBudget is under active development. Authentication, administrator controls, owner-scoped budgets and monthly Plan snapshots are in place. The UI selector, ledger and long-term planning data still use the legacy single-budget model. Keep deployments private until full financial-data isolation is implemented. See the [architecture](docs/architecture.md) and [roadmap](docs/roadmap.md) for current scope and planned work.

@@ -149,7 +149,7 @@ Each user can independently create and manage multiple budgets.
 
 - [x] Every newly created budget has a globally unique identifier and an owner; the legacy budget is assigned to the configured bootstrap administrator.
 - [ ] A user can own multiple budgets.
-- [ ] Each budget maintains independent months, groups, categories and financial data.
+- [ ] Each budget maintains independent months, groups, categories, ledger and planning data. (Plan snapshots are scoped; ledger/planning remain shared.)
 - [ ] Users can switch budgets without losing existing data.
 - [ ] Budget selection persists across page refreshes.
 - [x] Budget-management API reads and writes enforce ownership on the server.
@@ -221,7 +221,7 @@ Existing categories and groups must be updated to reference the appropriate budg
 **Acceptance criteria**
 
 - [ ] EF Core migrations introduce the new model while preserving existing development budget data.
-- [ ] Monthly records are uniquely identified within a budget rather than globally by month.
+- [x] Monthly records are uniquely identified within a budget rather than globally by month.
 - [ ] Existing monthly budget APIs are migrated to budget-scoped routes.
 - [ ] All protected endpoints enforce identity, role and resource ownership.
 - [ ] Budget write operations have optimistic concurrency protection against stale updates.

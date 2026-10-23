@@ -59,14 +59,14 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Targets and assignment recommendations | Basic static target/progress display only |
 | Reflect reports | Not implemented; entry remains a placeholder |
 | Identity sign-in, bootstrap administrators, verified registration/recovery and audited account lifecycle administration | Implemented as initial Milestone 2a slices |
-| Owner-scoped budget identity, archive/restore and persisted membership budget limits | Implemented for budget-management APIs; financial data scoping remains |
+| Owner-scoped budget identity, archive/restore, membership limits and monthly Plan snapshots | Implemented in APIs; ledger/planning data scoping and UI budget selection remain |
 
 ## Design limits to address
 
 - `App.tsx` currently combines navigation, state, dialogs, table rendering, and data access. Split feature UI and API client code as slices grow.
 - Activity combines an explicit legacy baseline with ledger-derived activity. New cash flows come from account transactions; prototype manual funds are preserved read-only.
-- Monthly writes replace the editable snapshot and use optimistic concurrency; membership/authorization boundaries are not implemented.
-- Budget identity is owner-scoped and supports multiple plans per user, but financial tables and service queries still use the shared legacy budget. Financial endpoints are temporarily administrator-only until those resources are scoped.
+- Monthly writes replace the editable snapshot and use optimistic concurrency; owner checks protect budget-scoped Plan routes.
+- Budget identity and monthly Plan snapshots are owner-scoped. Ledger and long-term planning tables still use the shared legacy budget; their endpoints remain administrator-only until those resources are scoped. The UI still starts with the legacy default route.
 - Membership plans seed Free/Plus/Pro and enforce active-budget limits; administrators can assign tiers and per-user overrides from the admin panel.
 
 ## Cash ledger slice

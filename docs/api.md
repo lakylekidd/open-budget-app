@@ -39,7 +39,14 @@ State-changing requests carrying an `Origin` header are rejected unless it match
 
 Administrators can read `GET /api/admin/membership-plans` and update a user's membership with `PUT /api/admin/users/{id}/membership` using `{ "membershipPlanId": "plus", "budgetLimitOverride": 2 }`. Use `null` for the override to apply the tier's limit. Updates are role-protected and written to the administration audit log.
 
-These endpoints manage budget identity only. The existing Plan, ledger and long-term planning endpoints still use the legacy default data model and remain administrator-only until all financial tables and service queries are budget-scoped. See [Milestone 2a](milestones/milestone-02a-multiuser-auth-and-admin.md).
+The budget-scoped Plan endpoints are also available to the owner:
+
+| Method/path | Behavior |
+|---|---|
+| `GET /api/budgets/{id}/months/{YYYY-MM}` | Reads or initializes a month inside an owned budget. |
+| `PUT /api/budgets/{id}/months/{YYYY-MM}` | Saves that budget's monthly Plan snapshot with optimistic concurrency. |
+
+Foreign or archived budget IDs return 404. Monthly rows, groups and categories use composite budget/month keys; carry-forward queries stay within the selected budget. The legacy `/api/budget` routes still target `default`. Ledger and long-term planning endpoints still use the legacy data model and remain administrator-only until those tables and service queries are budget-scoped. The UI selector and persisted active-budget choice remain to be implemented.
 
 ## `GET /api/budget`
 

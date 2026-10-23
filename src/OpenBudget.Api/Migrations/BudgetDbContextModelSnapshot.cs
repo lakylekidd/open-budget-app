@@ -236,14 +236,13 @@ namespace OpenBudget.Api.Migrations
 
             modelBuilder.Entity("OpenBudget.Api.BudgetEntity", b =>
                 {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Month")
                         .HasMaxLength(7)
                         .HasColumnType("character varying(7)");
-
-                    b.Property<string>("BudgetId")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
 
                     b.Property<decimal>("FundsAdded")
                         .HasPrecision(14, 2)
@@ -266,9 +265,7 @@ namespace OpenBudget.Api.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
 
-                    b.HasKey("Month");
-
-                    b.HasIndex("BudgetId");
+                    b.HasKey("BudgetId", "Month");
 
                     b.ToTable("Budgets");
                 });
@@ -312,6 +309,10 @@ namespace OpenBudget.Api.Migrations
 
             modelBuilder.Entity("OpenBudget.Api.CategoryEntity", b =>
                 {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("BudgetMonth")
                         .HasColumnType("character varying(7)");
 
@@ -362,15 +363,19 @@ namespace OpenBudget.Api.Migrations
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)");
 
-                    b.HasKey("BudgetMonth", "Id");
+                    b.HasKey("BudgetId", "BudgetMonth", "Id");
 
-                    b.HasIndex("BudgetMonth", "GroupId");
+                    b.HasIndex("BudgetId", "BudgetMonth", "GroupId");
 
                     b.ToTable("Categories");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.CategoryGroupEntity", b =>
                 {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("BudgetMonth")
                         .HasColumnType("character varying(7)");
 
@@ -389,7 +394,7 @@ namespace OpenBudget.Api.Migrations
                     b.Property<int>("SortOrder")
                         .HasColumnType("integer");
 
-                    b.HasKey("BudgetMonth", "Id");
+                    b.HasKey("BudgetId", "BudgetMonth", "Id");
 
                     b.ToTable("CategoryGroups");
                 });
@@ -1072,7 +1077,7 @@ namespace OpenBudget.Api.Migrations
                 {
                     b.HasOne("OpenBudget.Api.CategoryGroupEntity", null)
                         .WithMany("Categories")
-                        .HasForeignKey("BudgetMonth", "GroupId")
+                        .HasForeignKey("BudgetId", "BudgetMonth", "GroupId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -1081,7 +1086,7 @@ namespace OpenBudget.Api.Migrations
                 {
                     b.HasOne("OpenBudget.Api.BudgetEntity", null)
                         .WithMany("Groups")
-                        .HasForeignKey("BudgetMonth")
+                        .HasForeignKey("BudgetId", "BudgetMonth")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

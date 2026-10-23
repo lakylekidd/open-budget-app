@@ -45,42 +45,46 @@ public sealed class BudgetService(BudgetDbContext db)
 
     private static BudgetPlanDto ToPlanDto(BudgetPlanEntity plan) => new(plan.Id, plan.Name, plan.Currency, plan.Version);
 
-    public async Task<BudgetEntity> GetMonthAsync(string month, CancellationToken cancellationToken)
+    public Task<BudgetEntity> GetMonthAsync(string month, CancellationToken cancellationToken) => GetMonthAsync("default", month, cancellationToken);
+
+    public async Task<BudgetEntity> GetMonthAsync(string budgetId, string month, CancellationToken cancellationToken)
     {
-        var existing = await QueryMonth(month).SingleOrDefaultAsync(cancellationToken);
+        var existing = await QueryMonth(budgetId, month).SingleOrDefaultAsync(cancellationToken);
         if (existing is not null) return existing;
 
         var previous = await db.Budgets
-            .Where(x => string.Compare(x.Month, month) < 0)
+            .Where(x => x.BudgetId == budgetId && string.Compare(x.Month, month) < 0)
             .Include(x => x.Plan)
             .Include(x => x.Groups).ThenInclude(x => x.Categories)
             .OrderByDescending(x => x.Month)
             .FirstOrDefaultAsync(cancellationToken);
 
-        var created = previous is null ? CreateStarterMonth(month) : CreateNextMonth(month, previous);
+        var created = previous is null ? CreateStarterMonth(month, budgetId) : CreateNextMonth(month, previous);
         if (previous is null)
-            created.Plan = await db.BudgetPlans.SingleAsync(x => x.Id == "default", cancellationToken);
+            created.Plan = await db.BudgetPlans.SingleAsync(x => x.Id == budgetId, cancellationToken);
         db.Budgets.Add(created);
         try
         {
             await db.SaveChangesAsync(cancellationToken);
-            return await QueryMonth(month).SingleAsync(cancellationToken);
+            return await QueryMonth(budgetId, month).SingleAsync(cancellationToken);
         }
         catch (DbUpdateException)
         {
             db.ChangeTracker.Clear();
-            var concurrent = await QueryMonth(month).SingleOrDefaultAsync(cancellationToken);
+            var concurrent = await QueryMonth(budgetId, month).SingleOrDefaultAsync(cancellationToken);
             if (concurrent is not null) return concurrent;
             throw;
         }
     }
 
-    public async Task<BudgetUpdateResult> UpdateMonthAsync(BudgetUpdateDto request, CancellationToken cancellationToken)
+    public Task<BudgetUpdateResult> UpdateMonthAsync(BudgetUpdateDto request, CancellationToken cancellationToken) => UpdateMonthAsync("default", request, cancellationToken);
+
+    public async Task<BudgetUpdateResult> UpdateMonthAsync(string budgetId, BudgetUpdateDto request, CancellationToken cancellationToken)
     {
         var validation = Validate(request);
         if (validation is not null) return BudgetUpdateResult.Invalid(validation);
 
-        var budget = await GetMonthAsync(request.Month, cancellationToken);
+        var budget = await GetMonthAsync(budgetId, request.Month, cancellationToken);
         if (budget.Version != request.Version)
             return BudgetUpdateResult.Conflict(BudgetDto.From(budget));
         if (budget.FundsAdded != request.FundsAdded)
@@ -103,7 +107,7 @@ public sealed class BudgetService(BudgetDbContext db)
         {
             if (!currentGroups.TryGetValue(groupRequest.Id, out var group))
             {
-                group = new CategoryGroupEntity { BudgetMonth = request.Month, Id = groupRequest.Id };
+                group = new CategoryGroupEntity { BudgetId = budgetId, BudgetMonth = request.Month, Id = groupRequest.Id };
                 budget.Groups.Add(group);
                 currentGroups.Add(group.Id, group);
             }
@@ -117,7 +121,7 @@ public sealed class BudgetService(BudgetDbContext db)
                 {
                     if (categoryRequest.Assigned != 0)
                         return BudgetUpdateResult.Invalid("A new category must start with zero assigned.");
-                    category = new CategoryEntity { BudgetMonth = request.Month, GroupId = groupRequest.Id, Id = categoryRequest.Id };
+                    category = new CategoryEntity { BudgetId = budgetId, BudgetMonth = request.Month, GroupId = groupRequest.Id, Id = categoryRequest.Id };
                     group.Categories.Add(category);
                     currentCategories.Add(category.Id, category);
                 }
@@ -152,7 +156,7 @@ public sealed class BudgetService(BudgetDbContext db)
             .ToDictionary(c => c.Id, c => c.Available - previousAvailable.GetValueOrDefault(c.Id));
         if (readyDelta != 0 || availableDeltas.Values.Any(delta => delta != 0))
         {
-            var laterMonths = await db.Budgets.Where(b => string.Compare(b.Month, budget.Month) > 0)
+            var laterMonths = await db.Budgets.Where(b => b.BudgetId == budgetId && string.Compare(b.Month, budget.Month) > 0)
                 .Include(b => b.Groups).ThenInclude(g => g.Categories).OrderBy(b => b.Month).ToListAsync(cancellationToken);
             foreach (var later in laterMonths)
                 if (BudgetCarryForward.Apply(later, readyDelta, availableDeltas, budget)) later.Version++;
@@ -166,7 +170,7 @@ public sealed class BudgetService(BudgetDbContext db)
         catch (DbUpdateConcurrencyException)
         {
             db.ChangeTracker.Clear();
-            var latest = await QueryMonth(request.Month).SingleAsync(cancellationToken);
+            var latest = await QueryMonth(budgetId, request.Month).SingleAsync(cancellationToken);
             return BudgetUpdateResult.Conflict(BudgetDto.From(latest));
         }
     }
@@ -174,10 +178,10 @@ public sealed class BudgetService(BudgetDbContext db)
     public static decimal CalculateReadyToAssign(BudgetEntity budget) =>
         decimal.Round(budget.OpeningReadyToAssign + budget.FundsAdded + budget.LedgerIncome - budget.Groups.SelectMany(x => x.Categories).Sum(x => x.Assigned), 2, MidpointRounding.ToEven);
 
-    private IQueryable<BudgetEntity> QueryMonth(string month) => db.Budgets
+    private IQueryable<BudgetEntity> QueryMonth(string budgetId, string month) => db.Budgets
         .Include(x => x.Plan)
         .Include(x => x.Groups).ThenInclude(x => x.Categories)
-        .Where(x => x.Month == month);
+        .Where(x => x.BudgetId == budgetId && x.Month == month);
 
     private static BudgetEntity CreateNextMonth(string month, BudgetEntity previous) => new()
     {
@@ -190,6 +194,7 @@ public sealed class BudgetService(BudgetDbContext db)
         Version = 1,
         Groups = previous.Groups.OrderBy(x => x.SortOrder).Select(group => new CategoryGroupEntity
         {
+            BudgetId = previous.BudgetId,
             BudgetMonth = month,
             Id = group.Id,
             Name = group.Name,
@@ -197,6 +202,7 @@ public sealed class BudgetService(BudgetDbContext db)
             IsArchived = group.IsArchived,
             Categories = group.Categories.OrderBy(x => x.SortOrder).Select(category => new CategoryEntity
             {
+                BudgetId = previous.BudgetId,
                 BudgetMonth = month,
                 GroupId = group.Id,
                 Id = category.Id,
@@ -213,7 +219,7 @@ public sealed class BudgetService(BudgetDbContext db)
         }).ToList()
     };
 
-    private static BudgetEntity CreateStarterMonth(string month)
+    private static BudgetEntity CreateStarterMonth(string month, string budgetId)
     {
         var groups = new (string Id, string Name, (string Id, string Name, string Icon)[] Categories)[]
         {
@@ -227,17 +233,19 @@ public sealed class BudgetService(BudgetDbContext db)
         return new BudgetEntity
         {
             Month = month,
-            BudgetId = "default",
+            BudgetId = budgetId,
             Note = "",
             Version = 1,
             Groups = groups.Select((group, groupOrder) => new CategoryGroupEntity
             {
+                BudgetId = budgetId,
                 BudgetMonth = month,
                 Id = group.Id,
                 Name = group.Name,
                 SortOrder = groupOrder,
                 Categories = group.Categories.Select((category, categoryOrder) => new CategoryEntity
                 {
+                    BudgetId = budgetId,
                     BudgetMonth = month,
                     GroupId = group.Id,
                     Id = category.Id,

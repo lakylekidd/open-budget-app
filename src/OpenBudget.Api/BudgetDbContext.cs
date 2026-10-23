@@ -85,7 +85,7 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) :
         });
         modelBuilder.Entity<BudgetEntity>(entity =>
         {
-            entity.HasKey(x => x.Month);
+            entity.HasKey(x => new { x.BudgetId, x.Month });
             entity.Property(x => x.Month).HasMaxLength(7);
             entity.Property(x => x.BudgetId).HasMaxLength(100);
             entity.Property(x => x.Note).HasMaxLength(1000);
@@ -93,18 +93,20 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) :
             entity.Property(x => x.LedgerIncome).HasPrecision(14, 2);
             entity.Property(x => x.OpeningReadyToAssign).HasPrecision(14, 2);
             entity.Property(x => x.Version).IsConcurrencyToken();
-            entity.HasMany(x => x.Groups).WithOne().HasForeignKey(x => x.BudgetMonth).OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(x => x.Groups).WithOne().HasForeignKey(x => new { x.BudgetId, x.BudgetMonth }).HasPrincipalKey(x => new { x.BudgetId, x.Month }).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<CategoryGroupEntity>(entity =>
         {
-            entity.HasKey(x => new { x.BudgetMonth, x.Id });
+            entity.HasKey(x => new { x.BudgetId, x.BudgetMonth, x.Id });
+            entity.Property(x => x.BudgetId).HasMaxLength(100);
             entity.Property(x => x.Id).HasMaxLength(100);
             entity.Property(x => x.Name).HasMaxLength(120);
-            entity.HasMany(x => x.Categories).WithOne().HasForeignKey(x => new { x.BudgetMonth, x.GroupId }).OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(x => x.Categories).WithOne().HasForeignKey(x => new { x.BudgetId, x.BudgetMonth, x.GroupId }).HasPrincipalKey(x => new { x.BudgetId, x.BudgetMonth, x.Id }).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<CategoryEntity>(entity =>
         {
-            entity.HasKey(x => new { x.BudgetMonth, x.Id });
+            entity.HasKey(x => new { x.BudgetId, x.BudgetMonth, x.Id });
+            entity.Property(x => x.BudgetId).HasMaxLength(100);
             entity.Property(x => x.Id).HasMaxLength(100);
             entity.Property(x => x.GroupId).HasMaxLength(100);
             entity.Property(x => x.Name).HasMaxLength(160);
@@ -195,6 +197,7 @@ public sealed class BudgetEntity
 
 public sealed class CategoryGroupEntity
 {
+    public string BudgetId { get; set; } = "default";
     public string BudgetMonth { get; set; } = "";
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
@@ -205,6 +208,7 @@ public sealed class CategoryGroupEntity
 
 public sealed class CategoryEntity
 {
+    public string BudgetId { get; set; } = "default";
     public string BudgetMonth { get; set; } = "";
     public string GroupId { get; set; } = "";
     public string Id { get; set; } = "";

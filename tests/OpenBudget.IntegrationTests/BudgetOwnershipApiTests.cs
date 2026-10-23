@@ -25,6 +25,19 @@ public sealed class BudgetOwnershipApiTests(PostgresFixture fixture) : IClassFix
         var bobBudget = await CreateBudgetAsync(bob, "Private");
 
         Assert.Equal(HttpStatusCode.NotFound, (await alice.PutAsJsonAsync($"/api/budgets/{bobBudget.Id}", new RenameOwnedBudgetRequest("Stolen", 1))).StatusCode);
+        using var aliceMonthResponse = await alice.GetAsync($"/api/budgets/{aliceBudget.Id}/months/2026-10");
+        Assert.Equal(HttpStatusCode.OK, aliceMonthResponse.StatusCode);
+        var aliceMonth = (await aliceMonthResponse.Content.ReadFromJsonAsync<BudgetDto>())!;
+        var update = new BudgetUpdateDto(aliceMonth.Month, aliceMonth.Note, aliceMonth.Version, aliceMonth.FundsAdded,
+            aliceMonth.Groups.Select(group => new CategoryGroupUpdateDto(group.Id, group.Name, group.SortOrder, group.IsArchived,
+                group.Categories.Select(category => new CategoryUpdateDto(category.Id, category.Name,
+                    category.Id == "groceries" ? 125m : category.Assigned, category.Target, category.Icon, category.Snoozed, category.SortOrder, category.IsArchived)).ToList())).ToList());
+        Assert.Equal(HttpStatusCode.OK, (await alice.PutAsJsonAsync($"/api/budgets/{aliceBudget.Id}/months/2026-10", update)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await bob.GetAsync($"/api/budgets/{aliceBudget.Id}/months/2026-10")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await bob.PutAsJsonAsync($"/api/budgets/{aliceBudget.Id}/months/2026-10", update)).StatusCode);
+        using var bobMonthResponse = await bob.GetAsync($"/api/budgets/{bobBudget.Id}/months/2026-10");
+        var bobMonth = (await bobMonthResponse.Content.ReadFromJsonAsync<BudgetDto>())!;
+        Assert.Equal(0m, bobMonth.Groups.SelectMany(group => group.Categories).Single(category => category.Id == "groceries").Assigned);
         Assert.Equal(HttpStatusCode.NoContent, (await alice.PostAsync($"/api/budgets/{aliceBudget.Id}/archive", null)).StatusCode);
         var replacement = await CreateBudgetAsync(alice, "Replacement");
         Assert.Equal(HttpStatusCode.Conflict, (await alice.PostAsync($"/api/budgets/{aliceBudget.Id}/restore", null)).StatusCode);
