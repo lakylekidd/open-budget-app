@@ -74,6 +74,8 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
 function BudgetApplication() {
   const [plan, setPlan] = useState<BudgetPlan>({ id: 'default', name: 'My Budget', currency: 'EUR', version: 1 });
   const [ownedBudgets, setOwnedBudgets] = useState<OwnedBudget[]>([]);
+  const [archivedBudgets, setArchivedBudgets] = useState<OwnedBudget[]>([]);
+  const [selectedArchivedBudgetId, setSelectedArchivedBudgetId] = useState('');
   const [selectedBudgetId, setSelectedBudgetId] = useState('');
   const [budgetsLoaded, setBudgetsLoaded] = useState(false);
   const [accounts, setAccounts] = useState<Accounts>({ version: 1, accounts: [] });
@@ -147,11 +149,12 @@ function BudgetApplication() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch('/api/budgets', { signal: controller.signal })
+    fetch('/api/budgets?includeArchived=true', { signal: controller.signal })
       .then(async response => {
         if (!response.ok) throw new Error(`Budget list load failed (${response.status})`);
         const result = await response.json() as { budgets: OwnedBudget[] };
         const available = result.budgets.filter(budget => !budget.isArchived);
+        setArchivedBudgets(result.budgets.filter(budget => budget.isArchived));
         setOwnedBudgets(available);
         const remembered = window.localStorage.getItem('openbudget.activeBudgetId');
         const selected = available.find(budget => budget.id === remembered) ?? available[0];
@@ -507,6 +510,85 @@ function BudgetApplication() {
     }
   }
 
+  async function archiveBudget() {
+    if (!selectedBudgetId || selectedBudgetId === 'default') return;
+    const selected = ownedBudgets.find(budget => budget.id === selectedBudgetId);
+    if (!selected || !window.confirm(`Archive “${selected.name}”? Its data will be kept and you can restore it later.`)) return;
+    try {
+      const response = await fetch(`/api/budgets/${selected.id}/archive`, { method: 'POST' });
+      if (!response.ok) throw new Error((await response.json()).error ?? 'Budget could not be archived.');
+      const archived = { ...selected, isArchived: true, version: selected.version + 1 };
+      setOwnedBudgets(current => current.filter(budget => budget.id !== selected.id));
+      setArchivedBudgets(current => [...current.filter(budget => budget.id !== selected.id), archived]);
+      setSelectedArchivedBudgetId(selected.id);
+      setToast('Budget archived');
+      if (selectedBudgetId === selected.id) {
+        const next = ownedBudgets.find(budget => budget.id !== selected.id);
+        if (next) selectBudget(next.id);
+        else {
+          setSelectedBudgetId('');
+          setPlan({ id: 'default', name: 'My Budget', currency: selected.currency, version: 1 });
+          window.localStorage.removeItem('openbudget.activeBudgetId');
+          loadedMonth.current = null; lastSaved.current = null;
+          setData(current => ({ ...current, groups: [] }));
+        }
+      }
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Budget could not be archived.');
+    }
+  }
+
+  async function restoreBudget() {
+    if (!selectedArchivedBudgetId) return;
+    const selected = archivedBudgets.find(budget => budget.id === selectedArchivedBudgetId);
+    if (!selected) return;
+    try {
+      const response = await fetch(`/api/budgets/${selected.id}/restore`, { method: 'POST' });
+      if (!response.ok) throw new Error((await response.json()).error ?? 'Budget could not be restored.');
+      const restored = { ...selected, isArchived: false, version: selected.version + 1 };
+      setArchivedBudgets(current => current.filter(budget => budget.id !== selected.id));
+      setOwnedBudgets(current => [...current, restored]);
+      setSelectedArchivedBudgetId('');
+      setToast('Budget restored');
+      if (!selectedBudgetId) {
+        setPlan(restored);
+        setSelectedBudgetId(restored.id);
+        window.localStorage.setItem('openbudget.activeBudgetId', restored.id);
+        loadedMonth.current = null; lastSaved.current = null;
+        setData(current => ({ ...current, groups: [] }));
+      }
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Budget could not be restored.');
+    }
+  }
+
+  async function deleteBudget() {
+    const selected = ownedBudgets.find(budget => budget.id === selectedBudgetId);
+    if (!selected || selected.id === 'default') return;
+    if (!window.confirm(`Permanently delete “${selected.name}” and all its monthly Plan data? This cannot be undone.`)) return;
+    try {
+      const response = await fetch(`/api/budgets/${selected.id}`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: selected.version }),
+      });
+      if (!response.ok) throw new Error((await response.json()).error ?? 'Budget could not be deleted.');
+      const remaining = ownedBudgets.filter(budget => budget.id !== selected.id);
+      setOwnedBudgets(remaining);
+      setArchivedBudgets(current => current.filter(budget => budget.id !== selected.id));
+      setSelectedArchivedBudgetId('');
+      setToast('Budget permanently deleted');
+      if (remaining.length) selectBudget(remaining[0].id);
+      else {
+        setSelectedBudgetId('');
+        setPlan({ id: 'default', name: 'My Budget', currency: selected.currency, version: 1 });
+        window.localStorage.removeItem('openbudget.activeBudgetId');
+        loadedMonth.current = null; lastSaved.current = null;
+        setData(current => ({ ...current, groups: [] }));
+      }
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Budget could not be deleted.');
+    }
+  }
+
   function resolveConflict(reapply: boolean) {
     if (!conflictBudget) return;
     const latest = conflictBudget;
@@ -645,6 +727,7 @@ function BudgetApplication() {
     {mobileMenu && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMobileMenu(false)} />}
     <aside className={`sidebar ${mobileMenu ? 'mobile-open' : ''}`}>
       <div className="budget-picker"><img src="/openbudget-logo.svg" alt="" /><span className="budget-picker-copy"><select aria-label="Active budget" value={selectedBudgetId} disabled={!budgetsLoaded || ownedBudgets.length === 0} onChange={event => selectBudget(event.target.value)}>{ownedBudgets.map(budget => <option key={budget.id} value={budget.id}>{budget.name}</option>)}</select><small>{plan.currency} · {ownedBudgets.length} {ownedBudgets.length === 1 ? 'budget' : 'budgets'}</small></span><button type="button" className="budget-action" aria-label="Rename budget" disabled={!selectedBudgetId} onClick={renamePlan}>✎</button><button type="button" className="budget-action" aria-label="Create budget" onClick={createBudget}>+</button></div>
+      <div className="budget-management"><button type="button" onClick={archiveBudget} disabled={!selectedBudgetId || selectedBudgetId === 'default'}>Archive budget</button><button type="button" onClick={deleteBudget} disabled={!selectedBudgetId || selectedBudgetId === 'default'}>Delete budget</button><select aria-label="Archived budget" value={selectedArchivedBudgetId} onChange={event => setSelectedArchivedBudgetId(event.target.value)}><option value="">{archivedBudgets.length ? 'Restore an archived budget…' : 'No archived budgets'}</option>{archivedBudgets.map(budget => <option key={budget.id} value={budget.id}>{budget.name}</option>)}</select><button type="button" onClick={restoreBudget} disabled={!selectedArchivedBudgetId}>Restore</button></div>
       <div className="side-nav" role="navigation" aria-label="Main navigation">
         <button className={`nav-item ${activePage === 'Plan' ? 'active' : ''}`} onClick={() => navigate('Plan')}><Icon name="plan" size={22} /><span>Plan</span></button>
         <button className={`nav-item ${activePage === 'Long-Term Planning' ? 'active' : ''}`} onClick={() => navigate('Long-Term Planning')}><Icon name="calendar" size={22} /><span>Long-Term Planning</span></button>

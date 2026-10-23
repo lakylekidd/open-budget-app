@@ -153,6 +153,7 @@ Each user can independently create and manage multiple budgets.
 - [x] Users can switch budgets without losing existing data.
 - [x] Budget selection persists across page refreshes.
 - [x] Users can create and rename owned budgets from the main UI.
+- [x] Users can archive, restore and explicitly delete owned budgets from the main UI; the legacy budget is protected.
 - [x] Budget-management API reads and writes enforce ownership on the server.
 - [x] Users cannot access another user's budget by manipulating budget-management API requests.
 - [x] Concurrent budget creation cannot bypass the active-budget limit.

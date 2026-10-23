@@ -106,6 +106,42 @@ public sealed class BudgetOwnershipApiTests(PostgresFixture fixture) : IClassFix
         Assert.Equal(HttpStatusCode.OK, (await legacyClient.GetAsync("/api/long-term-planning/2026")).StatusCode);
     }
 
+    [Fact]
+    public async Task Owner_can_permanently_delete_a_budget_and_its_plan_only_with_current_version()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        await CreateUserAsync(app, "deleter", "deleter@example.test");
+        await CreateUserAsync(app, "another", "another@example.test");
+        using var owner = await LoginAsync(app, "deleter");
+        using var other = await LoginAsync(app, "another");
+        var budget = await CreateBudgetAsync(owner, "Temporary");
+        using var month = await owner.GetAsync($"/api/budgets/{budget.Id}/months/2026-10");
+        Assert.Equal(HttpStatusCode.OK, month.StatusCode);
+
+        using var foreignRequest = new HttpRequestMessage(HttpMethod.Delete, $"/api/budgets/{budget.Id}")
+        {
+            Content = JsonContent.Create(new DeleteOwnedBudgetRequest(budget.Version))
+        };
+        Assert.Equal(HttpStatusCode.NotFound, (await other.SendAsync(foreignRequest)).StatusCode);
+        using var staleRequest = new HttpRequestMessage(HttpMethod.Delete, $"/api/budgets/{budget.Id}")
+        {
+            Content = JsonContent.Create(new DeleteOwnedBudgetRequest(budget.Version + 1))
+        };
+        Assert.Equal(HttpStatusCode.Conflict, (await owner.SendAsync(staleRequest)).StatusCode);
+        using var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, $"/api/budgets/{budget.Id}")
+        {
+            Content = JsonContent.Create(new DeleteOwnedBudgetRequest(budget.Version))
+        };
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.SendAsync(deleteRequest)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.GetAsync($"/api/budgets/{budget.Id}/months/2026-10")).StatusCode);
+
+        await using var db = app.CreateDb();
+        Assert.False(await db.BudgetPlans.AnyAsync(x => x.Id == budget.Id));
+        Assert.False(await db.Budgets.AnyAsync(x => x.BudgetId == budget.Id));
+        Assert.False(await db.CategoryGroups.AnyAsync(x => x.BudgetId == budget.Id));
+        Assert.False(await db.Categories.AnyAsync(x => x.BudgetId == budget.Id));
+    }
+
     private static async Task CreateUserAsync(TestApp app, string username, string email)
     {
         using var scope = app.Services.CreateScope();

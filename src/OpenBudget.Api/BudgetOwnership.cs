@@ -1,12 +1,14 @@
 using System.Security.Claims;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Mvc;
 
 namespace OpenBudget.Api;
 
 public sealed record OwnedBudgetDto(string Id, string Name, string Currency, long Version, bool IsArchived, DateTimeOffset CreatedAt);
 public sealed record CreateOwnedBudgetRequest(string Name, string Currency = "EUR");
 public sealed record RenameOwnedBudgetRequest(string Name, long Version);
+public sealed record DeleteOwnedBudgetRequest(long Version);
 public sealed record BudgetLimitDto(string Membership, string MembershipName, int? MaxActiveBudgets, int ActiveBudgets, int? BudgetLimitOverride);
 
 public sealed class BudgetOwnershipService(BudgetDbContext db)
@@ -91,6 +93,31 @@ public sealed class BudgetOwnershipService(BudgetDbContext db)
         return Results.NoContent();
     }
 
+    public async Task<IResult> DeleteAsync(string userId, string budgetId, DeleteOwnedBudgetRequest request, CancellationToken cancellationToken)
+    {
+        if (request.Version < 1) return Results.BadRequest(new { error = "Budget version is invalid." });
+        var plan = await db.BudgetPlans.SingleOrDefaultAsync(x => x.Id == budgetId && x.OwnerUserId == userId, cancellationToken);
+        if (plan is null) return Results.NotFound();
+        if (plan.Id == "default") return Results.Conflict(new { error = "The legacy default budget cannot be deleted." });
+        if (plan.Version != request.Version) return Results.Conflict(new { error = "This budget changed in another session." });
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var months = await db.Budgets.Where(x => x.BudgetId == budgetId)
+            .Include(x => x.Groups).ThenInclude(x => x.Categories).ToListAsync(cancellationToken);
+        db.Budgets.RemoveRange(months);
+        db.BudgetPlans.Remove(plan);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return Results.NoContent();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Results.Conflict(new { error = "This budget changed in another session." });
+        }
+    }
+
     private async Task<BudgetLimitDto> GetLimitAsync(string userId, CancellationToken cancellationToken)
     {
         var membership = await db.UserMemberships.AsNoTracking().Where(x => x.UserId == userId)
@@ -141,6 +168,11 @@ public sealed class BudgetOwnershipService(BudgetDbContext db)
         {
             var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
             return userId is null ? (IResult)Results.Unauthorized() : await service.SetArchivedAsync(userId, id, false, ct);
+        });
+        budgets.MapDelete("/{id}", async (string id, [FromBody] DeleteOwnedBudgetRequest request, ClaimsPrincipal principal, BudgetOwnershipService service, CancellationToken ct) =>
+        {
+            var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+            return userId is null ? (IResult)Results.Unauthorized() : await service.DeleteAsync(userId, id, request, ct);
         });
         budgets.MapGet("/{id}/months/{month}", async (string id, string month, ClaimsPrincipal principal, BudgetOwnershipService ownership, BudgetService service, LedgerGate gate, CancellationToken ct) =>
         {
