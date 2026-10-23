@@ -8,7 +8,7 @@ Checks PostgreSQL connectivity. Success: `{ "status": "ok", "database": "connect
 
 ## Authentication
 
-Outside the Testing environment, API requests require an authenticated Identity session. Until per-user budget ownership is implemented, financial APIs are restricted to administrators so registered users cannot see the shared legacy budget; the UI explains that budget access is pending. Sign-in creates an HttpOnly, SameSite=Strict cookie; login failures return the same 401 response for unknown, invalid, locked, or suspended accounts. Identity lockout is configured for five failed attempts and 15 minutes.
+Outside the Testing environment, API requests require an authenticated Identity session. Financial APIs remain restricted to administrators until ledger and planning rows are scoped to a selected owned budget. The budget-management APIs are available to authenticated users and enforce ownership. Sign-in creates an HttpOnly, SameSite=Strict cookie; login failures return the same 401 response for unknown, invalid, locked, or suspended accounts. Identity lockout is configured for five failed attempts and 15 minutes.
 
 | Method/path | Behavior |
 |---|---|
@@ -31,7 +31,15 @@ Outside the Testing environment, API requests require an authenticated Identity 
 | `POST /api/admin/users/{id}/unlock` | Administrator-only; clears Identity lockout without changing suspension status. |
 | `GET /api/admin/audit` | Administrator-only; returns the latest 100 administration audit events. |
 
-State-changing requests carrying an `Origin` header are rejected unless it matches the request scheme and host. Registration and reset email delivery require SMTP configuration; shared environments also require the trusted `AccountEmail__PublicOrigin` HTTPS setting. Registration and recovery email requests are limited to five per minute per client IP. Identity verification and password reset tokens expire after two hours. Registration mode changes and user lifecycle actions commit together with their audit entry. The `/admin` UI supports user search, approval/rejection, suspension/reactivation, unlock, registration settings and recent audit history. Per-user budget ownership remains planned in [Milestone 2a](milestones/milestone-02a-multiuser-auth-and-admin.md).
+State-changing requests carrying an `Origin` header are rejected unless it matches the request scheme and host. Registration and reset email delivery require SMTP configuration; shared environments also require the trusted `AccountEmail__PublicOrigin` HTTPS setting. Registration and recovery email requests are limited to five per minute per client IP. Identity verification and password reset tokens expire after two hours. Registration mode changes and user lifecycle actions commit together with their audit entry. The `/admin` UI supports user search, approval/rejection, suspension/reactivation, unlock, registration settings and recent audit history.
+
+## Owned budgets and memberships
+
+`GET /api/budgets?includeArchived=false` lists the authenticated user's budgets and effective membership limit. `POST /api/budgets` creates a budget with `{ "name": "Household", "currency": "EUR" }`. `PUT /api/budgets/{id}` renames an owned budget with `{ "name": "New name", "version": 1 }`. `POST /api/budgets/{id}/archive` and `/restore` retain data while changing active-budget count; the legacy `default` budget cannot be archived during the transition. Unknown or foreign budget IDs return 404. New budgets are owner-scoped; creation and restore serialize by user before checking the membership limit. The seeded Free, Plus and Pro tiers allow 1, 3 and unlimited active budgets. Registration assigns Free, while the configured bootstrap administrator receives Pro. An individual limit override is stored on the membership row.
+
+Administrators can read `GET /api/admin/membership-plans` and update a user's membership with `PUT /api/admin/users/{id}/membership` using `{ "membershipPlanId": "plus", "budgetLimitOverride": 2 }`. Use `null` for the override to apply the tier's limit. Updates are role-protected and written to the administration audit log.
+
+These endpoints manage budget identity only. The existing Plan, ledger and long-term planning endpoints still use the legacy default data model and remain administrator-only until all financial tables and service queries are budget-scoped. See [Milestone 2a](milestones/milestone-02a-multiuser-auth-and-admin.md).
 
 ## `GET /api/budget`
 

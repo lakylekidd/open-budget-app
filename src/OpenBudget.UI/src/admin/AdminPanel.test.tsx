@@ -8,10 +8,11 @@ afterEach(() => vi.unstubAllGlobals());
 it('shows pending users and requires confirmation before approval', async () => {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    if (url.startsWith('/api/admin/users')) return Response.json([{ id: 'u1', userName: 'alice', email: 'alice@example.test', createdAt: '2026-10-01T00:00:00Z', lastLoginAt: null, status: 'Pending', isBootstrapAdministrator: false, lockoutEnd: null }]);
+    if (url.startsWith('/api/admin/users')) return Response.json([{ id: 'u1', userName: 'alice', email: 'alice@example.test', createdAt: '2026-10-01T00:00:00Z', lastLoginAt: null, status: 'Pending', isBootstrapAdministrator: false, lockoutEnd: null, membershipPlanId: 'free', budgetLimitOverride: null }]);
     if (url === '/api/admin/audit') return Response.json([]);
     if (url === '/api/auth/registration-mode') return Response.json({ mode: 'ApprovalRequired' });
     if (url === '/api/admin/dashboard') return Response.json({ totalUsers: 1, activeUsers: 0, pendingUsers: 1, lockedUsers: 0, suspendedUsers: 0, totalBudgets: 1, activeBudgets: 1 });
+    if (url === '/api/admin/membership-plans') return Response.json([{ id: 'free', name: 'Free', maxActiveBudgets: 1 }, { id: 'plus', name: 'Plus', maxActiveBudgets: 3 }, { id: 'pro', name: 'Pro', maxActiveBudgets: null }]);
     if (url === '/api/admin/users/u1/approve' && init?.method === 'POST') return new Response(null, { status: 204 });
     return new Response(null, { status: 404 });
   });
@@ -27,6 +28,27 @@ it('shows pending users and requires confirmation before approval', async () => 
   await user.selectOptions(screen.getByLabelText('Filter status'), 'Suspended');
   await user.click(screen.getByRole('button', { name: 'Apply' }));
   expect(fetchMock).toHaveBeenCalledWith('/api/admin/users?status=Suspended');
+});
+
+it('lets administrators assign a membership tier and a budget-limit override', async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.startsWith('/api/admin/users')) return Response.json([{ id: 'u1', userName: 'alice', email: 'alice@example.test', createdAt: '2026-10-01T00:00:00Z', lastLoginAt: null, status: 'Active', isBootstrapAdministrator: false, lockoutEnd: null, membershipPlanId: 'free', budgetLimitOverride: null }]);
+    if (url === '/api/admin/audit') return Response.json([]);
+    if (url === '/api/auth/registration-mode') return Response.json({ mode: 'Open' });
+    if (url === '/api/admin/dashboard') return Response.json({ totalUsers: 1, activeUsers: 1, pendingUsers: 0, lockedUsers: 0, suspendedUsers: 0, totalBudgets: 0, activeBudgets: 0 });
+    if (url === '/api/admin/membership-plans') return Response.json([{ id: 'free', name: 'Free', maxActiveBudgets: 1 }, { id: 'plus', name: 'Plus', maxActiveBudgets: 3 }]);
+    if (url === '/api/admin/users/u1/membership') return new Response(null, { status: 204 });
+    return new Response(null, { status: 404 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('confirm', vi.fn(() => true));
+  render(<AdminPanel />);
+  const user = userEvent.setup();
+  await user.selectOptions(await screen.findByLabelText('Membership for alice'), 'plus');
+  await user.type(screen.getByLabelText('Budget limit override for alice'), '2');
+  await user.click(screen.getByRole('button', { name: 'Save membership' }));
+  expect(fetchMock).toHaveBeenCalledWith('/api/admin/users/u1/membership', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ membershipPlanId: 'plus', budgetLimitOverride: 2 }) }));
 });
 
 it('denies access when the API does not grant the administrator role', async () => {

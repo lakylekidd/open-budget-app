@@ -10,7 +10,9 @@ ASP.NET Core Identity stores users, password hashes, roles, lockout state, email
 
 ### `BudgetPlans`
 
-The current application seeds one plan with ID `default`, name `My Budget`, and currency `EUR`. `Version` is an optimistic concurrency token. Separate user-owned budgets and memberships are planned in Milestone 2a.
+`BudgetPlans` stores a globally unique ID, display name, currency, nullable owner during the legacy-data transition, archive state, creation timestamp and concurrency version. Startup assigns the existing `default` plan to the configured bootstrap administrator. `MembershipPlans` seeds Free (1 active budget), Plus (3) and Pro (unlimited); `UserMemberships` assigns a tier and optional per-user active-budget override. Registration assigns Free; the bootstrap administrator receives Pro. Budget-management reads and writes filter by authenticated owner, and budget creation/restoration serializes quota checks per user.
+
+This is an ownership foundation only: `Budgets`, ledger resources and long-term planning tables still have the legacy single-budget keys. Their APIs remain administrator-only while the next Milestone 2a slice scopes those rows and endpoints.
 
 ### Long-Term Planning
 

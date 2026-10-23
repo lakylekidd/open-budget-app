@@ -90,7 +90,11 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("newuser", "Strong-pass1!"))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("newuser", "Changed-pass2!"))).StatusCode);
         await using (var db = app.CreateDb())
+        {
             Assert.Contains(db.AdminAuditLogs, entry => entry.Action == "user.register");
+            var registered = db.Users.Single(user => user.UserName == "newuser");
+            Assert.Equal("free", db.UserMemberships.Single(membership => membership.UserId == registered.Id).MembershipPlanId);
+        }
     }
 
     [Fact]
@@ -122,7 +126,16 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         Assert.Equal(HttpStatusCode.OK, (await userClient.PostAsJsonAsync("/api/auth/login", new LoginRequest("alice", "Strong-pass1!"))).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await userClient.GetAsync("/api/admin/users")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await userClient.PostAsync($"/api/admin/users/{aliceId}/suspend", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await userClient.PutAsJsonAsync($"/api/admin/users/{aliceId}/membership", new AdminMembershipRequest("plus", 2))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await adminClient.PutAsJsonAsync("/api/admin/settings/registration-mode", new RegistrationModeRequest("ApprovalRequired"))).StatusCode);
+        var tiers = await adminClient.GetFromJsonAsync<MembershipPlanEntity[]>("/api/admin/membership-plans");
+        Assert.Contains(tiers!, tier => tier.Id == "free" && tier.MaxActiveBudgets == 1);
+        Assert.Equal(HttpStatusCode.NoContent, (await adminClient.PutAsJsonAsync($"/api/admin/users/{aliceId}/membership", new AdminMembershipRequest("plus", 2))).StatusCode);
+        using var aliceBudgetOne = await userClient.PostAsJsonAsync("/api/budgets", new CreateOwnedBudgetRequest("First"));
+        using var aliceBudgetTwo = await userClient.PostAsJsonAsync("/api/budgets", new CreateOwnedBudgetRequest("Second"));
+        Assert.Equal(HttpStatusCode.Created, aliceBudgetOne.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, aliceBudgetTwo.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await userClient.PostAsJsonAsync("/api/budgets", new CreateOwnedBudgetRequest("Third"))).StatusCode);
         var pendingList = await adminClient.GetFromJsonAsync<AdminUserDto[]>("/api/admin/users?status=Pending");
         Assert.Contains(pendingList!, user => user.Id == pendingId && user.Status == "Pending");
         var dashboard = await adminClient.GetFromJsonAsync<AdminDashboardDto>("/api/admin/dashboard");
@@ -156,6 +169,7 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         Assert.Contains(audit!, item => item.TargetUserId == aliceId && item.Action == "user.suspend");
         Assert.Contains(audit!, item => item.TargetUserId == aliceId && item.Action == "user.reactivate");
         Assert.Contains(audit!, item => item.TargetUserId == pendingId && item.Action == "registration.approve");
+        Assert.Contains(audit!, item => item.TargetUserId == aliceId && item.Action == "user.membership.update");
         Assert.Contains(audit!, item => item.Action == "settings.registration-mode");
     }
 }

@@ -9,6 +9,7 @@ var connectionString = builder.Configuration.GetConnectionString("budgetdatabase
 builder.Services.AddDbContext<BudgetDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddOpenBudgetIdentity(builder.Environment);
 builder.Services.AddScoped<BudgetService>();
+builder.Services.AddScoped<BudgetOwnershipService>();
 builder.Services.AddScoped<LongTermPlanningService>();
 builder.Services.AddScoped<LedgerService>();
 builder.Services.AddScoped<LedgerGate>();
@@ -27,7 +28,8 @@ app.Use(async (context, next) =>
 {
     var path = context.Request.Path;
     var isFinancialApi = path.StartsWithSegments("/api") &&
-        !path.StartsWithSegments("/api/auth") && !path.StartsWithSegments("/api/admin");
+        !path.StartsWithSegments("/api/auth") && !path.StartsWithSegments("/api/admin") &&
+        !path.StartsWithSegments("/api/budgets");
     if (isFinancialApi && context.User.Identity?.IsAuthenticated == true &&
         !context.User.IsInRole(AuthenticationSetup.AdministratorRole))
     {
@@ -91,6 +93,7 @@ app.MapGet("/health", async (BudgetDbContext db, CancellationToken cancellationT
 }).AllowAnonymous();
 
 app.MapAuthenticationEndpoints();
+BudgetOwnershipService.MapEndpoints(app);
 
 app.MapGet("/api/budget/{month}", async (string month, BudgetService budgets, LedgerGate gate, CancellationToken cancellationToken) =>
 {

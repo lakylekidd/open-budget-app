@@ -27,9 +27,10 @@ public sealed record TokenRequest(string UserId, string Token);
 public sealed record ResetPasswordRequest(string UserId, string Token, string NewPassword);
 public sealed record RegistrationModeRequest(string Mode);
 public sealed record ForgotPasswordRequest(string Email);
-public sealed record AdminUserDto(string Id, string UserName, string? Email, DateTimeOffset CreatedAt, DateTimeOffset? LastLoginAt, string Status, bool IsBootstrapAdministrator, DateTimeOffset? LockoutEnd);
+public sealed record AdminUserDto(string Id, string UserName, string? Email, DateTimeOffset CreatedAt, DateTimeOffset? LastLoginAt, string Status, bool IsBootstrapAdministrator, DateTimeOffset? LockoutEnd, string MembershipPlanId, int? BudgetLimitOverride);
 public sealed record AdminAuditDto(Guid Id, string ActorUserId, string TargetUserId, string Action, DateTimeOffset CreatedAt);
 public sealed record AdminDashboardDto(int TotalUsers, int ActiveUsers, int PendingUsers, int LockedUsers, int SuspendedUsers, int TotalBudgets, int ActiveBudgets);
+public sealed record AdminMembershipRequest(string MembershipPlanId, int? BudgetLimitOverride);
 
 public interface IAccountEmailSender
 {
@@ -169,6 +170,17 @@ public static class AuthenticationSetup
         }
         if (!await userManager.IsInRoleAsync(user, AdministratorRole))
             await userManager.AddToRoleAsync(user, AdministratorRole);
+
+        var db = services.GetRequiredService<BudgetDbContext>();
+        var membership = await db.UserMemberships.SingleOrDefaultAsync(x => x.UserId == user.Id);
+        if (membership is null)
+            db.UserMemberships.Add(new UserMembershipEntity { UserId = user.Id, MembershipPlanId = "pro" });
+        else if (membership.MembershipPlanId != "pro")
+            membership.MembershipPlanId = "pro";
+        var legacyBudget = await db.BudgetPlans.SingleOrDefaultAsync(x => x.Id == "default");
+        if (legacyBudget is not null && legacyBudget.OwnerUserId is null)
+            legacyBudget.OwnerUserId = user.Id;
+        await db.SaveChangesAsync();
     }
 
     public static void MapAuthenticationEndpoints(this WebApplication app)
@@ -222,6 +234,7 @@ public static class AuthenticationSetup
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
             var result = await users.CreateAsync(user, request.Password);
             if (!result.Succeeded) return Results.BadRequest(new { errors = result.Errors.Select(error => error.Code) });
+            db.UserMemberships.Add(new UserMembershipEntity { UserId = user.Id, MembershipPlanId = "free" });
             await AddAdminAuditAsync(db, user.Id, user.Id, "user.register", ct);
             await transaction.CommitAsync(ct);
             try
@@ -281,7 +294,7 @@ public static class AuthenticationSetup
             await transaction.CommitAsync(ct);
             return Results.Ok(new { mode = request.Mode });
         }).RequireAuthorization(policy => policy.RequireRole(AdministratorRole));
-        app.MapGet("/api/admin/users", async (string? q, string? status, UserManager<OpenBudgetUser> users, CancellationToken ct) =>
+        app.MapGet("/api/admin/users", async (string? q, string? status, UserManager<OpenBudgetUser> users, BudgetDbContext db, CancellationToken ct) =>
         {
             var query = users.Users.AsNoTracking();
             if (!string.IsNullOrWhiteSpace(q))
@@ -304,13 +317,45 @@ public static class AuthenticationSetup
                 };
             }
             var results = await query.OrderByDescending(user => user.CreatedAt).Take(100).ToListAsync(ct);
+            var userIds = results.Select(user => user.Id).ToArray();
+            var memberships = await db.UserMemberships.AsNoTracking().Where(item => userIds.Contains(item.UserId))
+                .ToDictionaryAsync(item => item.UserId, ct);
             var rows = new List<AdminUserDto>(results.Count);
             foreach (var user in results)
             {
                 var userStatus = user.IsSuspended ? "Suspended" : user.LockoutEnd > DateTimeOffset.UtcNow ? "Locked" : user.EmailConfirmed && !user.RequiresApproval ? "Active" : "Pending";
-                rows.Add(new AdminUserDto(user.Id, user.UserName!, user.Email, user.CreatedAt, user.LastLoginAt, userStatus, user.IsBootstrapAdministrator, user.LockoutEnd));
+                memberships.TryGetValue(user.Id, out var membership);
+                rows.Add(new AdminUserDto(user.Id, user.UserName!, user.Email, user.CreatedAt, user.LastLoginAt, userStatus, user.IsBootstrapAdministrator, user.LockoutEnd, membership?.MembershipPlanId ?? "free", membership?.BudgetLimitOverride));
             }
             return Results.Ok(rows);
+        }).RequireAuthorization(policy => policy.RequireRole(AdministratorRole));
+        app.MapGet("/api/admin/membership-plans", async (BudgetDbContext db, CancellationToken ct) =>
+            Results.Ok(await db.MembershipPlans.AsNoTracking().OrderBy(plan => plan.Id).ToListAsync(ct)))
+            .RequireAuthorization(policy => policy.RequireRole(AdministratorRole));
+        app.MapPut("/api/admin/users/{id}/membership", async (string id, AdminMembershipRequest request, ClaimsPrincipal principal, BudgetDbContext db, CancellationToken ct) =>
+        {
+            if (request.BudgetLimitOverride is < 1 or > 1000)
+                return Results.BadRequest(new { error = "A budget limit override must be between 1 and 1000, or omitted to use the membership tier." });
+            if (!await db.Users.AnyAsync(user => user.Id == id, ct)) return Results.NotFound();
+            if (!await db.MembershipPlans.AnyAsync(plan => plan.Id == request.MembershipPlanId, ct))
+                return Results.BadRequest(new { error = "The selected membership tier does not exist." });
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            var membership = await db.UserMemberships.SingleOrDefaultAsync(item => item.UserId == id, ct);
+            if (membership is null)
+            {
+                membership = new UserMembershipEntity { UserId = id, MembershipPlanId = request.MembershipPlanId, BudgetLimitOverride = request.BudgetLimitOverride };
+                db.UserMemberships.Add(membership);
+            }
+            else
+            {
+                membership.MembershipPlanId = request.MembershipPlanId;
+                membership.BudgetLimitOverride = request.BudgetLimitOverride;
+                membership.Version++;
+            }
+            await db.SaveChangesAsync(ct);
+            await AddAdminAuditAsync(db, principal, id, "user.membership.update", ct);
+            await transaction.CommitAsync(ct);
+            return Results.NoContent();
         }).RequireAuthorization(policy => policy.RequireRole(AdministratorRole));
         app.MapGet("/api/admin/dashboard", async (BudgetDbContext db, UserManager<OpenBudgetUser> users, CancellationToken ct) =>
         {
