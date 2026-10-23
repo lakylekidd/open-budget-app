@@ -129,10 +129,10 @@ Administrators can configure:
 - [x] Administrators cannot read another user's owned budget or monthly Plan data by default.
 - [ ] Administrators can search users and perform the listed management actions.
 - [x] Unlocking an account does not unintentionally reactivate a suspended account.
-- [ ] Administrative password resets never reveal an existing password.
+- [x] Administrative password resets never reveal an existing password.
 - [x] Critical implemented operations require confirmation.
 - [x] Registration policy and user lifecycle changes are recorded in an audit log containing actor, action, target and timestamp.
-- [ ] Administrators cannot read users' private budget information by default.
+- [x] Administrators cannot read another user's owned budget or monthly Plan data by default.
 
 ## 5. Multiple Budgets Per User
 
