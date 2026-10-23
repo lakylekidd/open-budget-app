@@ -135,6 +135,14 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         using var aliceBudgetTwo = await userClient.PostAsJsonAsync("/api/budgets", new CreateOwnedBudgetRequest("Second"));
         Assert.Equal(HttpStatusCode.Created, aliceBudgetOne.StatusCode);
         Assert.Equal(HttpStatusCode.Created, aliceBudgetTwo.StatusCode);
+        var aliceBudgetOneDto = (await aliceBudgetOne.Content.ReadFromJsonAsync<OwnedBudgetDto>())!;
+        var aliceBudgetTwoDto = (await aliceBudgetTwo.Content.ReadFromJsonAsync<OwnedBudgetDto>())!;
+        Assert.Equal(HttpStatusCode.NoContent, (await adminClient.PutAsJsonAsync($"/api/admin/users/{aliceId}/membership", new AdminMembershipRequest("free", null))).StatusCode);
+        using var afterLimitReduction = await userClient.GetFromJsonAsync<JsonDocument>("/api/budgets?includeArchived=true");
+        var retained = afterLimitReduction!.RootElement.GetProperty("budgets").EnumerateArray().ToArray();
+        Assert.Contains(retained, budget => budget.GetProperty("id").GetString() == aliceBudgetOneDto.Id);
+        Assert.Contains(retained, budget => budget.GetProperty("id").GetString() == aliceBudgetTwoDto.Id);
+        Assert.Equal(2, afterLimitReduction.RootElement.GetProperty("limit").GetProperty("activeBudgets").GetInt32());
         Assert.Equal(HttpStatusCode.Conflict, (await userClient.PostAsJsonAsync("/api/budgets", new CreateOwnedBudgetRequest("Third"))).StatusCode);
         var pendingList = await adminClient.GetFromJsonAsync<AdminUserDto[]>("/api/admin/users?status=Pending");
         Assert.Contains(pendingList!, user => user.Id == pendingId && user.Status == "Pending");

@@ -159,7 +159,7 @@ Each user can independently create and manage multiple budgets.
 - [x] Concurrent budget creation cannot bypass the active-budget limit.
 - [x] Archiving a budget does not destroy its data.
 - [x] Archived budgets do not count toward the active-budget limit.
-- [ ] Decreasing a user's limit does not delete existing budgets; it only prevents additional active budgets.
+- [x] Decreasing a user's limit does not delete existing budgets; it only prevents additional active budgets.
 - [ ] Existing development data is migrated to the development administrator without losing financial information.
 - [ ] Production users start with an empty budget unless they explicitly select a template.
 
