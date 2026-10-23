@@ -17,12 +17,12 @@ Outside the Testing environment, API requests require an authenticated Identity 
 | `POST /api/auth/logout` | Invalidates the current cookie session. |
 | `GET /api/auth/profile` | Returns the signed-in user's profile summary. |
 | `PUT /api/auth/profile` | Accepts `{ "userName": "new-name" }`, updates the signed-in user's unique username, refreshes the session cookie and records a profile audit event. Email remains unchanged and must use its verification flow. |
-| `POST /api/auth/change-password` | Accepts current and new passwords; updates the password and invalidates the current session. |
+| `POST /api/auth/change-password` | Accepts current and new passwords; updates the password, audits the action without credential data, and invalidates all sessions using the prior security stamp. |
 | `GET /api/auth/registration-mode` | Publicly reports Disabled, ApprovalRequired, or Open. Defaults to Disabled. |
 | `POST /api/auth/register` | Creates an account only when registration is enabled and SMTP is configured; sends a two-hour email-verification link. |
 | `POST /api/auth/confirm-email` | Accepts user ID and URL-safe verification token. |
 | `POST /api/auth/forgot-password` | Sends a reset link when the address belongs to a verified account; always returns the same response. |
-| `POST /api/auth/reset-password` | Resets a password using a two-hour, URL-safe Identity token. |
+| `POST /api/auth/reset-password` | Resets a password using a two-hour, URL-safe Identity token; the token can be used once and reset completion is audited without token or password data. |
 | `PUT /api/admin/settings/registration-mode` | Administrator-only; accepts Disabled, ApprovalRequired, or Open. |
 | `POST /api/admin/users/{id}/approve` | Administrator-only; approves a user after email verification. |
 | `POST /api/admin/users/{id}/reject` | Administrator-only; rejects a pending registration and records an audit event. |

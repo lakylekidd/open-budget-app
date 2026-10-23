@@ -131,8 +131,12 @@ public static class AuthenticationSetup
             options.Events.OnValidatePrincipal = async context =>
             {
                 var users = context.HttpContext.RequestServices.GetRequiredService<UserManager<OpenBudgetUser>>();
-                var user = await users.GetUserAsync(context.Principal!);
-                if (user is null || user.IsSuspended || user.RequiresApproval)
+                var identity = context.HttpContext.RequestServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<IdentityOptions>>().Value;
+                var principal = context.Principal;
+                var user = principal is null ? null : await users.GetUserAsync(principal);
+                var ticketStamp = principal?.FindFirstValue(identity.ClaimsIdentity.SecurityStampClaimType);
+                var currentStamp = user is null ? null : await users.GetSecurityStampAsync(user);
+                if (user is null || user.IsSuspended || user.RequiresApproval || !string.Equals(ticketStamp, currentStamp, StringComparison.Ordinal))
                 {
                     context.RejectPrincipal();
                     await context.HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
@@ -226,13 +230,16 @@ public static class AuthenticationSetup
             await signIn.SignOutAsync();
             return Results.NoContent();
         }).RequireAuthorization();
-        auth.MapPost("/change-password", async (ChangePasswordRequest request, ClaimsPrincipal principal, UserManager<OpenBudgetUser> users, SignInManager<OpenBudgetUser> signIn) =>
+        auth.MapPost("/change-password", async (ChangePasswordRequest request, ClaimsPrincipal principal, BudgetDbContext db, UserManager<OpenBudgetUser> users, SignInManager<OpenBudgetUser> signIn, CancellationToken ct) =>
         {
             var user = await users.GetUserAsync(principal);
             if (user is null) return Results.Unauthorized();
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
             var result = await users.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
             if (!result.Succeeded) return Results.BadRequest(new { errors = result.Errors.Select(error => error.Code) });
             await users.UpdateSecurityStampAsync(user);
+            await AddAdminAuditAsync(db, principal, user.Id, "user.password.change", ct);
+            await transaction.CommitAsync(ct);
             await signIn.SignOutAsync();
             return Results.NoContent();
         }).RequireAuthorization();
@@ -284,14 +291,18 @@ public static class AuthenticationSetup
             }
             return Results.Accepted(value: new { message = "If the account exists, a reset message has been sent." });
         }).RequireRateLimiting("account-email");
-        auth.MapPost("/reset-password", async (ResetPasswordRequest request, UserManager<OpenBudgetUser> users) =>
+        auth.MapPost("/reset-password", async (ResetPasswordRequest request, BudgetDbContext db, UserManager<OpenBudgetUser> users, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(request.NewPassword)) return Results.BadRequest(new { error = "A new password is required." });
             var user = await users.FindByIdAsync(request.UserId);
             if (user is null) return Results.BadRequest(new { error = "Reset link is invalid or expired." });
             if (!TryDecodeToken(request.Token, out var token)) return Results.BadRequest(new { error = "Reset link is invalid or expired." });
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
             var result = await users.ResetPasswordAsync(user, token, request.NewPassword);
-            return result.Succeeded ? Results.NoContent() : Results.BadRequest(new { errors = result.Errors.Select(error => error.Code) });
+            if (!result.Succeeded) return Results.BadRequest(new { errors = result.Errors.Select(error => error.Code) });
+            await AddAdminAuditAsync(db, "system", request.UserId, "user.password.reset", ct);
+            await transaction.CommitAsync(ct);
+            return Results.NoContent();
         });
         app.MapGet("/api/auth/registration-mode", async (BudgetDbContext db, CancellationToken ct) =>
             Results.Ok(new { mode = await ReadRegistrationModeAsync(db, ct) })).AllowAnonymous();

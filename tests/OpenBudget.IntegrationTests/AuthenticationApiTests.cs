@@ -4,6 +4,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using OpenBudget.Api;
 using System.Net;
 using System.Net.Http.Json;
@@ -14,6 +16,58 @@ namespace OpenBudget.IntegrationTests;
 
 public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixture<PostgresFixture>
 {
+    [Fact]
+    public async Task Identity_and_budget_scope_migrations_preserve_legacy_financial_data_and_assign_it_to_development_admin()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        var accountId = Guid.NewGuid();
+        var transactionId = Guid.NewGuid();
+        await using (var db = app.CreateDb())
+        {
+            var migrator = db.GetService<IMigrator>();
+            await migrator.MigrateAsync("20261022104319_LongTermPlanning");
+            db.Budgets.Add(new BudgetEntity { BudgetId = "default", Month = "2026-10", FundsAdded = 75m });
+            await db.SaveChangesAsync();
+            await db.Database.ExecuteSqlRawAsync("""
+                INSERT INTO "Accounts" ("Id", "Name", "IsClosed", "AccountType", "IsFavorite", "Notes")
+                VALUES ({0}, 'Legacy checking', false, 'checking', false, '');
+                INSERT INTO "Transactions" ("Id", "AccountId", "Date", "Amount", "Memo", "Status", "IsOpening", "IsDeleted")
+                VALUES ({1}, {0}, DATE '2026-10-15', -12.34, 'Legacy purchase', 'uncleared', false, false);
+                """, accountId, transactionId);
+            await migrator.MigrateAsync();
+        }
+
+        var environment = app.Services.GetRequiredService<IWebHostEnvironment>();
+        var originalEnvironment = environment.EnvironmentName;
+        environment.EnvironmentName = Environments.Development;
+        try
+        {
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["BootstrapAdmin:Username"] = "devroot",
+                ["BootstrapAdmin:Email"] = "devroot@example.test",
+                ["BootstrapAdmin:Password"] = "Strong-pass1!"
+            }).Build();
+            await AuthenticationSetup.EnsureBootstrapAdministratorAsync(app.Services, configuration, environment);
+            await using var verify = app.CreateDb();
+            var administrator = await verify.Users.SingleAsync(user => user.UserName == "devroot");
+            var budgets = await verify.BudgetPlans.SingleAsync(budget => budget.Id == "default");
+            Assert.Equal(administrator.Id, budgets.OwnerUserId);
+            Assert.Equal(75m, (await verify.Budgets.SingleAsync(month => month.BudgetId == "default" && month.Month == "2026-10")).FundsAdded);
+            var account = await verify.Accounts.SingleAsync(item => item.Id == accountId);
+            var transaction = await verify.Transactions.SingleAsync(item => item.Id == transactionId);
+            Assert.Equal("Legacy checking", account.Name);
+            Assert.Equal(-12.34m, transaction.Amount);
+            Assert.Equal("Legacy purchase", transaction.Memo);
+            var users = app.Services.GetRequiredService<UserManager<OpenBudgetUser>>();
+            Assert.True(await users.CheckPasswordAsync(administrator, "Strong-pass1!"));
+        }
+        finally
+        {
+            environment.EnvironmentName = originalEnvironment;
+        }
+    }
+
     [Fact]
     public async Task Production_bootstrap_admin_uses_configured_credentials_and_preserves_existing_data_on_restart()
     {
@@ -66,6 +120,12 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
                 Assert.Equal("Legacy transaction", preservedTransaction.Memo);
             }
 
+            using var adminClient = app.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = true, BaseAddress = new Uri("https://localhost") });
+            adminClient.DefaultRequestHeaders.Add("Origin", "https://localhost");
+            Assert.Equal(HttpStatusCode.OK, (await adminClient.PostAsJsonAsync("/api/auth/login", new LoginRequest("configured-root", "Strong-pass1!"))).StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, (await adminClient.PostAsJsonAsync("/api/auth/change-password", new ChangePasswordRequest("Strong-pass1!", "Changed-pass2!"))).StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, (await adminClient.GetAsync("/api/auth/session")).StatusCode);
+
             var changedConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["BootstrapAdmin:Username"] = "configured-root",
@@ -77,8 +137,11 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
             var verifyUsers = verifyScope.ServiceProvider.GetRequiredService<UserManager<OpenBudgetUser>>();
             var existing = await verifyUsers.FindByNameAsync("configured-root");
             Assert.NotNull(existing);
-            Assert.True(await verifyUsers.CheckPasswordAsync(existing, "Strong-pass1!"));
+            Assert.True(await verifyUsers.CheckPasswordAsync(existing, "Changed-pass2!"));
+            Assert.False(await verifyUsers.CheckPasswordAsync(existing, "Strong-pass1!"));
             Assert.False(await verifyUsers.CheckPasswordAsync(existing, "Other-strong1!"));
+            var audit = verifyScope.ServiceProvider.GetRequiredService<BudgetDbContext>();
+            Assert.Contains(await audit.AdminAuditLogs.ToListAsync(), entry => entry.TargetUserId == existing.Id && entry.Action == "user.password.change");
         }
         finally
         {
@@ -122,11 +185,18 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync("/api/auth/logout", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/auth/session")).StatusCode);
 
+        using var secondSession = app.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = true });
+        Assert.Equal(HttpStatusCode.OK, (await secondSession.PostAsJsonAsync("/api/auth/login", new LoginRequest("alice-renamed", "Strong-pass1!"))).StatusCode);
         await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("alice-renamed", "Strong-pass1!"));
         Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsJsonAsync("/api/auth/change-password", new ChangePasswordRequest("Strong-pass1!", "New-strong1!"))).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/auth/session")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await secondSession.GetAsync("/api/auth/session")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("alice-renamed", "Strong-pass1!"))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("alice-renamed", "New-strong1!"))).StatusCode);
+        await using var db = app.CreateDb();
+        var alice = await db.Users.SingleAsync(user => user.UserName == "alice-renamed");
+        Assert.Contains(db.AdminAuditLogs, entry => entry.TargetUserId == alice.Id && entry.Action == "user.password.change");
+        Assert.DoesNotContain(db.AdminAuditLogs, entry => entry.Action.Contains("Strong-pass", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -164,10 +234,12 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         Assert.Equal(targetId, query["userId"].ToString());
         var resetRequest = new ResetPasswordRequest(query["userId"]!, query["token"]!, "Changed-pass2!");
         Assert.Equal(HttpStatusCode.NoContent, (await adminClient.PostAsJsonAsync("/api/auth/reset-password", resetRequest)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await userClient.GetAsync("/api/auth/session")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await app.CreateClient().PostAsJsonAsync("/api/auth/login", new LoginRequest("alice", "Strong-pass1!"))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await app.CreateClient().PostAsJsonAsync("/api/auth/login", new LoginRequest("alice", "Changed-pass2!"))).StatusCode);
         await using var db = app.CreateDb();
         Assert.Contains(db.AdminAuditLogs, entry => entry.TargetUserId == targetId && entry.Action == "user.password-reset.initiated");
+        Assert.Contains(db.AdminAuditLogs, entry => entry.TargetUserId == targetId && entry.Action == "user.password.reset");
     }
 
     [Fact]

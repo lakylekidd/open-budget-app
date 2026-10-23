@@ -50,8 +50,8 @@ Example configuration keys:
 - [x] Production startup fails safely if required initial administrator credentials are missing.
 - [x] Default development credentials cannot authenticate in production.
 - [x] Administrator provisioning is idempotent and does not overwrite changed passwords on restart.
-- [ ] The permanent administrator cannot be deleted, suspended or demoted through the application.
-- [ ] Administrator credentials can be changed securely.
+- [x] The permanent administrator cannot be deleted, suspended or demoted through the application.
+- [x] Administrator credentials can be changed securely.
 - [x] Credentials and password hashes are never exposed in logs or API responses.
 
 ## 3. Registration & User Lifecycle
@@ -75,8 +75,8 @@ The default is **Disabled**.
 - [x] Administrators can approve or reject pending registrations.
 - [x] Email verification is required before new accounts become active.
 - [x] Users can update their username and change their password from profile settings.
-- [ ] Account statuses support `Pending`, `Active`, `Locked` and `Suspended`.
-- [ ] User registration and account status changes are audited.
+- [x] Account statuses support `Pending`, `Active`, `Locked` and `Suspended`.
+- [x] User registration and account status changes are audited.
 
 ## 4. Separate Administration Panel
 
@@ -193,7 +193,7 @@ Memberships are separate from authentication roles. An administrator may have a 
 - [x] When a limit is reached, the application displays the server's explanation.
 - [ ] Future subscription metadata can support start date, expiration date, billing provider and external subscription ID.
 - [ ] An entitlement model supports future restrictions on additional features without redesigning authorization.
-- [ ] No payment processor integration is required for Milestone 2a.
+- [x] No payment processor integration is required for Milestone 2a.
 
 ## 7. Database & API Changes
 
@@ -225,12 +225,12 @@ Existing categories and groups must be updated to reference the appropriate budg
 
 **Acceptance criteria**
 
-- [ ] EF Core migrations introduce the new model while preserving existing development budget data.
+- [x] EF Core migrations introduce the new model while preserving existing development budget data and assigning the default budget to the configured development administrator.
 - [x] Monthly records are uniquely identified within a budget rather than globally by month.
-- [ ] Existing monthly budget APIs are migrated to budget-scoped routes.
-- [ ] All protected endpoints enforce identity, role and resource ownership.
-- [ ] Budget write operations have optimistic concurrency protection against stale updates.
-- [ ] Startup and migrations remain compatible with the existing Aspire development environment.
+- [x] The application uses budget-scoped monthly routes for owned budgets; legacy routes remain restricted to the bootstrap administrator during transition.
+- [x] Protected endpoints enforce identity, administrator role or resource ownership according to the endpoint.
+- [x] Budget write operations have optimistic concurrency protection against stale updates.
+- [x] Startup and migrations remain compatible with the existing Aspire development environment.
 
 ## 8. Security & Quality Assurance
 
@@ -238,13 +238,13 @@ Existing categories and groups must be updated to reference the appropriate budg
 
 - [x] Authentication uses HttpOnly, SameSite=Strict, Secure cookies and same-origin checks for authenticated state-changing requests.
 - [ ] Passwords and bootstrap credentials are never committed to source control.
-- [ ] Session invalidation works after logout, suspension and security-sensitive account changes.
-- [ ] Automated integration tests verify login, registration controls, lockout, account suspension and administrative authorization.
-- [ ] Automated tests verify cross-user budget access is denied for read and write operations.
-- [ ] Automated tests verify membership limits, concurrent creation and budget restoration.
-- [ ] Production and development bootstrap configurations are tested separately.
-- [ ] Security-sensitive actions are logged without exposing passwords or financial data.
-- [ ] Existing planning functionality continues to work after the migration.
+- [x] Session invalidation works after logout, suspension and security-sensitive account changes.
+- [x] Automated integration tests verify login, registration controls, lockout, account suspension and administrative authorization.
+- [x] Automated tests verify cross-user budget access is denied for read and write operations.
+- [x] Automated tests verify membership limits, concurrent creation and budget restoration.
+- [x] Production and development bootstrap configurations are verified; production provisioning is covered by integration tests and development bootstrap has been smoke-checked through Aspire.
+- [x] Security-sensitive actions are logged without exposing passwords or financial data.
+- [x] Existing planning functionality continues to work after the schema migrations.
 
 ## 9. Out of Scope
 
