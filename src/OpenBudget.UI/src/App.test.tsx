@@ -11,6 +11,7 @@ beforeEach(()=>{
   window.history.replaceState(null, '', '/');
   window.localStorage.clear();ownedBudgets=[{id:'default',name:'Test budget',currency:'EUR',version:1,isArchived:false,createdAt:'2026-01-01T00:00:00Z'}];archivedBudgets=[];months={'2026-08':budget('2026-08',50,-35,15),'2026-09':budget('2026-09',0,0,15),'2026-10':budget('2026-10',0,0,15),'2026-11':budget('2026-11',0,0,15)};writes=[];holdSave=false;releaseSave=undefined;focusRows=[];focusAccounts=[];scheduleRows=[];
   vi.stubGlobal('fetch',vi.fn(async(path:string,init?:RequestInit)=>{
+    if(path==='/api/auth/session')return response({id:'u1',userName:'alice',email:'alice@example.test',isAdministrator:true});
     if(path==='/api/accounts')return response({version:1,accounts:focusAccounts});
     if(path==='/api/budgets'&&init?.method==='POST')return response({id:'new-budget',name:JSON.parse(String(init.body)).name,currency:'EUR',version:1,isArchived:false,createdAt:'2026-10-01T00:00:00Z'});
     if(path.startsWith('/api/budgets/')&&init?.method==='DELETE'){const id=path.split('/')[3];ownedBudgets=ownedBudgets.filter(item=>item.id!==id);archivedBudgets=archivedBudgets.filter(item=>item.id!==id);return new Response(null,{status:204});}
@@ -57,8 +58,10 @@ async function assign(value:string){await userEvent.click(screen.getByRole('butt
 it('shows the all-money-assigned summary at zero and restores the income action in a funded month',async()=>{
   months['2026-10'].readyToAssign=0;
   render(<App/>);await saved();
-  expect(screen.getByRole('combobox',{name:'Active budget'})).toHaveValue('default');
-  expect(screen.getByRole('button',{name:'Rename budget'}).parentElement?.querySelector('img')).toHaveAttribute('src','/openbudget-logo.svg');
+  expect(screen.getByRole('button',{name:'Budget menu'})).toHaveTextContent('Test budget');
+  expect(screen.getByRole('button',{name:'Budget menu'}).querySelector('img')).toHaveAttribute('src','/openbudget-logo.svg');
+  expect(await screen.findByText('alice@example.test')).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'Budget menu'})).not.toHaveTextContent('EUR · 1 budget');
   const summary=within(screen.getByRole('region',{name:'Ready to assign'}));
   expect(summary.getByText('€0.00')).toBeInTheDocument();
   expect(summary.getByText('All Money Assigned')).toBeInTheDocument();
@@ -71,53 +74,92 @@ it('shows the all-money-assigned summary at zero and restores the income action 
 it('switches between owned budgets and remembers the selected budget',async()=>{
   ownedBudgets.push({id:'second',name:'Travel',currency:'EUR',version:1,isArchived:false,createdAt:'2026-02-01T00:00:00Z'});
   render(<App/>);await saved();
-  await userEvent.selectOptions(screen.getByRole('combobox',{name:'Active budget'}),'second');
-  await waitFor(()=>expect(screen.getByRole('combobox',{name:'Active budget'})).toHaveValue('second'));
+  await userEvent.click(screen.getByRole('button',{name:'Budget menu'}));
+  await userEvent.click(screen.getByRole('menuitem',{name:/Open Plan/}));
+  expect(screen.getByRole('menu',{name:'Budget menu options'})).toBeInTheDocument();
+  const recent=screen.getByRole('menu',{name:'Recent Plans'});
+  expect(within(recent).getByRole('menuitem',{name:/View All Plans/})).toBeInTheDocument();
+  await userEvent.click(within(recent).getByRole('menuitem',{name:/Travel/}));
+  await waitFor(()=>expect(screen.getByRole('button',{name:'Budget menu'})).toHaveTextContent('Travel'));
   await waitFor(()=>expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/budgets/second/months/2026-10',expect.objectContaining({signal:expect.any(AbortSignal)})));
   expect(window.localStorage.getItem('openbudget.activeBudgetId')).toBe('second');
   expect(document.cookie).toContain('openbudget.activeBudgetId=second');
+});
+
+it('shows recent plans on hover and hides them after leaving the item and panel',async()=>{
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Budget menu'}));
+  const openPlan=screen.getByRole('menuitem',{name:/Open Plan/});
+  fireEvent.mouseEnter(openPlan);
+  const panel=screen.getByRole('menu',{name:'Recent Plans'});
+  expect(panel).toHaveClass('is-open');
+  fireEvent.mouseLeave(openPlan);
+  fireEvent.mouseEnter(panel);
+  expect(panel).toHaveClass('is-open');
+  fireEvent.mouseLeave(panel);
+  await waitFor(()=>expect(panel).not.toHaveClass('is-open'));
 });
 
 it('restores the remembered owned budget on page load',async()=>{
   ownedBudgets.push({id:'second',name:'Travel',currency:'EUR',version:1,isArchived:false,createdAt:'2026-02-01T00:00:00Z'});
   window.localStorage.setItem('openbudget.activeBudgetId','second');
   render(<App/>);await saved();
-  expect(screen.getByRole('combobox',{name:'Active budget'})).toHaveValue('second');
+  expect(screen.getByRole('button',{name:'Budget menu'})).toHaveTextContent('Travel');
   expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/budgets/second/months/2026-10',expect.objectContaining({signal:expect.any(AbortSignal)}));
   expect(document.cookie).toContain('openbudget.activeBudgetId=second');
 });
 
-it('archives the selected budget after confirmation and restores it from the archived list',async()=>{
-  ownedBudgets.push({id:'second',name:'Travel',currency:'EUR',version:1,isArchived:false,createdAt:'2026-02-01T00:00:00Z'});
-  window.localStorage.setItem('openbudget.activeBudgetId','second');
-  vi.spyOn(window,'confirm').mockReturnValue(true);
+it('omits budget management controls from the sidebar menu',async()=>{
   render(<App/>);await saved();
-  await userEvent.click(screen.getByRole('button',{name:'Archive budget'}));
-  await waitFor(()=>expect(screen.getByRole('combobox',{name:'Active budget'})).toHaveValue('default'));
-  expect(screen.getByRole('combobox',{name:'Archived budget'})).toHaveValue('second');
-  expect(window.localStorage.getItem('openbudget.activeBudgetId')).toBe('default');
-  await userEvent.click(screen.getByRole('button',{name:'Restore'}));
-  await waitFor(()=>expect(screen.getByRole('combobox',{name:'Archived budget'})).toHaveValue(''));
-  expect(screen.getByRole('option',{name:'Travel'}).closest('select')).toHaveAttribute('aria-label','Active budget');
+  await userEvent.click(screen.getByRole('button',{name:'Budget menu'}));
+  expect(screen.getByRole('menuitem',{name:/New Plan/})).toBeInTheDocument();
+  expect(screen.getByRole('menuitem',{name:/Open Plan/})).toBeInTheDocument();
+  for (const name of ['Rename budget','Create budget','Archive budget','Delete budget','Archived budget','Restore']) {
+    expect(screen.queryByRole('button',{name})).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem',{name})).not.toBeInTheDocument();
+  }
 });
 
-it('requires confirmation before permanently deleting the active budget',async()=>{
-  ownedBudgets.push({id:'second',name:'Travel',currency:'EUR',version:3,isArchived:false,createdAt:'2026-02-01T00:00:00Z'});
-  window.localStorage.setItem('openbudget.activeBudgetId','second');
-  vi.spyOn(window,'confirm').mockReturnValue(true);
+it('collapses and expands cash accounts while retaining the total',async()=>{
+  focusAccounts=[{id:'cash-1',name:'Salary',isClosed:false,balance:3459.08,clearedBalance:3459.08,unclearedBalance:0,accountType:'checking',isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0}];
   render(<App/>);await saved();
-  await userEvent.click(screen.getByRole('button',{name:'Delete budget'}));
-  await waitFor(()=>expect(screen.getByRole('combobox',{name:'Active budget'})).toHaveValue('default'));
-  expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('all of its Plan and financial data'));
-  expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/budgets/second',expect.objectContaining({method:'DELETE',body:JSON.stringify({version:3})}));
-  expect(window.localStorage.getItem('openbudget.activeBudgetId')).toBe('default');
+  const heading=screen.getByRole('button',{name:/CASH/});
+  expect(heading).toHaveAttribute('aria-expanded','true');
+  expect(heading).toHaveTextContent('€3,459.08');
+  expect(screen.getByRole('button',{name:/Salary €3,459.08/})).toBeVisible();
+  await userEvent.click(heading);
+  expect(heading).toHaveAttribute('aria-expanded','false');
+  expect(document.getElementById('cash-account-list')).not.toBeVisible();
+  expect(screen.getByRole('button',{name:'Add Account'})).toBeVisible();
+  expect(document.getElementById('cash-account-list')).not.toContainElement(screen.getByRole('button',{name:'Add Account'}));
+  expect(heading).toHaveTextContent('€3,459.08');
+  await userEvent.click(heading);
+  expect(screen.getByRole('button',{name:/Salary €3,459.08/})).toBeVisible();
+  expect(screen.queryByText('No Accounts')).not.toBeInTheDocument();
+});
+
+it('shows only the no accounts message and add action when the account list is empty',async()=>{
+  render(<App/>);await saved();
+  expect(await screen.findByText('No Accounts')).toBeInTheDocument();
+  expect(screen.getByText("You can't plan without adding accounts to Open Budget first. How about adding one now?")).toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:/CASH/})).not.toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'Add Account'})).toBeVisible();
+});
+
+it('opens the account creation form from beneath CASH',async()=>{
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Add Account'}));
+  expect(await screen.findByRole('dialog',{name:'Add cash account'})).toBeInTheDocument();
+  expect(screen.getByLabelText('Account name')).toBeInTheDocument();
 });
 
 it('creates a budget and selects it as the active plan',async()=>{
   vi.spyOn(window,'prompt').mockReturnValue('Travel');
   render(<App/>);await saved();
-  await userEvent.click(screen.getByRole('button',{name:'Create budget'}));
-  await waitFor(()=>expect(screen.getByRole('combobox',{name:'Active budget'})).toHaveValue('new-budget'));
+  await userEvent.click(screen.getByRole('button',{name:'Budget menu'}));
+  expect(screen.queryByRole('menuitem',{name:/Share YNAB|Join a Workshop|Keyboard Shortcuts|Legal/})).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('menuitem',{name:/New Plan/}));
+  await waitFor(()=>expect(screen.getByRole('button',{name:'Budget menu'})).toHaveTextContent('Travel'));
   expect(window.localStorage.getItem('openbudget.activeBudgetId')).toBe('new-budget');
   await waitFor(()=>expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/budgets/new-budget/months/2026-10',expect.objectContaining({signal:expect.any(AbortSignal)})));
 });

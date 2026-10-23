@@ -83,17 +83,25 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
 }
 
 function BudgetApplication() {
+  const [userEmail, setUserEmail] = useState('');
+  useEffect(() => {
+    let active = true;
+    void fetch('/api/auth/session', { credentials: 'same-origin' }).then(async response => {
+      if (response.ok && active) setUserEmail((await response.json() as { email: string | null }).email ?? '');
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
   const [plan, setPlan] = useState<BudgetPlan>({ id: 'default', name: 'My Budget', currency: 'EUR', version: 1 });
   const [ownedBudgets, setOwnedBudgets] = useState<OwnedBudget[]>([]);
-  const [archivedBudgets, setArchivedBudgets] = useState<OwnedBudget[]>([]);
-  const [selectedArchivedBudgetId, setSelectedArchivedBudgetId] = useState('');
   const [selectedBudgetId, setSelectedBudgetId] = useState('');
   const [budgetsLoaded, setBudgetsLoaded] = useState(false);
   const [accounts, setAccounts] = useState<Accounts>({ version: 1, accounts: [] });
+  const [accountsLoaded, setAccountsLoaded] = useState(false);
   const [accountError, setAccountError] = useState(false);
   const [ledgerPending, setLedgerPending] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(() => new URLSearchParams(window.location.search).get('account') || '');
   const [accountEditRequest,setAccountEditRequest]=useState<{id:string;token:number}>();
+  const [accountCreateRequest,setAccountCreateRequest]=useState(0);
   const [ledgerRefresh, setLedgerRefresh] = useState(0);
   const [budgetRefresh, setBudgetRefresh] = useState(0);
   const [data, setData] = useState<BudgetState>({ month: '2026-10', groups: [], note: '', version: 1, openingReadyToAssign: 0, fundsAdded: 0, ledgerIncome: 0, readyToAssign: 0 });
@@ -113,6 +121,19 @@ function BudgetApplication() {
   const [planningPending, setPlanningPending] = useState(false);
   const [toast, setToast] = useState('');
   const [profileOpen, setProfileOpen] = useState(false);
+  const [budgetMenuOpen, setBudgetMenuOpen] = useState(false);
+  const [cashExpanded, setCashExpanded] = useState(true);
+  const [budgetMenuSection, setBudgetMenuSection] = useState<'main' | 'recent' | 'all'>('main');
+  const closePlansTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function cancelClosePlans() {
+    if (closePlansTimer.current) clearTimeout(closePlansTimer.current);
+    closePlansTimer.current = null;
+  }
+  function scheduleClosePlans() {
+    cancelClosePlans();
+    closePlansTimer.current = setTimeout(() => setBudgetMenuSection('main'), 120);
+  }
+  useEffect(() => () => { if (closePlansTimer.current) clearTimeout(closePlansTimer.current); }, []);
   const [showSearch, setShowSearch] = useState(false);
   const [query, setQuery] = useState('');
   const [moveFrom, setMoveFrom] = useState('coffee');
@@ -137,21 +158,22 @@ function BudgetApplication() {
 
   useEffect(() => {
     const controller = new AbortController();
-    requestJson<Accounts>('/api/accounts', { signal: controller.signal }).then(value => { setAccounts(value); setAccountError(false); })
-      .catch(error => { if (error.name !== 'AbortError') setAccountError(true); });
+    requestJson<Accounts>('/api/accounts', { signal: controller.signal }).then(value => { setAccounts(value); setAccountError(false); setAccountsLoaded(true); })
+      .catch(error => { if (error.name !== 'AbortError') { setAccountError(true); setAccountsLoaded(true); } });
     return () => controller.abort();
   }, [ledgerRefresh]);
 
   function navigate(page: string, accountId = '', transaction: PlanFocus | null = null) {
-    if (ledgerPending) { setToast('Resolve the pending ledger save before leaving accounts.'); return; }
-    if (planningPending) { setToast('Resolve the pending planning edit before changing screens.'); return; }
+    if (ledgerPending) { setToast('Resolve the pending ledger save before leaving accounts.'); return false; }
+    if (planningPending) { setToast('Resolve the pending planning edit before changing screens.'); return false; }
     if (editingId || saveState === 'saving' || conflictBudget || (loadedMonth.current === data.month && lastSaved.current !== JSON.stringify(data))) {
-      setToast('Wait for the plan to save, or resolve its save error before opening accounts.'); return;
+      setToast('Wait for the plan to save, or resolve its save error before opening accounts.'); return false;
     }
     const params = new URLSearchParams(); params.set('page', page); if (accountId) params.set('account', accountId);
     window.history.pushState(null, '', `${window.location.pathname}?${params}`);
     setActivePage(page); setSelectedAccount(accountId); setFocusTransaction(transaction); setMobileMenu(false);
     if (page === 'Plan') setBudgetRefresh(value => value + 1);
+    return true;
   }
 
   useEffect(() => {
@@ -166,7 +188,6 @@ function BudgetApplication() {
         if (!response.ok) throw new Error(`Budget list load failed (${response.status})`);
         const result = await response.json() as { budgets: OwnedBudget[] };
         const available = result.budgets.filter(budget => !budget.isArchived);
-        setArchivedBudgets(result.budgets.filter(budget => budget.isArchived));
         setOwnedBudgets(available);
         const remembered = window.localStorage.getItem('openbudget.activeBudgetId');
         const selected = available.find(budget => budget.id === remembered) ?? available[0];
@@ -464,27 +485,6 @@ function BudgetApplication() {
     setToast('Record income as a positive cash account transaction without a category.');
   }
 
-  async function renamePlan() {
-    if (!selectedBudgetId) return;
-    const name = window.prompt('Budget name', plan.name)?.trim();
-    if (!name || name === plan.name) return;
-    try {
-      const response = await fetch(`/api/budgets/${selectedBudgetId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, version: plan.version }) });
-      const result = await response.json();
-      if (response.status === 409) {
-        setPlan(result.current as BudgetPlan);
-        setToast('Budget name changed in another session. Please try again.');
-        return;
-      }
-      if (!response.ok) throw new Error(result.error ?? 'Budget name could not be saved.');
-      setPlan(result as BudgetPlan);
-      setOwnedBudgets(current => current.map(budget => budget.id === selectedBudgetId ? { ...budget, ...(result as OwnedBudget) } : budget));
-      setToast('Budget name saved');
-    } catch (error) {
-      setToast(error instanceof Error ? error.message : 'Budget name could not be saved.');
-    }
-  }
-
   function selectBudget(id: string) {
     if (id === selectedBudgetId) return;
     if (ledgerPending || planningPending || editingId || saveState === 'saving' || conflictBudget || (loadedMonth.current === data.month && lastSaved.current !== JSON.stringify(data))) {
@@ -519,85 +519,6 @@ function BudgetApplication() {
       setHistory([]); setFuture([]); setToast('Budget created');
     } catch (error) {
       setToast(error instanceof Error ? error.message : 'Budget could not be created.');
-    }
-  }
-
-  async function archiveBudget() {
-    if (!selectedBudgetId || selectedBudgetId === 'default') return;
-    const selected = ownedBudgets.find(budget => budget.id === selectedBudgetId);
-    if (!selected || !window.confirm(`Archive “${selected.name}”? Its data will be kept and you can restore it later.`)) return;
-    try {
-      const response = await fetch(`/api/budgets/${selected.id}/archive`, { method: 'POST' });
-      if (!response.ok) throw new Error((await response.json()).error ?? 'Budget could not be archived.');
-      const archived = { ...selected, isArchived: true, version: selected.version + 1 };
-      setOwnedBudgets(current => current.filter(budget => budget.id !== selected.id));
-      setArchivedBudgets(current => [...current.filter(budget => budget.id !== selected.id), archived]);
-      setSelectedArchivedBudgetId(selected.id);
-      setToast('Budget archived');
-      if (selectedBudgetId === selected.id) {
-        const next = ownedBudgets.find(budget => budget.id !== selected.id);
-        if (next) selectBudget(next.id);
-        else {
-          setSelectedBudgetId('');
-          setPlan({ id: 'default', name: 'My Budget', currency: selected.currency, version: 1 });
-          rememberActiveBudget(null);
-          loadedMonth.current = null; lastSaved.current = null;
-          setData(current => ({ ...current, groups: [] }));
-        }
-      }
-    } catch (error) {
-      setToast(error instanceof Error ? error.message : 'Budget could not be archived.');
-    }
-  }
-
-  async function restoreBudget() {
-    if (!selectedArchivedBudgetId) return;
-    const selected = archivedBudgets.find(budget => budget.id === selectedArchivedBudgetId);
-    if (!selected) return;
-    try {
-      const response = await fetch(`/api/budgets/${selected.id}/restore`, { method: 'POST' });
-      if (!response.ok) throw new Error((await response.json()).error ?? 'Budget could not be restored.');
-      const restored = { ...selected, isArchived: false, version: selected.version + 1 };
-      setArchivedBudgets(current => current.filter(budget => budget.id !== selected.id));
-      setOwnedBudgets(current => [...current, restored]);
-      setSelectedArchivedBudgetId('');
-      setToast('Budget restored');
-      if (!selectedBudgetId) {
-        setPlan(restored);
-        setSelectedBudgetId(restored.id);
-        rememberActiveBudget(restored.id);
-        loadedMonth.current = null; lastSaved.current = null;
-        setData(current => ({ ...current, groups: [] }));
-      }
-    } catch (error) {
-      setToast(error instanceof Error ? error.message : 'Budget could not be restored.');
-    }
-  }
-
-  async function deleteBudget() {
-    const selected = ownedBudgets.find(budget => budget.id === selectedBudgetId);
-    if (!selected || selected.id === 'default') return;
-    if (!window.confirm(`Permanently delete “${selected.name}” and all of its Plan and financial data? This cannot be undone.`)) return;
-    try {
-      const response = await fetch(`/api/budgets/${selected.id}`, {
-        method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: selected.version }),
-      });
-      if (!response.ok) throw new Error((await response.json()).error ?? 'Budget could not be deleted.');
-      const remaining = ownedBudgets.filter(budget => budget.id !== selected.id);
-      setOwnedBudgets(remaining);
-      setArchivedBudgets(current => current.filter(budget => budget.id !== selected.id));
-      setSelectedArchivedBudgetId('');
-      setToast('Budget permanently deleted');
-      if (remaining.length) selectBudget(remaining[0].id);
-      else {
-        setSelectedBudgetId('');
-        setPlan({ id: 'default', name: 'My Budget', currency: selected.currency, version: 1 });
-        rememberActiveBudget(null);
-        loadedMonth.current = null; lastSaved.current = null;
-        setData(current => ({ ...current, groups: [] }));
-      }
-    } catch (error) {
-      setToast(error instanceof Error ? error.message : 'Budget could not be deleted.');
     }
   }
 
@@ -738,8 +659,28 @@ function BudgetApplication() {
   return <div className="app-shell">
     {mobileMenu && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMobileMenu(false)} />}
     <aside className={`sidebar ${mobileMenu ? 'mobile-open' : ''}`}>
-      <div className="budget-picker"><img src="/openbudget-logo.svg" alt="" /><span className="budget-picker-copy"><select aria-label="Active budget" value={selectedBudgetId} disabled={!budgetsLoaded || ownedBudgets.length === 0} onChange={event => selectBudget(event.target.value)}>{ownedBudgets.map(budget => <option key={budget.id} value={budget.id}>{budget.name}</option>)}</select><small>{plan.currency} · {ownedBudgets.length} {ownedBudgets.length === 1 ? 'budget' : 'budgets'}</small></span><button type="button" className="budget-action" aria-label="Rename budget" disabled={!selectedBudgetId} onClick={renamePlan}>✎</button><button type="button" className="budget-action" aria-label="Create budget" onClick={createBudget}>+</button></div>
-      <div className="budget-management"><button type="button" onClick={archiveBudget} disabled={!selectedBudgetId || selectedBudgetId === 'default'}>Archive budget</button><button type="button" onClick={deleteBudget} disabled={!selectedBudgetId || selectedBudgetId === 'default'}>Delete budget</button><select aria-label="Archived budget" value={selectedArchivedBudgetId} onChange={event => setSelectedArchivedBudgetId(event.target.value)}><option value="">{archivedBudgets.length ? 'Restore an archived budget…' : 'No archived budgets'}</option>{archivedBudgets.map(budget => <option key={budget.id} value={budget.id}>{budget.name}</option>)}</select><button type="button" onClick={restoreBudget} disabled={!selectedArchivedBudgetId}>Restore</button></div>
+      <div className="budget-menu-anchor" onKeyDown={event => { if (event.key === 'Escape') setBudgetMenuOpen(false); }}>
+        <button type="button" className="budget-picker" aria-label="Budget menu" aria-haspopup="menu" aria-expanded={budgetMenuOpen} onClick={() => { cancelClosePlans(); setBudgetMenuSection('main'); setBudgetMenuOpen(value => !value); }}><img src="/openbudget-logo.svg" alt="" /><span className="budget-picker-copy"><strong>{plan.name}</strong><small title={userEmail}>{userEmail}</small></span><span className="budget-picker-chevron" aria-hidden="true" /></button>
+        {budgetMenuOpen && <><button className="budget-menu-dismiss" aria-label="Close budget menu" onClick={() => setBudgetMenuOpen(false)} /><div className="budget-dropdown" role="menu" aria-label="Budget menu options">
+            <button role="menuitem" onClick={() => { setBudgetMenuOpen(false); void createBudget(); }}>✚ <span>New Plan</span></button>
+            <button role="menuitem" aria-haspopup="menu" aria-expanded={budgetMenuSection !== 'main'} onMouseEnter={() => { cancelClosePlans(); setBudgetMenuSection('recent'); }} onMouseLeave={scheduleClosePlans} onClick={() => { cancelClosePlans(); setBudgetMenuSection('recent'); }}>▰ <span>Open Plan</span><span className="menu-right">›</span></button>
+            <p>Current Plan</p>
+            <button role="menuitem" onClick={() => setToast('Plan settings are not available yet')}>⚒ <span>Plan Settings</span></button>
+            <button role="menuitem" onClick={() => { setBudgetMenuOpen(false); navigate('Accounts'); }}>◉ <span>Manage Payees</span></button>
+            <button role="menuitem" onClick={() => setToast('Flag editing is not available yet')}>⚑ <span>Edit Flags</span></button>
+            <button role="menuitem" onClick={() => setToast('Display options are not available yet')}>⚑ <span>Display Options</span></button>
+            <button role="menuitem" onClick={() => setToast('Plan export is not available yet')}>▣ <span>Export Plan</span></button>
+            <button role="menuitem" onClick={() => setToast('Fresh start is not available yet')}>◒ <span>Make a Fresh Start</span></button>
+            <p>Account</p>
+            <button role="menuitem" onClick={() => { setBudgetMenuOpen(false); setProfileOpen(true); }}>♟ <span>Account Settings</span></button>
+            <button role="menuitem" onClick={() => setToast('Bank connections are not available yet')}>▥ <span>Manage Bank Connections</span></button>
+            <button role="menuitem" onClick={() => setToast('Sign out from the account bar')}>⇥ <span>Log Out</span></button>
+        </div><div className={`budget-plan-flyout ${budgetMenuSection !== 'main' ? 'is-open' : ''}`} role="menu" aria-label={budgetMenuSection === 'all' ? 'All Plans' : 'Recent Plans'} aria-hidden={budgetMenuSection === 'main'} onMouseEnter={cancelClosePlans} onMouseLeave={scheduleClosePlans}>
+          <p>{budgetMenuSection === 'recent' ? 'Recent Plans' : 'All Plans'}</p>
+          {(budgetMenuSection === 'recent' ? ownedBudgets.slice(0, 5) : ownedBudgets).map(budget => <button key={budget.id} role="menuitem" aria-current={budget.id === selectedBudgetId ? 'true' : undefined} onClick={() => { selectBudget(budget.id); setBudgetMenuOpen(false); }}>▣ <span>{budget.name}</span></button>)}
+          {budgetMenuSection === 'recent' && <button className="view-all-plans" role="menuitem" onClick={() => setBudgetMenuSection('all')}>▰ <span>View All Plans</span></button>}
+        </div></>}
+      </div>
       <div className="side-nav" role="navigation" aria-label="Main navigation">
         <button className={`nav-item ${activePage === 'Plan' ? 'active' : ''}`} onClick={() => navigate('Plan')}><Icon name="plan" size={22} /><span>Plan</span></button>
         <button className={`nav-item ${activePage === 'Long-Term Planning' ? 'active' : ''}`} onClick={() => navigate('Long-Term Planning')}><Icon name="calendar" size={22} /><span>Long-Term Planning</span></button>
@@ -747,17 +688,22 @@ function BudgetApplication() {
         <button className={`nav-item ${activePage === 'Accounts' && !selectedAccount ? 'active' : ''}`} onClick={() => navigate('Accounts')}><Icon name="bank" size={22} /><span>All Accounts</span></button>
       </div>
       <div className="account-section">
-        
-        <div className="account-type"><span>CASH</span><strong>{money(accounts.accounts.reduce((sum, account) => sum + account.balance, 0))}</strong></div>
-        {accounts.accounts.map(account => <AccountSidebarRow key={account.id} account={account} selected={activePage==='Accounts'&&selectedAccount===account.id} disabled={ledgerPending} onSelect={()=>navigate('Accounts',account.id)} onEdit={()=>{if(!ledgerPending){navigate('Accounts',account.id);setAccountEditRequest({id:account.id,token:Date.now()});}}}/>)}
-        {accountError ? <button className="account-row" onClick={() => setLedgerRefresh(value => value + 1)}>Retry loading accounts</button> : !accounts.accounts.length && <button className="account-row" onClick={() => navigate('Accounts')}>Add your first cash account</button>}
+        {accountsLoaded && !accountError && accounts.accounts.length === 0 ? <section className="no-accounts-card"><strong>No Accounts</strong><p>You can't plan without adding accounts to Open Budget first. How about adding one now?</p></section> : null}
+        {accountsLoaded && !accountError && accounts.accounts.length > 0 && <>
+        <button type="button" className="account-type" aria-expanded={cashExpanded} aria-controls="cash-account-list" onClick={() => setCashExpanded(value => !value)}><svg className="cash-chevron" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="m5 3 5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg><span>CASH</span><strong>{money(accounts.accounts.reduce((sum, account) => sum + account.balance, 0))}</strong></button>
+        <div id="cash-account-list" hidden={!cashExpanded}>
+          {accounts.accounts.map(account => <AccountSidebarRow key={account.id} account={account} selected={activePage==='Accounts'&&selectedAccount===account.id} disabled={ledgerPending} onSelect={()=>navigate('Accounts',account.id)} onEdit={()=>{if(!ledgerPending){navigate('Accounts',account.id);setAccountEditRequest({id:account.id,token:Date.now()});}}}/>)}
+        </div>
+        </>}
+        {accountError && <button className="account-row" onClick={() => setLedgerRefresh(value => value + 1)}>Retry loading accounts</button>}
+        {accountsLoaded && !accountError && <button type="button" className="add-cash-account" onClick={() => { if (navigate('Accounts')) setAccountCreateRequest(value => value + 1); }}><span aria-hidden="true">✚</span> Add Account</button>}
       </div>
       <div className="sidebar-bottom"><div className="referral-banner"><span>Give your friends 6 free weeks to try YNAB!</span><img src="/referral-heart.svg" alt="" /><button aria-label="Dismiss referral" onClick={event => {event.currentTarget.parentElement?.classList.add('dismissed');}}>×</button></div><div className="sidebar-footer"><button onClick={() => setToast('Sharing is not connected in this demo')}>▦ &nbsp; Share & Earn</button><button aria-label="Collapse sidebar" onClick={() => setMobileMenu(value => !value)}>◧</button></div></div>
     </aside>
 
     <main className="main-area">
       <header className="topbar"><div className="breadcrumbs"><span>{plan.name}</span><Icon name="right" size={13} /><strong>{activePage}</strong></div><div className="topbar-right"><button className="share-button" onClick={() => setToast('Sharing is not connected in this local demo')}>Share</button><button className="top-avatar" aria-label="Profile" onClick={() => setProfileOpen(true)}>A</button></div></header>
-      {activePage === 'Accounts' ? <AccountsPage editAccountRequest={accountEditRequest} focusTransaction={focusTransaction} onPendingChange={setLedgerPending} selectedAccount={selectedAccount} onSelectAccount={setSelectedAccount} onChanged={() => setLedgerRefresh(value => value + 1)} onMenu={() => setMobileMenu(true)} /> : activePage === 'Plan' ? <div className="page-content"><div className="page-heading"><div><span className="eyebrow">YOUR MONEY, WITH A PLAN</span><h1>Plan</h1></div></div>{budgetsLoaded && ownedBudgets.length === 0 ? <section className="empty-state"><p>You do not have an active budget yet.</p><button type="button" onClick={createBudget}>Create your first budget</button></section> : budgetPage}<div className="ledger-plan-status" role="status">{saveState === 'saved' ? 'Plan saved' : saveState === 'saving' ? 'Saving plan…' : saveState === 'loading' ? 'Loading plan…' : saveState === 'conflict' ? 'Resolve the conflicting plan edits' : 'Plan changes could not be saved'} {saveState === 'offline' && <button onClick={() => setBudgetRefresh(value => value + 1)}>Reload saved plan</button>}</div></div> : activePage === 'Long-Term Planning' ? <div className="page-content"><LongTermPlanning accounts={accounts.accounts} onSelectTransaction={(entry, scheduled) => showTransactionInAccount(entry, scheduled, 'Long-Term Planning')} onPendingChange={setPlanningPending} /></div> : <div className="page-content other-page"><div className="page-heading"><div><span className="eyebrow">MY BUDGET</span><h1>{activePage}</h1></div></div><section className="coming-card"><div className="coming-icon"><Icon name={otherPages[activePage].icon} size={24} /></div><h2>{otherPages[activePage].title}</h2><p>{otherPages[activePage].subtitle}</p><div className="coming-preview"><span /><span /><span /></div><button className="button button-primary" onClick={() => setActivePage('Plan')}>Back to your plan <Icon name="right" size={15} /></button><small>This view is queued for the next build slice.</small></section></div>}
+      {activePage === 'Accounts' ? <AccountsPage createAccountRequest={accountCreateRequest} editAccountRequest={accountEditRequest} focusTransaction={focusTransaction} onPendingChange={setLedgerPending} selectedAccount={selectedAccount} onSelectAccount={setSelectedAccount} onChanged={() => setLedgerRefresh(value => value + 1)} onMenu={() => setMobileMenu(true)} /> : activePage === 'Plan' ? <div className="page-content"><div className="page-heading"><div><span className="eyebrow">YOUR MONEY, WITH A PLAN</span><h1>Plan</h1></div></div>{budgetsLoaded && ownedBudgets.length === 0 ? <section className="empty-state"><p>You do not have an active budget yet.</p><button type="button" onClick={createBudget}>Create your first budget</button></section> : budgetPage}<div className="ledger-plan-status" role="status">{saveState === 'saved' ? 'Plan saved' : saveState === 'saving' ? 'Saving plan…' : saveState === 'loading' ? 'Loading plan…' : saveState === 'conflict' ? 'Resolve the conflicting plan edits' : 'Plan changes could not be saved'} {saveState === 'offline' && <button onClick={() => setBudgetRefresh(value => value + 1)}>Reload saved plan</button>}</div></div> : activePage === 'Long-Term Planning' ? <div className="page-content"><LongTermPlanning accounts={accounts.accounts} onSelectTransaction={(entry, scheduled) => showTransactionInAccount(entry, scheduled, 'Long-Term Planning')} onPendingChange={setPlanningPending} /></div> : <div className="page-content other-page"><div className="page-heading"><div><span className="eyebrow">MY BUDGET</span><h1>{activePage}</h1></div></div><section className="coming-card"><div className="coming-icon"><Icon name={otherPages[activePage].icon} size={24} /></div><h2>{otherPages[activePage].title}</h2><p>{otherPages[activePage].subtitle}</p><div className="coming-preview"><span /><span /><span /></div><button className="button button-primary" onClick={() => setActivePage('Plan')}>Back to your plan <Icon name="right" size={15} /></button><small>This view is queued for the next build slice.</small></section></div>}
       <footer className="footer-note"><span>{saveState === 'loading' ? 'Loading budget…' : saveState === 'saving' ? 'Saving changes…' : saveState === 'conflict' ? 'Budget changed elsewhere' : saveState === 'offline' ? 'Changes not saved' : 'Changes saved to PostgreSQL'}</span><span>OpenBudget <span className="footer-separator">·</span> Local workspace</span></footer>
     </main>
 

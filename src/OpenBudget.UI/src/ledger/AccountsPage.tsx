@@ -14,8 +14,8 @@ import './ledger.css';
 type Dialog = { kind: 'account'; account?: Account } | { kind: 'transaction'; entry?: Entry } | { kind: 'transfer'; entry?: Entry; from?: string; to?: string }
   | { kind: 'reconcile'; account: Account } | { kind: 'delete'; entry: Entry } | { kind: 'history' };
 
-export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMenu, onPendingChange, editAccountRequest, focusTransaction }: {
-  selectedAccount: string; onSelectAccount: (id: string) => void; onChanged: () => void; onMenu: () => void; onPendingChange?: (pending: boolean) => void; editAccountRequest?: {id:string;token:number};
+export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMenu, onPendingChange, createAccountRequest, editAccountRequest, focusTransaction }: {
+  selectedAccount: string; onSelectAccount: (id: string) => void; onChanged: () => void; onMenu: () => void; onPendingChange?: (pending: boolean) => void; createAccountRequest?: number; editAccountRequest?: {id:string;token:number};
   focusTransaction?: { id: string; accountId: string; date: string; scheduled: boolean; projected?: Entry; source?: 'Plan' | 'Long-Term Planning' } | null;
 }) {
   const [managePayees,setManagePayees]=useState(false);
@@ -25,6 +25,13 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   const [schedules, setSchedules] = useState<Schedules | null>(null);
   const [schedulePage, setSchedulePage] = useState(1); const [scheduledOpen, setScheduledOpen] = useState(true);
   const handledEdit = useRef<number | null>(null);
+  const handledCreate = useRef(0);
+  useEffect(() => {
+    if (createAccountRequest && createAccountRequest !== handledCreate.current) {
+      handledCreate.current = createAccountRequest;
+      setDialog({ kind: 'account' });
+    }
+  }, [createAccountRequest]);
   const [accounts, setAccounts] = useState<Accounts>({ version: 1, accounts: [] });
   const [register, setRegister] = useState<Register | null>(null);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
@@ -240,7 +247,7 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
           <th aria-sort="descending">DATE <span className="register-sort-arrow">▾</span></th><th>PAYEE</th><th>CATEGORY</th><th>MEMO</th><th className="register-money">OUTFLOW</th><th className="register-money">INFLOW</th>{view.showRunningBalance && <th className="register-money">BALANCE</th>}<th><span className="cleared-symbol" title="Cleared status" aria-hidden="true">c</span><span className="sr-only">Cleared status</span></th></tr></thead>
         <tbody>
           {inline&&(!inline.entry||(!loading&&(inline.schedule?!schedules?.items.some(s=>s.occurrenceId===inline.entry!.id):!register?.items.some(t=>t.id===inline.entry!.id))))&&editor()}
-          <tr className="scheduled-transactions-row"><td colSpan={9+Number(view.showFlags)+Number(view.showImages)+Number(view.showRunningBalance)}><button aria-expanded={scheduledOpen} onClick={()=>setScheduledOpen(!scheduledOpen)}><RegisterIcon name="calendar"/>Scheduled Transactions <span>{scheduledOpen?'⌄':'›'}</span>{schedules?.total?` (${schedules.total})`:''}</button></td></tr>
+          {Boolean(schedules?.total) && <tr className="scheduled-transactions-row"><td colSpan={9+Number(view.showFlags)+Number(view.showImages)+Number(view.showRunningBalance)}><button aria-expanded={scheduledOpen} onClick={()=>setScheduledOpen(!scheduledOpen)}><RegisterIcon name="calendar"/>Scheduled Transactions <svg className="scheduled-chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m5 3 5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg> ({schedules?.total})</button></td></tr>}
           {scheduledOpen&&!loading&&schedules?.items.map(item=>inline?.entry?.id===item.occurrenceId? <ReactFragment key={item.occurrenceId}>{editor()}</ReactFragment> : <TransactionRow key={item.occurrenceId} entry={{...item.transaction,memo:item.postingError?`Needs review: ${item.postingError}`:item.transaction.memo}} onRowSelect={()=>setSelectedIds([item.occurrenceId])} flags={flags} onFlag={color=>mutate(`/api/schedules/${item.id}/flag`,'POST',{color})} onRenameFlags={renameFlags} view={view} scheduled paused={item.isPaused} account={accounts.accounts.find(a=>a.id===item.transaction.accountId)} categories={categories} selected={selectedIds.includes(item.occurrenceId)} disabled={disabled} onSelect={()=>setSelectedIds(ids=>ids.includes(item.occurrenceId)?ids.filter(id=>id!==item.occurrenceId):[...ids,item.occurrenceId])} onEdit={()=>void edit(item.transaction)} onToggle={()=>{}}/>)}
           {scheduledOpen&&!loading&&focusTransaction?.scheduled&&focusTransaction.accountId===selectedAccount&&focusTransaction.projected&&!schedules?.items.some(item=>item.occurrenceId===focusTransaction.id)&&<TransactionRow key={focusTransaction.id} entry={focusTransaction.projected} view={view} scheduled account={accounts.accounts.find(a=>a.id===focusTransaction.accountId)} categories={categories} selected={selectedIds.includes(focusTransaction.id)} disabled onSelect={()=>setSelectedIds([focusTransaction.id])} onEdit={()=>{}} onToggle={()=>{}}/>}
           {scheduledOpen&&schedules&&schedules.total>25&&<tr><td colSpan={12}><nav className="register-pagination" aria-label="Scheduled transaction pages"><button disabled={schedulePage===1||loading} onClick={()=>setSchedulePage(p=>p-1)}>Previous scheduled</button><span>Page {schedulePage}</span><button disabled={schedulePage*25>=schedules.total||loading} onClick={()=>setSchedulePage(p=>p+1)}>Next scheduled</button></nav></td></tr>}

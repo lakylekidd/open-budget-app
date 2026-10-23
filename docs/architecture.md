@@ -61,6 +61,11 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Identity sign-in, bootstrap administrators, verified registration/recovery and audited account lifecycle administration | Implemented |
 | Owner-scoped budget identity, archive/restore, membership limits, monthly Plan snapshots, ledger/planning isolation and active budget selection | Implemented |
 
+The sidebar budget header highlights on hover and shows the signed-in email under the active budget name. Clicking it opens a menu with New Plan (create budget) and plan/account entries. Hovering Open Plan fades in an adjacent Recent Plans panel with a View All Plans option; it fades out when the pointer leaves both the item and panel. Selecting a budget switches the active budget. Rename, archive, delete, and restore controls are not exposed in this sidebar menu.
+The CASH account heading matches the navigation items' 228px width and 40px height. It toggles its account rows while keeping the total visible. Its chevron points down when expanded and right when collapsed.
+An Add Account button follows the CASH account list outside its collapsible content, so it remains visible when CASH is collapsed. It opens the existing account form on the Accounts page.
+If the loaded account list is empty, the sidebar shows a No Accounts message with Open Budget wording in place of CASH, followed by the Add Account button. Loading and failed account requests do not show the empty message.
+
 ## Design limits to address
 
 - `App.tsx` currently combines navigation, state, dialogs, table rendering, and data access. Split feature UI and API client code as slices grow.
@@ -72,6 +77,7 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 ## Cash ledger slice
 
 The frontend ledger lives in `src/ledger/` with a typed API client, reusable accessible dialog, transaction form and account/register screen. `AccountRegister.tsx` provides the compact account header, cleared/uncleared/working balance equation, transaction rows and status indicators. The register has separate outflow/inflow/running-balance columns, green cleared circles and reconciled locks. Filters and secondary actions live under View; row selection exposes editing/deletion. Account type/favorite persist, reconciliation age comes from actual snapshots, and manual accounts show Unlinked. File import, ledger undo/redo, and scheduling remain disabled until their workflows exist. Navigation waits for pending Plan edits to save. Returning to Plan reloads server-calculated amounts. Sidebar accounts use the API; mock credit/loan balances are removed.
+The Scheduled Transactions disclosure appears only when the current account's schedule query has results. It uses a right-pointing chevron when collapsed and a downward chevron when expanded.
 
 `LedgerService` applies domain rules and month projection; `LedgerGate` orders month initialization, Plan writes and ledger commands under a PostgreSQL row lock/transaction. The global ledger revision detects stale edits. Before/after audit receipts, transfer legs, reconciliation and month changes commit together. Register and account snapshots share the same revision. Lost-response retries reuse the original command; conflicts require reload/review.
 
