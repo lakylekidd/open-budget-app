@@ -29,7 +29,19 @@ public sealed record RegistrationModeRequest(string Mode);
 public sealed record ForgotPasswordRequest(string Email);
 public sealed record AdminUserDto(string Id, string UserName, string? Email, DateTimeOffset CreatedAt, DateTimeOffset? LastLoginAt, string Status, bool IsBootstrapAdministrator, DateTimeOffset? LockoutEnd, string MembershipPlanId, int? BudgetLimitOverride);
 public sealed record AdminAuditDto(Guid Id, string ActorUserId, string TargetUserId, string Action, DateTimeOffset CreatedAt);
-public sealed record AdminDashboardDto(int TotalUsers, int ActiveUsers, int PendingUsers, int LockedUsers, int SuspendedUsers, int TotalBudgets, int ActiveBudgets);
+public sealed record AdminMembershipCountDto(string MembershipPlanId, string Name, int UserCount);
+public sealed record AdminRegistrationDto(string UserId, string UserName, DateTimeOffset CreatedAt, string Status);
+public sealed record AdminDashboardDto(
+    int TotalUsers,
+    int ActiveUsers,
+    int PendingUsers,
+    int LockedUsers,
+    int SuspendedUsers,
+    int TotalBudgets,
+    int ActiveBudgets,
+    IReadOnlyList<AdminMembershipCountDto> UsersByMembership,
+    IReadOnlyList<AdminRegistrationDto> RecentRegistrations,
+    IReadOnlyList<AdminAuditDto> RecentSecurityEvents);
 public sealed record AdminMembershipRequest(string MembershipPlanId, int? BudgetLimitOverride);
 
 public interface IAccountEmailSender
@@ -367,7 +379,25 @@ public static class AuthenticationSetup
             var locked = await accounts.CountAsync(user => !user.IsSuspended && user.LockoutEnd > now, ct);
             var suspended = await accounts.CountAsync(user => user.IsSuspended, ct);
             var budgets = await db.BudgetPlans.CountAsync(ct);
-            return Results.Ok(new AdminDashboardDto(total, active, pending, locked, suspended, budgets, budgets));
+            var membershipCounts = await (from user in accounts
+                join membership in db.UserMemberships.AsNoTracking() on user.Id equals membership.UserId into userMemberships
+                from membership in userMemberships.DefaultIfEmpty()
+                group user by membership == null ? "free" : membership.MembershipPlanId into grouped
+                select new { MembershipPlanId = grouped.Key, UserCount = grouped.Count() })
+                .ToDictionaryAsync(item => item.MembershipPlanId, item => item.UserCount, ct);
+            var plans = await db.MembershipPlans.AsNoTracking().OrderBy(plan => plan.Id).ToListAsync(ct);
+            var memberships = plans.Select(plan => new AdminMembershipCountDto(plan.Id, plan.Name,
+                membershipCounts.GetValueOrDefault(plan.Id))).ToList();
+            var recentRegistrations = await accounts.OrderByDescending(user => user.CreatedAt).Take(5)
+                .Select(user => new AdminRegistrationDto(user.Id, user.UserName!, user.CreatedAt,
+                    user.IsSuspended ? "Suspended" : user.LockoutEnd > now ? "Locked" : user.EmailConfirmed && !user.RequiresApproval ? "Active" : "Pending"))
+                .ToListAsync(ct);
+            var recentSecurityEvents = await db.AdminAuditLogs.AsNoTracking().OrderByDescending(entry => entry.CreatedAt).Take(10)
+                .Select(entry => new AdminAuditDto(entry.Id, entry.ActorUserId, entry.TargetUserId, entry.Action, entry.CreatedAt))
+                .ToListAsync(ct);
+            var activeBudgets = await db.BudgetPlans.CountAsync(budget => !budget.IsArchived, ct);
+            return Results.Ok(new AdminDashboardDto(total, active, pending, locked, suspended, budgets, activeBudgets,
+                memberships, recentRegistrations, recentSecurityEvents));
         }).RequireAuthorization(policy => policy.RequireRole(AdministratorRole));
         app.MapPost("/api/admin/users/{id}/approve", async (string id, ClaimsPrincipal principal, BudgetDbContext db, UserManager<OpenBudgetUser> users, CancellationToken ct) =>
         {

@@ -26,7 +26,7 @@ Outside the Testing environment, API requests require an authenticated Identity 
 | `POST /api/admin/users/{id}/approve` | Administrator-only; approves a user after email verification. |
 | `POST /api/admin/users/{id}/reject` | Administrator-only; rejects a pending registration and records an audit event. |
 | `GET /api/admin/users?q={search}&status={status}` | Administrator-only; searches up to 100 users and returns safe account metadata/status. Status filter accepts Active, Pending, Locked or Suspended. |
-| `GET /api/admin/dashboard` | Administrator-only; returns user status counts and current total/active budget counts. |
+| `GET /api/admin/dashboard` | Administrator-only; returns user status and total/active budget counts, users by membership tier, the five newest registrations (username, date and status), and the ten newest administration/security audit events. It does not include users' budget or financial data. |
 | `POST /api/admin/users/{id}/suspend` / `reactivate` | Administrator-only; changes account access and records an audit event. The bootstrap administrator cannot be suspended. |
 | `POST /api/admin/users/{id}/unlock` | Administrator-only; clears Identity lockout without changing suspension status. |
 | `GET /api/admin/audit` | Administrator-only; returns the latest 100 administration audit events. |

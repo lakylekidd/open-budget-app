@@ -149,6 +149,9 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         var dashboard = await adminClient.GetFromJsonAsync<AdminDashboardDto>("/api/admin/dashboard");
         Assert.Equal(3, dashboard?.TotalUsers);
         Assert.Equal(1, dashboard?.PendingUsers);
+        Assert.Contains(dashboard!.UsersByMembership, membership => membership.MembershipPlanId == "free" && membership.UserCount == 3);
+        Assert.Contains(dashboard.RecentRegistrations, registration => registration.UserId == pendingId && registration.Status == "Pending");
+        Assert.Contains(dashboard.RecentSecurityEvents, entry => entry.Action == "user.membership.update");
         Assert.Equal(HttpStatusCode.NoContent, (await adminClient.PostAsync($"/api/admin/users/{pendingId}/approve", null)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await app.CreateClient().PostAsJsonAsync("/api/auth/login", new LoginRequest("pending", "Strong-pass1!"))).StatusCode);
         var usersList = await adminClient.GetFromJsonAsync<AdminUserDto[]>("/api/admin/users?q=alice&status=Active");

@@ -42,7 +42,7 @@ UI tests use Vitest, jsdom and Testing Library with controlled API responses. Th
 | Owned budget month isolation from legacy ledger writes, unique month snapshots, budget switching, persisted selection, create/rename/archive/restore/delete UI and versioned owner-only deletion | `BudgetOwnershipApiTests.Legacy_ledger_recalculation_and_planning_reads_do_not_cross_owned_budget_snapshots`; `BudgetOwnershipApiTests.Owner_can_permanently_delete_a_budget_and_its_plan_only_with_current_version`; `App.test.tsx` |
 | Membership downgrade retains existing budgets while blocking creation over the new limit | `AuthenticationApiTests.Admin_user_lifecycle_is_role_protected_and_audited` |
 | Registration disabled by default, email verification, password recovery and single-use reset tokens | `AuthenticationApiTests.Registration_is_disabled_by_default_and_open_registration_requires_email_confirmation`; `AuthGate.test.tsx` |
-| Administrator role boundary, dashboard statistics, user search/status filters, registration mode, approval, suspension/reactivation, bootstrap protection, unlock behavior and audit | `AuthenticationApiTests.Admin_user_lifecycle_is_role_protected_and_audited`; `AdminPanel.test.tsx` |
+| Administrator role boundary, dashboard status/budget/tier counts, recent registrations and security events, user search/status filters, registration mode, approval, suspension/reactivation, bootstrap protection, unlock behavior and audit | `AuthenticationApiTests.Admin_user_lifecycle_is_role_protected_and_audited`; `AdminPanel.test.tsx` |
 
 `FailureInjector` throws on the final receipt/audit save after financial rows have already been saved within the open transaction. Fresh HTTP/database assertions prove rollback, rather than just observing an exception.
 

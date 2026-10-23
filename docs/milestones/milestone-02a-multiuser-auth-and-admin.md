@@ -121,6 +121,7 @@ Administrators can configure:
 **Acceptance criteria**
 
 - [x] `/admin` uses a separate interface with its own navigation.
+- [x] The dashboard shows user status and budget counts, users by membership tier, recent registrations and security audit events without exposing financial data.
 - [x] Administrative APIs require an authenticated administrator; other sessions see an access-denied page.
 - [x] Ordinary users receive HTTP 403 when accessing administrative APIs.
 - [x] Every implemented administrative action is enforced by backend authorization.
