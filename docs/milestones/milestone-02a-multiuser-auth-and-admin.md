@@ -162,7 +162,7 @@ Each user can independently create and manage multiple budgets.
 - [x] Archived budgets do not count toward the active-budget limit.
 - [x] Decreasing a user's limit does not delete existing budgets; it only prevents additional active budgets.
 - [x] Existing default-budget data is assigned to the configured bootstrap administrator without changing legacy account or transaction rows.
-- [ ] Production users start with an empty budget unless they explicitly select a template.
+- [x] New registrations start with no budget; the user explicitly creates their first budget.
 
 ## 6. Membership & Budget Limits
 

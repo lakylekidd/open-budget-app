@@ -175,6 +175,8 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/auth/reset-password", resetRequest with { NewPassword = "Another-pass3!" })).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("newuser", "Strong-pass1!"))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("newuser", "Changed-pass2!"))).StatusCode);
+        using var ownedBudgets = await client.GetFromJsonAsync<JsonDocument>("/api/budgets?includeArchived=true");
+        Assert.Empty(ownedBudgets!.RootElement.GetProperty("budgets").EnumerateArray());
         await using (var db = app.CreateDb())
         {
             Assert.Contains(db.AdminAuditLogs, entry => entry.Action == "user.register");
