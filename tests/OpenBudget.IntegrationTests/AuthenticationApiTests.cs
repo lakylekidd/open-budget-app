@@ -1,5 +1,9 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.EntityFrameworkCore;
 using OpenBudget.Api;
 using System.Net;
 using System.Net.Http.Json;
@@ -10,6 +14,78 @@ namespace OpenBudget.IntegrationTests;
 
 public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixture<PostgresFixture>
 {
+    [Fact]
+    public async Task Production_bootstrap_admin_uses_configured_credentials_and_preserves_existing_data_on_restart()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        var environment = app.Services.GetRequiredService<IWebHostEnvironment>();
+        var originalEnvironment = environment.EnvironmentName;
+        environment.EnvironmentName = Environments.Production;
+        var legacyAccountId = Guid.NewGuid();
+        var legacyTransactionId = Guid.NewGuid();
+        try
+        {
+            await using (var seedScope = app.Services.CreateAsyncScope())
+            {
+                var db = seedScope.ServiceProvider.GetRequiredService<BudgetDbContext>();
+                db.Accounts.Add(new AccountEntity { Id = legacyAccountId, Name = "Legacy checking" });
+                db.Transactions.Add(new TransactionEntity
+                {
+                    Id = legacyTransactionId,
+                    AccountId = legacyAccountId,
+                    Date = new DateOnly(2026, 8, 15),
+                    Amount = -12.34m,
+                    Memo = "Legacy transaction"
+                });
+                await db.SaveChangesAsync();
+            }
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["BootstrapAdmin:Username"] = "configured-root",
+                ["BootstrapAdmin:Email"] = "root@example.test",
+                ["BootstrapAdmin:Password"] = "Strong-pass1!"
+            }).Build();
+            await AuthenticationSetup.EnsureBootstrapAdministratorAsync(app.Services, configuration, environment);
+
+            await using (var scope = app.Services.CreateAsyncScope())
+            {
+                var users = scope.ServiceProvider.GetRequiredService<UserManager<OpenBudgetUser>>();
+                var user = await users.FindByNameAsync("configured-root");
+                Assert.NotNull(user);
+                Assert.True(user.IsBootstrapAdministrator);
+                Assert.True(user.EmailConfirmed);
+                Assert.True(await users.IsInRoleAsync(user, AuthenticationSetup.AdministratorRole));
+                Assert.True(await users.CheckPasswordAsync(user, "Strong-pass1!"));
+                var db = scope.ServiceProvider.GetRequiredService<BudgetDbContext>();
+                Assert.Equal("pro", (await db.UserMemberships.SingleAsync(membership => membership.UserId == user.Id)).MembershipPlanId);
+                var defaultBudget = await db.BudgetPlans.SingleAsync(budget => budget.Id == "default");
+                Assert.Equal(user.Id, defaultBudget.OwnerUserId);
+                var preservedTransaction = await db.Transactions.SingleAsync(transaction => transaction.Id == legacyTransactionId);
+                Assert.Equal(legacyAccountId, preservedTransaction.AccountId);
+                Assert.Equal(-12.34m, preservedTransaction.Amount);
+                Assert.Equal("Legacy transaction", preservedTransaction.Memo);
+            }
+
+            var changedConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["BootstrapAdmin:Username"] = "configured-root",
+                ["BootstrapAdmin:Email"] = "root@example.test",
+                ["BootstrapAdmin:Password"] = "Other-strong1!"
+            }).Build();
+            await AuthenticationSetup.EnsureBootstrapAdministratorAsync(app.Services, changedConfiguration, environment);
+            await using var verifyScope = app.Services.CreateAsyncScope();
+            var verifyUsers = verifyScope.ServiceProvider.GetRequiredService<UserManager<OpenBudgetUser>>();
+            var existing = await verifyUsers.FindByNameAsync("configured-root");
+            Assert.NotNull(existing);
+            Assert.True(await verifyUsers.CheckPasswordAsync(existing, "Strong-pass1!"));
+            Assert.False(await verifyUsers.CheckPasswordAsync(existing, "Other-strong1!"));
+        }
+        finally
+        {
+            environment.EnvironmentName = originalEnvironment;
+        }
+    }
+
     [Fact]
     public async Task Login_session_logout_and_lockout_use_identity_cookie_and_persisted_user()
     {

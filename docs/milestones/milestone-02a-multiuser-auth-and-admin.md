@@ -46,7 +46,7 @@ Example configuration keys:
 **Acceptance criteria**
 
 - [x] Development automatically provisions the `admin/admin` account.
-- [ ] Production provisions its administrator using configured credentials.
+- [x] Production provisions its administrator using configured credentials.
 - [x] Production startup fails safely if required initial administrator credentials are missing.
 - [x] Default development credentials cannot authenticate in production.
 - [x] Administrator provisioning is idempotent and does not overwrite changed passwords on restart.
@@ -161,7 +161,7 @@ Each user can independently create and manage multiple budgets.
 - [x] Archiving a budget does not destroy its data.
 - [x] Archived budgets do not count toward the active-budget limit.
 - [x] Decreasing a user's limit does not delete existing budgets; it only prevents additional active budgets.
-- [ ] Existing development data is migrated to the development administrator without losing financial information.
+- [x] Existing default-budget data is assigned to the configured bootstrap administrator without changing legacy account or transaction rows.
 - [ ] Production users start with an empty budget unless they explicitly select a template.
 
 ## 6. Membership & Budget Limits
