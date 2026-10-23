@@ -107,6 +107,66 @@ public sealed class BudgetOwnershipApiTests(PostgresFixture fixture) : IClassFix
     }
 
     [Fact]
+    public async Task Owned_budget_cookie_scopes_ledger_writes_and_rejects_another_users_budget()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        await CreateUserAsync(app, "ledgeralice", "ledgeralice@example.test");
+        await CreateUserAsync(app, "ledgerbob", "ledgerbob@example.test");
+        using var alice = await LoginAsync(app, "ledgeralice");
+        using var bob = await LoginAsync(app, "ledgerbob");
+        var aliceBudget = await CreateBudgetAsync(alice, "Alice ledger");
+        var bobBudget = await CreateBudgetAsync(bob, "Bob ledger");
+        alice.DefaultRequestHeaders.Add("Cookie", $"openbudget.activeBudgetId={aliceBudget.Id}");
+        bob.DefaultRequestHeaders.Add("Cookie", $"openbudget.activeBudgetId={bobBudget.Id}");
+
+        var aliceState = await alice.GetFromJsonAsync<AccountsDto>("/api/accounts");
+        var aliceCreated = await alice.PostAsJsonAsync("/api/accounts", new CreateAccountRequest(
+            Guid.NewGuid(), aliceState!.Version, "Alice checking", new DateOnly(2026, 10, 21), 40m));
+        Assert.Equal(HttpStatusCode.OK, aliceCreated.StatusCode);
+        var aliceAccount = (await aliceCreated.Content.ReadFromJsonAsync<MutationDto>())!;
+        var bobState = await bob.GetFromJsonAsync<AccountsDto>("/api/accounts");
+        var bobCreated = await bob.PostAsJsonAsync("/api/accounts", new CreateAccountRequest(
+            Guid.NewGuid(), bobState!.Version, "Bob checking", new DateOnly(2026, 10, 21), 60m));
+        Assert.Equal(HttpStatusCode.OK, bobCreated.StatusCode);
+        var bobAccount = (await bobCreated.Content.ReadFromJsonAsync<MutationDto>())!;
+
+        var aliceAccounts = await alice.GetFromJsonAsync<AccountsDto>("/api/accounts");
+        var bobAccounts = await bob.GetFromJsonAsync<AccountsDto>("/api/accounts");
+        Assert.Equal("Alice checking", Assert.Single(aliceAccounts!.Accounts).Name);
+        Assert.Equal("Bob checking", Assert.Single(bobAccounts!.Accounts).Name);
+
+        var aliceSchedule = await alice.PostAsJsonAsync("/api/schedules", new ScheduleRequest(Guid.NewGuid(), aliceAccounts.Version,
+            aliceAccount.Id, new DateOnly(2026, 10, 21), -5m, "Alice rent", "Due", "groceries", null));
+        Assert.Equal(HttpStatusCode.OK, aliceSchedule.StatusCode);
+        var bobSchedule = await bob.PostAsJsonAsync("/api/schedules", new ScheduleRequest(Guid.NewGuid(), bobAccounts.Version,
+            bobAccount.Id, new DateOnly(2026, 10, 21), -7m, "Bob rent", "Due", "groceries", null));
+        Assert.Equal(HttpStatusCode.OK, bobSchedule.StatusCode);
+        using (var scope = app.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<SchedulePostingService>().ProcessAllBudgetsAsync(CancellationToken.None);
+        var aliceRegister = await alice.GetFromJsonAsync<RegisterDto>($"/api/transactions?accountId={aliceAccount.Id}");
+        var bobRegister = await bob.GetFromJsonAsync<RegisterDto>($"/api/transactions?accountId={bobAccount.Id}");
+        Assert.Contains(aliceRegister!.Items, transaction => transaction.Payee == "Alice rent" && !transaction.IsApproved);
+        Assert.Contains(bobRegister!.Items, transaction => transaction.Payee == "Bob rent" && !transaction.IsApproved);
+
+        var alicePlanning = await alice.GetFromJsonAsync<LongTermPlanningDto>("/api/long-term-planning/2026");
+        var alicePlanWrite = await alice.PutAsJsonAsync("/api/long-term-planning/2026", new LongTermPlanningUpdateDto(
+            alicePlanning!.Version, "2026-11", "plannedBudgetOverride", "groceries", 400m));
+        Assert.Equal(HttpStatusCode.OK, alicePlanWrite.StatusCode);
+        var bobPlanning = await bob.GetFromJsonAsync<LongTermPlanningDto>("/api/long-term-planning/2026");
+        var bobPlanWrite = await bob.PutAsJsonAsync("/api/long-term-planning/2026", new LongTermPlanningUpdateDto(
+            bobPlanning!.Version, "2026-11", "plannedBudgetOverride", "groceries", 700m));
+        Assert.Equal(HttpStatusCode.OK, bobPlanWrite.StatusCode);
+        alicePlanning = await alice.GetFromJsonAsync<LongTermPlanningDto>("/api/long-term-planning/2026");
+        bobPlanning = await bob.GetFromJsonAsync<LongTermPlanningDto>("/api/long-term-planning/2026");
+        Assert.Equal(400m, alicePlanning!.Groups.SelectMany(group => group.Categories).Single(category => category.Id == "groceries").Months.Single(month => month.Month == "2026-11").PlannedBudgetOverride);
+        Assert.Equal(700m, bobPlanning!.Groups.SelectMany(group => group.Categories).Single(category => category.Id == "groceries").Months.Single(month => month.Month == "2026-11").PlannedBudgetOverride);
+
+        bob.DefaultRequestHeaders.Remove("Cookie");
+        bob.DefaultRequestHeaders.Add("Cookie", $"openbudget.activeBudgetId={aliceBudget.Id}");
+        Assert.Equal(HttpStatusCode.Forbidden, (await bob.GetAsync("/api/accounts")).StatusCode);
+    }
+
+    [Fact]
     public async Task Owner_can_permanently_delete_a_budget_and_its_plan_only_with_current_version()
     {
         await using var app = await fixture.CreateAppAsync();
@@ -117,6 +177,10 @@ public sealed class BudgetOwnershipApiTests(PostgresFixture fixture) : IClassFix
         var budget = await CreateBudgetAsync(owner, "Temporary");
         using var month = await owner.GetAsync($"/api/budgets/{budget.Id}/months/2026-10");
         Assert.Equal(HttpStatusCode.OK, month.StatusCode);
+        owner.DefaultRequestHeaders.Add("Cookie", $"openbudget.activeBudgetId={budget.Id}");
+        var ledger = await owner.GetFromJsonAsync<AccountsDto>("/api/accounts");
+        Assert.Equal(HttpStatusCode.OK, (await owner.PostAsJsonAsync("/api/accounts", new CreateAccountRequest(
+            Guid.NewGuid(), ledger!.Version, "Temporary checking", new DateOnly(2026, 10, 21), 25m))).StatusCode);
 
         using var foreignRequest = new HttpRequestMessage(HttpMethod.Delete, $"/api/budgets/{budget.Id}")
         {
@@ -140,6 +204,8 @@ public sealed class BudgetOwnershipApiTests(PostgresFixture fixture) : IClassFix
         Assert.False(await db.Budgets.AnyAsync(x => x.BudgetId == budget.Id));
         Assert.False(await db.CategoryGroups.AnyAsync(x => x.BudgetId == budget.Id));
         Assert.False(await db.Categories.AnyAsync(x => x.BudgetId == budget.Id));
+        Assert.False(await db.Accounts.IgnoreQueryFilters().AnyAsync(x => x.BudgetId == budget.Id));
+        Assert.False(await db.Transactions.IgnoreQueryFilters().AnyAsync(x => x.BudgetId == budget.Id));
     }
 
     private static async Task CreateUserAsync(TestApp app, string username, string email)

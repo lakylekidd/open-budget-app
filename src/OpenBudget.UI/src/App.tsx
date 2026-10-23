@@ -3,6 +3,16 @@ import { AccountSidebarRow } from './ledger/AccountSidebarRow';
 import { AccountsPage } from './ledger/AccountsPage';
 import { type Accounts, type Entry, type Register, type ScheduledItem, type Schedules, requestJson } from './ledger/api';
 import { parseAssignment } from './budgetMoney';
+
+function rememberActiveBudget(id: string | null) {
+  if (id) {
+    window.localStorage.setItem('openbudget.activeBudgetId', id);
+    document.cookie = `openbudget.activeBudgetId=${encodeURIComponent(id)}; Path=/; SameSite=Strict${window.location.protocol === 'https:' ? '; Secure' : ''}`;
+  } else {
+    window.localStorage.removeItem('openbudget.activeBudgetId');
+    document.cookie = `openbudget.activeBudgetId=; Path=/; Max-Age=0; SameSite=Strict${window.location.protocol === 'https:' ? '; Secure' : ''}`;
+  }
+}
 import { categoryProgress, categoryTransactionAmount, moveItem } from './planHelpers';
 import { PlanTransactionList, type PlanTransactionItem } from './PlanTransactionList';
 import { LongTermPlanning } from './longTermPlanning/LongTermPlanning';
@@ -163,7 +173,7 @@ function BudgetApplication() {
         if (selected) {
           setSelectedBudgetId(selected.id);
           setPlan(selected);
-          window.localStorage.setItem('openbudget.activeBudgetId', selected.id);
+          rememberActiveBudget(selected.id);
         }
         setBudgetsLoaded(true);
       })
@@ -487,7 +497,7 @@ function BudgetApplication() {
     lastSaved.current = null;
     setPlan(selected);
     setSelectedBudgetId(selected.id);
-    window.localStorage.setItem('openbudget.activeBudgetId', selected.id);
+    rememberActiveBudget(selected.id);
     setData(current => ({ ...current, groups: [] }));
   }
 
@@ -502,7 +512,7 @@ function BudgetApplication() {
       setOwnedBudgets(current => [...current, created]);
       setPlan(created);
       setSelectedBudgetId(created.id);
-      window.localStorage.setItem('openbudget.activeBudgetId', created.id);
+      rememberActiveBudget(created.id);
       loadedMonth.current = null;
       lastSaved.current = null;
       setData(current => ({ ...current, groups: [] }));
@@ -530,7 +540,7 @@ function BudgetApplication() {
         else {
           setSelectedBudgetId('');
           setPlan({ id: 'default', name: 'My Budget', currency: selected.currency, version: 1 });
-          window.localStorage.removeItem('openbudget.activeBudgetId');
+          rememberActiveBudget(null);
           loadedMonth.current = null; lastSaved.current = null;
           setData(current => ({ ...current, groups: [] }));
         }
@@ -555,7 +565,7 @@ function BudgetApplication() {
       if (!selectedBudgetId) {
         setPlan(restored);
         setSelectedBudgetId(restored.id);
-        window.localStorage.setItem('openbudget.activeBudgetId', restored.id);
+        rememberActiveBudget(restored.id);
         loadedMonth.current = null; lastSaved.current = null;
         setData(current => ({ ...current, groups: [] }));
       }
@@ -567,7 +577,7 @@ function BudgetApplication() {
   async function deleteBudget() {
     const selected = ownedBudgets.find(budget => budget.id === selectedBudgetId);
     if (!selected || selected.id === 'default') return;
-    if (!window.confirm(`Permanently delete “${selected.name}” and all its monthly Plan data? This cannot be undone.`)) return;
+    if (!window.confirm(`Permanently delete “${selected.name}” and all of its Plan and financial data? This cannot be undone.`)) return;
     try {
       const response = await fetch(`/api/budgets/${selected.id}`, {
         method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: selected.version }),
@@ -582,7 +592,7 @@ function BudgetApplication() {
       else {
         setSelectedBudgetId('');
         setPlan({ id: 'default', name: 'My Budget', currency: selected.currency, version: 1 });
-        window.localStorage.removeItem('openbudget.activeBudgetId');
+        rememberActiveBudget(null);
         loadedMonth.current = null; lastSaved.current = null;
         setData(current => ({ ...current, groups: [] }));
       }

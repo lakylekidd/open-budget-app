@@ -152,7 +152,7 @@ Each user can independently create and manage multiple budgets.
 
 - [x] Every newly created budget has a globally unique identifier and an owner; the legacy budget is assigned to the configured bootstrap administrator.
 - [x] A user can own multiple budgets subject to the assigned membership limit.
-- [ ] Each budget maintains independent months, groups, categories, ledger and planning data. (Plan snapshots are scoped; ledger/planning remain shared.)
+- [x] Each budget maintains independent months, groups, categories, ledger and planning data. Financial rows are budget-keyed, existing rows are backfilled to `default`, and API query filters use an owner-validated active-budget context.
 - [x] Users can switch budgets without losing existing data.
 - [x] Budget selection persists across page refreshes.
 - [x] Users can create and rename owned budgets from the main UI.

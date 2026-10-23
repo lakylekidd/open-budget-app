@@ -167,6 +167,11 @@ namespace OpenBudget.Api.Migrations
                         .HasColumnType("character varying(20)")
                         .HasDefaultValue("checking");
 
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<bool>("IsClosed")
                         .HasColumnType("boolean");
 
@@ -401,6 +406,10 @@ namespace OpenBudget.Api.Migrations
 
             modelBuilder.Entity("OpenBudget.Api.FlagDefinitionEntity", b =>
                 {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Color")
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
@@ -410,38 +419,44 @@ namespace OpenBudget.Api.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
-                    b.HasKey("Color");
+                    b.HasKey("BudgetId", "Color");
 
                     b.ToTable("FlagDefinitions");
 
                     b.HasData(
                         new
                         {
+                            BudgetId = "default",
                             Color = "red",
                             Name = "Red"
                         },
                         new
                         {
+                            BudgetId = "default",
                             Color = "orange",
                             Name = "Orange"
                         },
                         new
                         {
+                            BudgetId = "default",
                             Color = "yellow",
                             Name = "Yellow"
                         },
                         new
                         {
+                            BudgetId = "default",
                             Color = "green",
                             Name = "Green"
                         },
                         new
                         {
+                            BudgetId = "default",
                             Color = "blue",
                             Name = "Blue"
                         },
                         new
                         {
+                            BudgetId = "default",
                             Color = "purple",
                             Name = "Purple"
                         });
@@ -460,6 +475,11 @@ namespace OpenBudget.Api.Migrations
                     b.Property<string>("BeforeJson")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -489,23 +509,25 @@ namespace OpenBudget.Api.Migrations
 
             modelBuilder.Entity("OpenBudget.Api.LedgerStateEntity", b =>
                 {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
 
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
 
-                    b.HasKey("Id");
+                    b.HasKey("BudgetId", "Id");
 
                     b.ToTable("LedgerStates");
 
                     b.HasData(
                         new
                         {
+                            BudgetId = "default",
                             Id = 1,
                             Version = 1L
                         });
@@ -513,6 +535,10 @@ namespace OpenBudget.Api.Migrations
 
             modelBuilder.Entity("OpenBudget.Api.LongTermPlanningCategoryEntity", b =>
                 {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Month")
                         .HasMaxLength(7)
                         .HasColumnType("character varying(7)");
@@ -529,13 +555,17 @@ namespace OpenBudget.Api.Migrations
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)");
 
-                    b.HasKey("Month", "CategoryId");
+                    b.HasKey("BudgetId", "Month", "CategoryId");
 
                     b.ToTable("LongTermPlanningCategories");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.LongTermPlanningIncomeEntity", b =>
                 {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Month")
                         .HasMaxLength(7)
                         .HasColumnType("character varying(7)");
@@ -544,13 +574,17 @@ namespace OpenBudget.Api.Migrations
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)");
 
-                    b.HasKey("Month");
+                    b.HasKey("BudgetId", "Month");
 
                     b.ToTable("LongTermPlanningIncomes");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.LongTermPlanningStateEntity", b =>
                 {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Id")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -559,13 +593,14 @@ namespace OpenBudget.Api.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
 
-                    b.HasKey("Id");
+                    b.HasKey("BudgetId", "Id");
 
                     b.ToTable("LongTermPlanningStates");
 
                     b.HasData(
                         new
                         {
+                            BudgetId = "default",
                             Id = "default",
                             Version = 1L
                         });
@@ -712,6 +747,11 @@ namespace OpenBudget.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("CategoryMode")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -744,7 +784,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("NormalizedName")
+                    b.HasIndex("BudgetId", "NormalizedName")
                         .IsUnique();
 
                     b.ToTable("Payees");
@@ -758,6 +798,11 @@ namespace OpenBudget.Api.Migrations
 
                     b.Property<Guid>("AccountId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -778,6 +823,10 @@ namespace OpenBudget.Api.Migrations
 
             modelBuilder.Entity("OpenBudget.Api.RegisterViewEntity", b =>
                 {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("Scope")
                         .HasMaxLength(36)
                         .HasColumnType("character varying(36)");
@@ -808,7 +857,7 @@ namespace OpenBudget.Api.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("bigint");
 
-                    b.HasKey("Scope");
+                    b.HasKey("BudgetId", "Scope");
 
                     b.ToTable("RegisterViews");
                 });
@@ -824,6 +873,11 @@ namespace OpenBudget.Api.Migrations
 
                     b.Property<DateOnly>("AnchorDate")
                         .HasColumnType("date");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<int?>("Count")
                         .HasColumnType("integer");
@@ -865,9 +919,11 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AccountId");
+
                     b.HasIndex("ToAccountId");
 
-                    b.HasIndex("AccountId", "NextDate");
+                    b.HasIndex("BudgetId", "AccountId", "NextDate");
 
                     b.ToTable("Schedules");
                 });
@@ -877,6 +933,11 @@ namespace OpenBudget.Api.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<DateOnly?>("DeferredDate")
                         .HasColumnType("date");
@@ -902,7 +963,9 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ScheduleId", "Sequence")
+                    b.HasIndex("ScheduleId");
+
+                    b.HasIndex("BudgetId", "ScheduleId", "Sequence")
                         .IsUnique();
 
                     b.ToTable("ScheduleOccurrences");
@@ -942,6 +1005,11 @@ namespace OpenBudget.Api.Migrations
                     b.Property<decimal>("Amount")
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<string>("CategoryId")
                         .HasMaxLength(100)

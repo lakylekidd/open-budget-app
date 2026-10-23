@@ -27,7 +27,7 @@ public sealed class RegisterViewService(BudgetDbContext db)
     public async Task<RegisterViewDto> GetAsync(string scope, CancellationToken ct)
     {
         await CheckScope(scope, ct);
-        var row = await db.RegisterViews.FindAsync([scope.ToLowerInvariant()], ct);
+        var row = await db.RegisterViews.FindAsync([db.ActiveBudgetId, scope.ToLowerInvariant()], ct);
         return row is null ? new(0, "allDates", null, null, true, true, true, true) : ToDto(row);
     }
 
@@ -36,7 +36,7 @@ public sealed class RegisterViewService(BudgetDbContext db)
         Validate(request);
         await CheckScope(scope, ct);
         scope = scope.ToLowerInvariant();
-        var row = await db.RegisterViews.FindAsync([scope], ct);
+        var row = await db.RegisterViews.FindAsync([db.ActiveBudgetId, scope], ct);
         var current = row is null ? 0 : row.Version;
         // A replay after a lost response succeeds only if the saved selection is identical.
         if (row is not null && request.Version == current - 1 && request with { Version = current } == ToDto(row)) return ToDto(row);

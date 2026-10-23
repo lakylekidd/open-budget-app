@@ -11,7 +11,7 @@ public sealed record RenameOwnedBudgetRequest(string Name, long Version);
 public sealed record DeleteOwnedBudgetRequest(long Version);
 public sealed record BudgetLimitDto(string Membership, string MembershipName, int? MaxActiveBudgets, int ActiveBudgets, int? BudgetLimitOverride);
 
-public sealed class BudgetOwnershipService(BudgetDbContext db)
+public sealed class BudgetOwnershipService(BudgetDbContext db, BudgetRequestContext budgetContext)
 {
     public Task<bool> OwnsBudgetAsync(string userId, string budgetId, CancellationToken cancellationToken) =>
         db.BudgetPlans.AnyAsync(x => x.Id == budgetId && x.OwnerUserId == userId && !x.IsArchived, cancellationToken);
@@ -101,7 +101,22 @@ public sealed class BudgetOwnershipService(BudgetDbContext db)
         if (plan.Id == "default") return Results.Conflict(new { error = "The legacy default budget cannot be deleted." });
         if (plan.Version != request.Version) return Results.Conflict(new { error = "This budget changed in another session." });
 
+        budgetContext.BudgetId = budgetId;
+
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        db.Transactions.RemoveRange(await db.Transactions.ToListAsync(cancellationToken));
+        db.ScheduleOccurrences.RemoveRange(await db.ScheduleOccurrences.ToListAsync(cancellationToken));
+        db.Schedules.RemoveRange(await db.Schedules.ToListAsync(cancellationToken));
+        db.Reconciliations.RemoveRange(await db.Reconciliations.ToListAsync(cancellationToken));
+        db.LedgerCommands.RemoveRange(await db.LedgerCommands.ToListAsync(cancellationToken));
+        db.RegisterViews.RemoveRange(await db.RegisterViews.ToListAsync(cancellationToken));
+        db.FlagDefinitions.RemoveRange(await db.FlagDefinitions.ToListAsync(cancellationToken));
+        db.LongTermPlanningCategories.RemoveRange(await db.LongTermPlanningCategories.ToListAsync(cancellationToken));
+        db.LongTermPlanningIncomes.RemoveRange(await db.LongTermPlanningIncomes.ToListAsync(cancellationToken));
+        db.LongTermPlanningStates.RemoveRange(await db.LongTermPlanningStates.ToListAsync(cancellationToken));
+        db.LedgerStates.RemoveRange(await db.LedgerStates.ToListAsync(cancellationToken));
+        db.Accounts.RemoveRange(await db.Accounts.ToListAsync(cancellationToken));
+        db.Payees.RemoveRange(await db.Payees.ToListAsync(cancellationToken));
         var months = await db.Budgets.Where(x => x.BudgetId == budgetId)
             .Include(x => x.Groups).ThenInclude(x => x.Categories).ToListAsync(cancellationToken);
         db.Budgets.RemoveRange(months);
@@ -174,21 +189,23 @@ public sealed class BudgetOwnershipService(BudgetDbContext db)
             var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
             return userId is null ? (IResult)Results.Unauthorized() : await service.DeleteAsync(userId, id, request, ct);
         });
-        budgets.MapGet("/{id}/months/{month}", async (string id, string month, ClaimsPrincipal principal, BudgetOwnershipService ownership, BudgetService service, LedgerGate gate, CancellationToken ct) =>
+        budgets.MapGet("/{id}/months/{month}", async (string id, string month, ClaimsPrincipal principal, BudgetOwnershipService ownership, BudgetRequestContext budgetContext, BudgetService service, LedgerGate gate, CancellationToken ct) =>
         {
             if (!IsMonth(month)) return Results.BadRequest(new { error = "Month must use YYYY-MM format." });
             var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
             if (userId is null) return Results.Unauthorized();
             if (!await ownership.OwnsBudgetAsync(userId, id, ct)) return Results.NotFound();
+            budgetContext.BudgetId = id;
             return await gate.RunAsync(async () => Results.Ok(BudgetDto.From(await service.GetMonthAsync(id, month, ct))), ct);
         });
-        budgets.MapPut("/{id}/months/{month}", async (string id, string month, BudgetUpdateDto request, ClaimsPrincipal principal, BudgetOwnershipService ownership, BudgetService service, LedgerGate gate, CancellationToken ct) =>
+        budgets.MapPut("/{id}/months/{month}", async (string id, string month, BudgetUpdateDto request, ClaimsPrincipal principal, BudgetOwnershipService ownership, BudgetRequestContext budgetContext, BudgetService service, LedgerGate gate, CancellationToken ct) =>
         {
             if (!IsMonth(month)) return Results.BadRequest(new { error = "Month must use YYYY-MM format." });
             if (request.Month != month) return Results.BadRequest(new { error = "Route month must match payload month." });
             var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
             if (userId is null) return Results.Unauthorized();
             if (!await ownership.OwnsBudgetAsync(userId, id, ct)) return Results.NotFound();
+            budgetContext.BudgetId = id;
             var result = await gate.RunAsync(() => service.UpdateMonthAsync(id, request, ct), ct, value => value.Error is null && !value.IsConflict);
             if (result.IsConflict) return Results.Conflict(new { error = "This month changed in another session.", current = result.Budget });
             if (result.Error is not null) return Results.BadRequest(new { error = result.Error });

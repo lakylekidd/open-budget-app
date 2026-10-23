@@ -2,6 +2,7 @@ namespace OpenBudget.Api;
 
 public sealed class ScheduleEntity
 {
+    public string BudgetId { get; set; } = BudgetRequestContext.DefaultBudgetId;
     public string? PostingError { get; set; }
     public Guid Id { get; set; }
     public string? FlagColor { get; set; }
@@ -20,6 +21,7 @@ public sealed class ScheduleEntity
 }
 public sealed class ScheduleOccurrenceEntity
 {
+    public string BudgetId { get; set; } = BudgetRequestContext.DefaultBudgetId;
     public Guid Id { get; set; }
     public Guid ScheduleId { get; set; }
     public int Sequence { get; set; }

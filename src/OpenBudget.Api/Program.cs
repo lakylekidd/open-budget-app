@@ -9,6 +9,7 @@ var connectionString = builder.Configuration.GetConnectionString("budgetdatabase
     ?? builder.Configuration.GetConnectionString("BudgetDatabase")
     ?? "Host=localhost;Port=5432;Database=budgetboard;Username=budgetboard;Password=budgetboard_dev";
 builder.Services.AddDbContext<BudgetDbContext>(options => options.UseNpgsql(connectionString));
+builder.Services.AddScoped<BudgetRequestContext>();
 builder.Services.AddOpenBudgetIdentity(builder.Environment);
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
@@ -28,6 +29,7 @@ builder.Services.AddScoped<IAuthorizationHandler, EntitlementAuthorizationHandle
 builder.Services.AddScoped<LongTermPlanningService>();
 builder.Services.AddScoped<LedgerService>();
 builder.Services.AddScoped<LedgerGate>();
+builder.Services.AddScoped<SchedulePostingService>();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<SchedulePostingWorker>();
 builder.Services.AddScoped<RegisterViewService>();
@@ -39,6 +41,33 @@ var app = builder.Build();
 app.UseForwardedHeaders();
 app.UseCors();
 app.UseAuthentication();
+app.Use(async (context, next) =>
+{
+    if (context.User.Identity?.IsAuthenticated == true)
+    {
+        var requestBudget = context.Request.Cookies["openbudget.activeBudgetId"];
+        var budgetId = string.IsNullOrWhiteSpace(requestBudget) ? BudgetRequestContext.DefaultBudgetId : requestBudget.Trim();
+        if (budgetId.Length > 100 || !System.Text.RegularExpressions.Regex.IsMatch(budgetId, "^[A-Za-z0-9_-]+$"))
+        {
+            budgetId = BudgetRequestContext.DefaultBudgetId;
+        }
+        var budgetContext = context.RequestServices.GetRequiredService<BudgetRequestContext>();
+        budgetContext.BudgetId = budgetId;
+        if (budgetId != BudgetRequestContext.DefaultBudgetId)
+        {
+            var userId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var db = context.RequestServices.GetRequiredService<BudgetDbContext>();
+            var owned = userId is not null && await db.BudgetPlans.AsNoTracking()
+                .AnyAsync(x => x.Id == budgetId && x.OwnerUserId == userId && !x.IsArchived, context.RequestAborted);
+            if (!owned)
+            {
+                budgetContext.BudgetId = BudgetRequestContext.DefaultBudgetId;
+                context.Response.Cookies.Delete("openbudget.activeBudgetId", new CookieOptions { Path = "/", SameSite = SameSiteMode.Strict });
+            }
+        }
+    }
+    await next(context);
+});
 app.UseAuthorization();
 app.Use(async (context, next) =>
 {
@@ -46,8 +75,12 @@ app.Use(async (context, next) =>
     var isFinancialApi = path.StartsWithSegments("/api") &&
         !path.StartsWithSegments("/api/auth") && !path.StartsWithSegments("/api/admin") &&
         !path.StartsWithSegments("/api/budgets");
-    if (isFinancialApi && context.User.Identity?.IsAuthenticated == true &&
-        !context.User.IsInRole(AuthenticationSetup.AdministratorRole))
+    var isLegacyDefaultBudgetApi = path.StartsWithSegments("/api/budget") && !path.StartsWithSegments("/api/budgets");
+    if (context.User.Identity?.IsAuthenticated == true &&
+        ((isFinancialApi && context.RequestServices.GetRequiredService<BudgetRequestContext>().BudgetId == BudgetRequestContext.DefaultBudgetId &&
+            !context.User.IsInRole(AuthenticationSetup.AdministratorRole)) ||
+         (isLegacyDefaultBudgetApi && (!context.User.IsInRole(AuthenticationSetup.AdministratorRole) ||
+            context.RequestServices.GetRequiredService<BudgetRequestContext>().BudgetId != BudgetRequestContext.DefaultBudgetId))))
     {
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
         return;

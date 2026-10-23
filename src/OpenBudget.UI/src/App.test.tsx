@@ -75,6 +75,7 @@ it('switches between owned budgets and remembers the selected budget',async()=>{
   await waitFor(()=>expect(screen.getByRole('combobox',{name:'Active budget'})).toHaveValue('second'));
   await waitFor(()=>expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/budgets/second/months/2026-10',expect.objectContaining({signal:expect.any(AbortSignal)})));
   expect(window.localStorage.getItem('openbudget.activeBudgetId')).toBe('second');
+  expect(document.cookie).toContain('openbudget.activeBudgetId=second');
 });
 
 it('restores the remembered owned budget on page load',async()=>{
@@ -83,6 +84,7 @@ it('restores the remembered owned budget on page load',async()=>{
   render(<App/>);await saved();
   expect(screen.getByRole('combobox',{name:'Active budget'})).toHaveValue('second');
   expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/budgets/second/months/2026-10',expect.objectContaining({signal:expect.any(AbortSignal)}));
+  expect(document.cookie).toContain('openbudget.activeBudgetId=second');
 });
 
 it('archives the selected budget after confirmation and restores it from the archived list',async()=>{
@@ -106,7 +108,7 @@ it('requires confirmation before permanently deleting the active budget',async()
   render(<App/>);await saved();
   await userEvent.click(screen.getByRole('button',{name:'Delete budget'}));
   await waitFor(()=>expect(screen.getByRole('combobox',{name:'Active budget'})).toHaveValue('default'));
-  expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Permanently delete “Travel”'));
+  expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('all of its Plan and financial data'));
   expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/budgets/second',expect.objectContaining({method:'DELETE',body:JSON.stringify({version:3})}));
   expect(window.localStorage.getItem('openbudget.activeBudgetId')).toBe('default');
 });

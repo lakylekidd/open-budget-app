@@ -50,16 +50,16 @@ public sealed class LongTermPlanningService(BudgetDbContext db, TimeProvider tim
             .ThenBy(x => x.CategoryId)
             .ToListAsync(cancellationToken);
         var latestBudget = await db.Budgets.AsNoTracking()
-            .Where(x => x.BudgetId == "default")
+            .Where(x => x.BudgetId == db.ActiveBudgetId)
             .Include(x => x.Groups).ThenInclude(x => x.Categories)
             .OrderByDescending(x => x.Month)
             .FirstOrDefaultAsync(cancellationToken);
         var currentYearBudgets = await db.Budgets.AsNoTracking()
-            .Where(x => x.BudgetId == "default" && string.Compare(x.Month, startMonth) >= 0 && string.Compare(x.Month, endMonth) <= 0)
+            .Where(x => x.BudgetId == db.ActiveBudgetId && string.Compare(x.Month, startMonth) >= 0 && string.Compare(x.Month, endMonth) <= 0)
             .Include(x => x.Groups).ThenInclude(x => x.Categories)
             .ToListAsync(cancellationToken);
         var priorBudget = await db.Budgets.AsNoTracking()
-            .Where(x => x.BudgetId == "default" && string.Compare(x.Month, startMonth) < 0)
+            .Where(x => x.BudgetId == db.ActiveBudgetId && string.Compare(x.Month, startMonth) < 0)
             .Include(x => x.Groups).ThenInclude(x => x.Categories)
             .OrderByDescending(x => x.Month)
             .FirstOrDefaultAsync(cancellationToken);
@@ -250,13 +250,13 @@ public sealed class LongTermPlanningService(BudgetDbContext db, TimeProvider tim
     private async Task<bool> IsActiveCategoryAsync(string categoryId, CancellationToken cancellationToken)
     {
         var category = await db.Categories.AsNoTracking()
-            .Where(x => x.Id == categoryId)
+            .Where(x => x.BudgetId == db.ActiveBudgetId && x.Id == categoryId)
             .OrderByDescending(x => x.BudgetMonth)
             .Select(x => new { x.BudgetMonth, x.GroupId, x.IsArchived })
             .FirstOrDefaultAsync(cancellationToken);
         return category is not null && !category.IsArchived &&
             await db.CategoryGroups.AsNoTracking().AnyAsync(x =>
-                x.BudgetMonth == category.BudgetMonth && x.Id == category.GroupId && !x.IsArchived, cancellationToken);
+                x.BudgetId == db.ActiveBudgetId && x.BudgetMonth == category.BudgetMonth && x.Id == category.GroupId && !x.IsArchived, cancellationToken);
     }
 
     private static bool IsSupportedYear(int year) => year is >= 1 and <= 9999;
