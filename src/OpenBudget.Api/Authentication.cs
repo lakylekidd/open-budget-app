@@ -444,6 +444,29 @@ public static class AuthenticationSetup
             await transaction.CommitAsync(ct);
             return Results.NoContent();
         }).RequireAuthorization(policy => policy.RequireRole(AdministratorRole));
+        app.MapPost("/api/admin/users/{id}/password-reset", async (string id, ClaimsPrincipal principal, BudgetDbContext db, UserManager<OpenBudgetUser> users, IAccountEmailSender email, HttpContext context, IConfiguration configuration, IWebHostEnvironment environment, CancellationToken ct) =>
+        {
+            var user = await users.FindByIdAsync(id);
+            if (user is null) return Results.NotFound();
+            if (!user.EmailConfirmed || string.IsNullOrWhiteSpace(user.Email))
+                return Results.Conflict(new { error = "A verified email address is required before a password reset can be sent." });
+            if (!email.IsConfigured)
+                return Results.Problem("Account email delivery is not configured.", statusCode: StatusCodes.Status503ServiceUnavailable);
+            try
+            {
+                var token = await users.GeneratePasswordResetTokenAsync(user);
+                var link = BuildLink(context, "/reset-password", user.Id, token, configuration, environment);
+                await email.SendAsync(user.Email, "Reset your OpenBudget password", link, ct);
+            }
+            catch when (!ct.IsCancellationRequested)
+            {
+                return Results.Problem("Password reset email could not be sent.", statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            await AddAdminAuditAsync(db, principal, user.Id, "user.password-reset.initiated", ct);
+            await transaction.CommitAsync(ct);
+            return Results.Accepted(value: new { message = "A password reset link has been sent to the user's verified email address." });
+        }).RequireAuthorization(policy => policy.RequireRole(AdministratorRole));
         app.MapGet("/api/admin/audit", async (BudgetDbContext db, CancellationToken ct) =>
             Results.Ok(await db.AdminAuditLogs.AsNoTracking().OrderByDescending(x => x.CreatedAt).Take(100)
                 .Select(x => new AdminAuditDto(x.Id, x.ActorUserId, x.TargetUserId, x.Action, x.CreatedAt)).ToListAsync(ct)))

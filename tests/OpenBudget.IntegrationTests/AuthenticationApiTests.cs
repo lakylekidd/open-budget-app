@@ -130,6 +130,47 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
     }
 
     [Fact]
+    public async Task Admin_password_reset_sends_expiring_link_without_disclosing_token_or_existing_password()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        string targetId;
+        using (var scope = app.Services.CreateScope())
+        {
+            var roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<OpenBudgetUser>>();
+            await roles.CreateAsync(new IdentityRole(AuthenticationSetup.AdministratorRole));
+            var admin = new OpenBudgetUser { UserName = "root", Email = "root@example.test", EmailConfirmed = true };
+            Assert.True((await users.CreateAsync(admin, "Strong-pass1!")).Succeeded);
+            await users.AddToRoleAsync(admin, AuthenticationSetup.AdministratorRole);
+            var target = new OpenBudgetUser { UserName = "alice", Email = "alice@example.test", EmailConfirmed = true };
+            Assert.True((await users.CreateAsync(target, "Strong-pass1!")).Succeeded);
+            targetId = target.Id;
+        }
+
+        using var adminClient = app.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = true });
+        using var userClient = app.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = true });
+        Assert.Equal(HttpStatusCode.OK, (await adminClient.PostAsJsonAsync("/api/auth/login", new LoginRequest("root", "Strong-pass1!"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await userClient.PostAsJsonAsync("/api/auth/login", new LoginRequest("alice", "Strong-pass1!"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await userClient.PostAsync($"/api/admin/users/{targetId}/password-reset", null)).StatusCode);
+
+        using var response = await adminClient.PostAsync($"/api/admin/users/{targetId}/password-reset", null);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var responseBody = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("token", responseBody, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Strong-pass1!", responseBody, StringComparison.Ordinal);
+        var resetMessage = Assert.Single(app.Email.Messages, message => message.Subject.Contains("Reset"));
+        var resetLink = new Uri(resetMessage.Body);
+        var query = QueryHelpers.ParseQuery(resetLink.Query);
+        Assert.Equal(targetId, query["userId"].ToString());
+        var resetRequest = new ResetPasswordRequest(query["userId"]!, query["token"]!, "Changed-pass2!");
+        Assert.Equal(HttpStatusCode.NoContent, (await adminClient.PostAsJsonAsync("/api/auth/reset-password", resetRequest)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await app.CreateClient().PostAsJsonAsync("/api/auth/login", new LoginRequest("alice", "Strong-pass1!"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await app.CreateClient().PostAsJsonAsync("/api/auth/login", new LoginRequest("alice", "Changed-pass2!"))).StatusCode);
+        await using var db = app.CreateDb();
+        Assert.Contains(db.AdminAuditLogs, entry => entry.TargetUserId == targetId && entry.Action == "user.password-reset.initiated");
+    }
+
+    [Fact]
     public async Task Suspended_users_cannot_login()
     {
         await using var app = await fixture.CreateAppAsync();

@@ -55,6 +55,26 @@ it('lets administrators assign a membership tier and a budget-limit override', a
   expect(fetchMock).toHaveBeenCalledWith('/api/admin/users/u1/membership', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ membershipPlanId: 'plus', budgetLimitOverride: 2 }) }));
 });
 
+it('requires confirmation and requests a password reset link without handling a password', async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.startsWith('/api/admin/users')) return Response.json([{ id: 'u1', userName: 'alice', email: 'alice@example.test', createdAt: '2026-10-01T00:00:00Z', lastLoginAt: null, status: 'Active', isBootstrapAdministrator: false, lockoutEnd: null, membershipPlanId: 'free', budgetLimitOverride: null }]);
+    if (url === '/api/auth/registration-mode') return Response.json({ mode: 'Open' });
+    if (url === '/api/admin/dashboard') return Response.json({ totalUsers: 1, activeUsers: 1, pendingUsers: 0, lockedUsers: 0, suspendedUsers: 0, totalBudgets: 1, activeBudgets: 1, usersByMembership: [], recentRegistrations: [], recentSecurityEvents: [] });
+    if (url === '/api/admin/membership-plans') return Response.json([{ id: 'free', name: 'Free', maxActiveBudgets: 1 }]);
+    if (url === '/api/admin/users/u1/password-reset') return Response.json({ message: 'A password reset link has been sent.' }, { status: 202 });
+    return new Response(null, { status: 404 });
+  });
+  const confirmMock = vi.fn(() => true);
+  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('confirm', confirmMock);
+  render(<AdminPanel />);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: 'Send reset link' }));
+  expect(confirmMock).toHaveBeenCalledWith('Send a secure password reset link to alice@example.test?');
+  expect(fetchMock).toHaveBeenCalledWith('/api/admin/users/u1/password-reset', expect.objectContaining({ method: 'POST' }));
+});
+
 it('denies access when the API does not grant the administrator role', async () => {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).startsWith('/api/admin/users')
     ? new Response(null, { status: 403 })
