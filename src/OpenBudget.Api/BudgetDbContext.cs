@@ -1,8 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 
 namespace OpenBudget.Api;
 
-public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) : DbContext(options)
+public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) : IdentityDbContext<OpenBudgetUser>(options)
 {
     public DbSet<BudgetPlanEntity> BudgetPlans => Set<BudgetPlanEntity>();
     public DbSet<LongTermPlanningStateEntity> LongTermPlanningStates => Set<LongTermPlanningStateEntity>();
@@ -24,6 +25,7 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options) :
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        base.OnModelCreating(modelBuilder);
         LedgerModel.Configure(modelBuilder);
         modelBuilder.Entity<FlagDefinitionEntity>(e => {
             e.HasKey(x=>x.Color); e.Property(x=>x.Color).HasMaxLength(10); e.Property(x=>x.Name).HasMaxLength(40);

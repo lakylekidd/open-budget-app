@@ -11,16 +11,16 @@ Implement authentication for all application users.
 
 **Acceptance criteria**
 
-- [ ] A dedicated login screen is available at `/login`.
+- [x] A dedicated login screen is available at `/login`.
 - [ ] Users can log in using a username or email and password.
-- [ ] Authentication uses ASP.NET Core Identity or an equivalent secure identity framework.
-- [ ] Passwords are securely hashed and never stored in plaintext.
-- [ ] Sessions persist securely across page refreshes.
-- [ ] Users can log out and invalidate their session.
-- [ ] Unauthenticated users cannot access budgets or protected API endpoints.
-- [ ] Failed login attempts are rate-limited, with configurable account lockout.
+- [x] Authentication uses ASP.NET Core Identity or an equivalent secure identity framework.
+- [x] Passwords are securely hashed and never stored in plaintext.
+- [x] Sessions persist securely across page refreshes.
+- [x] Users can log out and invalidate their session.
+- [x] Unauthenticated users cannot access budgets or protected API endpoints.
+- [x] Failed login attempts are rate-limited, with configurable account lockout.
 - [ ] Password reset and recovery are supported through secure, expiring, single-use tokens.
-- [ ] Suspended accounts cannot authenticate.
+- [x] Suspended accounts cannot authenticate.
 - [ ] Authentication works independently for multiple concurrent users.
 
 ## 2. Permanent Administrator Accounts
@@ -45,14 +45,14 @@ Example configuration keys:
 
 **Acceptance criteria**
 
-- [ ] Development automatically provisions the `admin/admin` account.
+- [x] Development automatically provisions the `admin/admin` account.
 - [ ] Production provisions its administrator using configured credentials.
-- [ ] Production startup fails safely if required initial administrator credentials are missing.
-- [ ] Default development credentials cannot authenticate in production.
-- [ ] Administrator provisioning is idempotent and does not overwrite changed passwords on restart.
+- [x] Production startup fails safely if required initial administrator credentials are missing.
+- [x] Default development credentials cannot authenticate in production.
+- [x] Administrator provisioning is idempotent and does not overwrite changed passwords on restart.
 - [ ] The permanent administrator cannot be deleted, suspended or demoted through the application.
 - [ ] Administrator credentials can be changed securely.
-- [ ] Credentials and password hashes are never exposed in logs or API responses.
+- [x] Credentials and password hashes are never exposed in logs or API responses.
 
 ## 3. Registration & User Lifecycle
 

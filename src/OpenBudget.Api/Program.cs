@@ -7,6 +7,7 @@ var connectionString = builder.Configuration.GetConnectionString("budgetdatabase
     ?? builder.Configuration.GetConnectionString("BudgetDatabase")
     ?? "Host=localhost;Port=5432;Database=budgetboard;Username=budgetboard;Password=budgetboard_dev";
 builder.Services.AddDbContext<BudgetDbContext>(options => options.UseNpgsql(connectionString));
+builder.Services.AddOpenBudgetIdentity(builder.Environment);
 builder.Services.AddScoped<BudgetService>();
 builder.Services.AddScoped<LongTermPlanningService>();
 builder.Services.AddScoped<LedgerService>();
@@ -20,6 +21,27 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
 
 var app = builder.Build();
 app.UseCors();
+app.UseAuthentication();
+app.UseAuthorization();
+app.UseRateLimiter();
+app.Use(async (context, next) =>
+{
+    if (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method) ||
+        HttpMethods.IsOptions(context.Request.Method) || HttpMethods.IsTrace(context.Request.Method) ||
+        !context.Request.Headers.TryGetValue("Origin", out var origin) || string.IsNullOrEmpty(origin))
+    {
+        await next(context);
+        return;
+    }
+    if (!Uri.TryCreate(origin.ToString(), UriKind.Absolute, out var source) ||
+        !string.Equals(source.Authority, context.Request.Host.Value, StringComparison.OrdinalIgnoreCase) ||
+        !string.Equals(source.Scheme, context.Request.Scheme, StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return;
+    }
+    await next(context);
+});
 app.Use(async (context, next) =>
 {
     try { await next(context); }
@@ -35,7 +57,11 @@ app.Use(async (context, next) =>
     }
 });
 await using (var scope = app.Services.CreateAsyncScope())
+{
     await scope.ServiceProvider.GetRequiredService<BudgetDbContext>().Database.MigrateAsync();
+    if (!app.Environment.IsEnvironment("Testing"))
+        await AuthenticationSetup.EnsureBootstrapAdministratorAsync(scope.ServiceProvider, app.Configuration, app.Environment);
+}
 
 app.MapGet("/health", async (BudgetDbContext db, CancellationToken cancellationToken) =>
 {
@@ -49,7 +75,9 @@ app.MapGet("/health", async (BudgetDbContext db, CancellationToken cancellationT
     {
         return Results.Problem("Database is unavailable", statusCode: 503);
     }
-});
+}).AllowAnonymous();
+
+app.MapAuthenticationEndpoints();
 
 app.MapGet("/api/budget/{month}", async (string month, BudgetService budgets, LedgerGate gate, CancellationToken cancellationToken) =>
 {

@@ -6,6 +6,7 @@ import { parseAssignment } from './budgetMoney';
 import { categoryProgress, categoryTransactionAmount, moveItem } from './planHelpers';
 import { PlanTransactionList, type PlanTransactionItem } from './PlanTransactionList';
 import { LongTermPlanning } from './longTermPlanning/LongTermPlanning';
+import { AuthGate } from './AuthGate';
 
 type Category = {
   id: string;
@@ -68,7 +69,7 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
   return <svg {...common}>{paths[name] || <circle cx="12" cy="12" r="8" />}</svg>;
 }
 
-function App() {
+function BudgetApplication() {
   const [plan, setPlan] = useState<BudgetPlan>({ id: 'default', name: 'My Budget', currency: 'EUR', version: 1 });
   const [accounts, setAccounts] = useState<Accounts>({ version: 1, accounts: [] });
   const [accountError, setAccountError] = useState(false);
@@ -616,4 +617,4 @@ function App() {
   </div>;
 }
 
-export default App;
+export default function App() { return import.meta.env.MODE === 'test' ? <BudgetApplication /> : <AuthGate><BudgetApplication /></AuthGate>; }

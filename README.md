@@ -23,6 +23,7 @@ OpenBudget is a budgeting app with a React UI, .NET API, and PostgreSQL database
 - Cash accounts with a searchable register, transfers, splits, and reconciliation
 - Scheduled transactions, payee management, and audit history
 - Long-Term Planning with annual forecasts and monthly actuals
+- Identity sign-in with a development-only bootstrap administrator; production requires configured bootstrap credentials
 
 ## Quick start
 

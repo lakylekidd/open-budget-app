@@ -26,6 +26,8 @@ dotnet run --project src/OpenBudget.AppHost
 
 Aspire provisions PostgreSQL, waits for the database, starts the API, then starts Vite. Use the `ui` HTTP endpoint in the Aspire dashboard; its stable local endpoint is `http://127.0.0.1:5173/`. The API is available at `http://127.0.0.1:5080/` and PostgreSQL at `127.0.0.1:5432` through Aspire's local endpoint.
 
+In Development, OpenBudget provisions the initial administrator as `admin` / `admin`. Change this password before using any shared environment. Production startup requires `BootstrapAdmin__Username`, `BootstrapAdmin__Email`, and `BootstrapAdmin__Password` from the deployment secret store. The password is used only when the account is first created and is not reset on later starts.
+
 The AppHost attaches PostgreSQL to the existing named volume `ynab-clone_budget-board-data`; the volume survives AppHost restarts and container recreation. The legacy volume and database role names are retained to preserve local data; application folders, assemblies, and C# namespaces use `OpenBudget`. PostgreSQL is pinned to major version 17 for compatibility with that data directory.
 
 ## Build commands
@@ -54,8 +56,8 @@ The Plan screen starts with an empty loading state and renders budget amounts on
 
 ## Current development boundaries
 
-- There is no authentication or user/tenant boundary yet. Keep this local and synthetic until the roadmap's identity and authorization work is complete.
-- The Plan API stores versioned editable monthly snapshots. The cash ledger uses replay-safe commands and shared revisions, but there is no authenticated multi-user boundary.
+- Sign-in uses ASP.NET Core Identity and an HttpOnly, SameSite=Strict cookie. Financial API requests require an authenticated session outside the Testing environment. Financial data remains in the legacy default budget until per-user budget ownership and isolation are implemented.
+- The Plan API stores versioned editable monthly snapshots. The cash ledger uses replay-safe commands and shared revisions; ownership isolation is still pending.
 - Long-Term Planning stores versioned category budget overrides, projects income and expenses from active scheduled ledger transactions, and reads existing actual snapshots without initializing missing months. It remains scoped to the local default budget.
 - Cash account/sidebar balances and monthly activity are ledger-backed; Reflect, credit/debt and linking remain future milestones; scheduling/approval and payee management are implemented register extensions.
 - Every feature requires unit/integration tests and UI workflow coverage, as specified in `AGENTS.md` and [testing](testing.md).

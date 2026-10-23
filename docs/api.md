@@ -6,6 +6,18 @@ Local Aspire development exposes the UI at `http://127.0.0.1:5173` and the API a
 
 Checks PostgreSQL connectivity. Success: `{ "status": "ok", "database": "connected" }`. Returns 503 when PostgreSQL is unavailable.
 
+## Authentication
+
+Outside the Testing environment, API requests require an authenticated Identity session. Sign-in creates an HttpOnly, SameSite=Strict cookie; login failures return the same 401 response for unknown, invalid, locked, or suspended accounts. Identity lockout is configured for five failed attempts and 15 minutes.
+
+| Method/path | Behavior |
+|---|---|
+| `POST /api/auth/login` | Accepts `{ "userNameOrEmail", "password", "rememberMe" }`; returns the signed-in user's ID, username, email and administrator flag. |
+| `GET /api/auth/session` | Returns the current session identity or 401. |
+| `POST /api/auth/logout` | Invalidates the current cookie session. |
+
+State-changing requests carrying an `Origin` header are rejected unless it matches the request scheme and host. Password recovery, registration, per-user budget ownership and admin management endpoints remain planned in [Milestone 2a](milestones/milestone-02a-multiuser-auth-and-admin.md).
+
 ## `GET /api/budget`
 
 Returns the default budget identity:
