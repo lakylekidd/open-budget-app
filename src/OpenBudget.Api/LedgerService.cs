@@ -307,7 +307,8 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
 
     private async Task RecalculateMonthsAsync(CancellationToken ct)
     {
-        var months = await db.Budgets.Include(b => b.Groups).ThenInclude(g => g.Categories).OrderBy(b => b.Month).ToListAsync(ct);
+        var months = await db.Budgets.Where(b => b.BudgetId == "default")
+            .Include(b => b.Groups).ThenInclude(g => g.Categories).OrderBy(b => b.Month).ToListAsync(ct);
         var entries = await Entries.Where(t => !t.IsDeleted).ToListAsync(ct);
         var byMonth = entries.GroupBy(t => Month(t.Date)).ToDictionary(g => g.Key, g => g.ToList());
         decimal rtaDelta = 0;

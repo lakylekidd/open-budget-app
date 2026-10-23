@@ -59,7 +59,7 @@ Groups and categories are keyed by `(BudgetId, BudgetMonth, Id)` and their forei
 
 ## Limitations and direction
 
-Budget identity and monthly Plan snapshots have an owner/membership boundary. Ledger resources and long-term planning are still global to the legacy default budget, and the UI has no budget selector yet. Credit/debt accounting, bank connections, imports and target rules also remain outside this slice. Account balances are ledger queries; monthly projection currently reads initialized months and the local ledger on writes, favoring explicit correctness over speculative incremental infrastructure. Persist money as fixed-precision decimals, never binary floating point.
+Budget identity and monthly Plan snapshots have an owner/membership boundary, and the UI persists the active budget selection. Ledger resources and long-term planning remain administrator-only and scoped to the legacy default budget while their owned-budget isolation is implemented. Credit/debt accounting, bank connections, imports and target rules also remain outside this slice. Account balances are ledger queries; monthly projection currently reads initialized default-budget months and the local ledger on writes, favoring explicit correctness over speculative incremental infrastructure. Persist money as fixed-precision decimals, never binary floating point.
 
 ### Scheduling and flag storage
 

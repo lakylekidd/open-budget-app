@@ -75,6 +75,37 @@ public sealed class BudgetOwnershipApiTests(PostgresFixture fixture) : IClassFix
         foreach (var response in writes) response.Dispose();
     }
 
+    [Fact]
+    public async Task Legacy_ledger_recalculation_and_planning_reads_do_not_cross_owned_budget_snapshots()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        await CreateUserAsync(app, "isolated", "isolated@example.test");
+        using var owner = await LoginAsync(app, "isolated");
+        var privateBudget = await CreateBudgetAsync(owner, "Private plan");
+        using var privateMonthResponse = await owner.GetAsync($"/api/budgets/{privateBudget.Id}/months/2026-10");
+        var privateMonth = (await privateMonthResponse.Content.ReadFromJsonAsync<BudgetDto>())!;
+        Assert.Equal(0m, privateMonth.Groups.SelectMany(group => group.Categories).Single(category => category.Id == "groceries").Activity);
+
+        using var legacyClient = app.CreateClient();
+        Assert.Equal(HttpStatusCode.OK, (await legacyClient.GetAsync("/api/budget/2026-10")).StatusCode);
+        var accounts = await legacyClient.GetFromJsonAsync<AccountsDto>("/api/accounts");
+        var account = await legacyClient.PostAsJsonAsync("/api/accounts", new CreateAccountRequest(Guid.NewGuid(), accounts!.Version,
+            "Legacy checking", new DateOnly(2026, 10, 21), 100m));
+        Assert.Equal(HttpStatusCode.OK, account.StatusCode);
+        var created = (await account.Content.ReadFromJsonAsync<MutationDto>())!;
+        accounts = await legacyClient.GetFromJsonAsync<AccountsDto>("/api/accounts");
+        var transaction = await legacyClient.PostAsJsonAsync("/api/transactions", new TransactionRequest(Guid.NewGuid(), accounts!.Version,
+            created.Id, new DateOnly(2026, 10, 21), -25m, "Market", "", "groceries", "uncleared", []));
+        Assert.Equal(HttpStatusCode.OK, transaction.StatusCode);
+
+        using var updatedPrivateMonthResponse = await owner.GetAsync($"/api/budgets/{privateBudget.Id}/months/2026-10");
+        var updatedPrivateMonth = (await updatedPrivateMonthResponse.Content.ReadFromJsonAsync<BudgetDto>())!;
+        Assert.Equal(0m, updatedPrivateMonth.Groups.SelectMany(group => group.Categories).Single(category => category.Id == "groceries").Activity);
+        var legacyMonth = await legacyClient.GetFromJsonAsync<BudgetDto>("/api/budget/2026-10");
+        Assert.Equal(-25m, legacyMonth!.Groups.SelectMany(group => group.Categories).Single(category => category.Id == "groceries").Activity);
+        Assert.Equal(HttpStatusCode.OK, (await legacyClient.GetAsync("/api/long-term-planning/2026")).StatusCode);
+    }
+
     private static async Task CreateUserAsync(TestApp app, string username, string email)
     {
         using var scope = app.Services.CreateScope();

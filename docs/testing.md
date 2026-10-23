@@ -39,6 +39,7 @@ UI tests use Vitest, jsdom and Testing Library with controlled API responses. Th
 | Loading/error/empty, safe replay after reload, audit/deletion confirmation, keyboard closure | `AccountsPage.test.tsx` and `TransactionForm.test.tsx` |
 | Inline transaction Tab order skips dropdown arrows and proceeds to the next field | `AccountsPage.test.tsx` |
 | Identity login, cookie session, logout, lockout, password change, suspension invalidation and protection of the shared legacy budget | `AuthenticationApiTests.Login_session_logout_and_lockout_use_identity_cookie_and_persisted_user`; `Suspended_users_cannot_login`; `AuthGate.test.tsx` |
+| Owned budget month isolation from legacy ledger writes, unique month snapshots, budget switching, persisted selection and create/rename UI | `BudgetOwnershipApiTests.Legacy_ledger_recalculation_and_planning_reads_do_not_cross_owned_budget_snapshots`; `App.test.tsx` |
 | Registration disabled by default, email verification, password recovery and single-use reset tokens | `AuthenticationApiTests.Registration_is_disabled_by_default_and_open_registration_requires_email_confirmation`; `AuthGate.test.tsx` |
 | Administrator role boundary, dashboard statistics, user search/status filters, registration mode, approval, suspension/reactivation, bootstrap protection, unlock behavior and audit | `AuthenticationApiTests.Admin_user_lifecycle_is_role_protected_and_audited`; `AdminPanel.test.tsx` |
 

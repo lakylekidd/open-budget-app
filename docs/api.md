@@ -8,7 +8,7 @@ Checks PostgreSQL connectivity. Success: `{ "status": "ok", "database": "connect
 
 ## Authentication
 
-Outside the Testing environment, API requests require an authenticated Identity session. Financial APIs remain restricted to administrators until ledger and planning rows are scoped to a selected owned budget. The budget-management APIs are available to authenticated users and enforce ownership. Sign-in creates an HttpOnly, SameSite=Strict cookie; login failures return the same 401 response for unknown, invalid, locked, or suspended accounts. Identity lockout is configured for five failed attempts and 15 minutes.
+Outside the Testing environment, API requests require an authenticated Identity session. Budget-management and owner-scoped monthly Plan APIs are available to authenticated users and enforce ownership. Ledger and long-term planning APIs remain restricted to administrators until their rows are scoped to a selected owned budget. Sign-in creates an HttpOnly, SameSite=Strict cookie; login failures return the same 401 response for unknown, invalid, locked, or suspended accounts. Identity lockout is configured for five failed attempts and 15 minutes.
 
 | Method/path | Behavior |
 |---|---|
@@ -46,7 +46,7 @@ The budget-scoped Plan endpoints are also available to the owner:
 | `GET /api/budgets/{id}/months/{YYYY-MM}` | Reads or initializes a month inside an owned budget. |
 | `PUT /api/budgets/{id}/months/{YYYY-MM}` | Saves that budget's monthly Plan snapshot with optimistic concurrency. |
 
-Foreign or archived budget IDs return 404. Monthly rows, groups and categories use composite budget/month keys; carry-forward queries stay within the selected budget. The legacy `/api/budget` routes still target `default`. Ledger and long-term planning endpoints still use the legacy data model and remain administrator-only until those tables and service queries are budget-scoped. The UI selector and persisted active-budget choice remain to be implemented.
+Foreign or archived budget IDs return 404. Monthly rows, groups and categories use composite budget/month keys; carry-forward queries stay within the selected budget. The UI loads this list, allows budget creation, selection and rename, and persists the selected ID in local storage. The legacy `/api/budget` routes still target `default`. Ledger and long-term planning endpoints still use the legacy data model and remain administrator-only until those tables and service queries are budget-scoped.
 
 ## `GET /api/budget`
 

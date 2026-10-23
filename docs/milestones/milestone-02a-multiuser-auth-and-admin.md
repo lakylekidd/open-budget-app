@@ -148,10 +148,11 @@ Each user can independently create and manage multiple budgets.
 **Acceptance criteria**
 
 - [x] Every newly created budget has a globally unique identifier and an owner; the legacy budget is assigned to the configured bootstrap administrator.
-- [ ] A user can own multiple budgets.
+- [x] A user can own multiple budgets subject to the assigned membership limit.
 - [ ] Each budget maintains independent months, groups, categories, ledger and planning data. (Plan snapshots are scoped; ledger/planning remain shared.)
-- [ ] Users can switch budgets without losing existing data.
-- [ ] Budget selection persists across page refreshes.
+- [x] Users can switch budgets without losing existing data.
+- [x] Budget selection persists across page refreshes.
+- [x] Users can create and rename owned budgets from the main UI.
 - [x] Budget-management API reads and writes enforce ownership on the server.
 - [x] Users cannot access another user's budget by manipulating budget-management API requests.
 - [x] Concurrent budget creation cannot bypass the active-budget limit.
@@ -185,7 +186,7 @@ Memberships are separate from authentication roles. An administrator may have a 
 - [x] Administrators can assign or change memberships.
 - [x] Administrators can override an individual user's budget limit.
 - [x] The API enforces the effective budget limit for creation and restoration.
-- [ ] When a limit is reached, the application displays a clear explanation.
+- [x] When a limit is reached, the application displays the server's explanation.
 - [ ] Future subscription metadata can support start date, expiration date, billing provider and external subscription ID.
 - [ ] An entitlement model supports future restrictions on additional features without redesigning authorization.
 - [ ] No payment processor integration is required for Milestone 2a.

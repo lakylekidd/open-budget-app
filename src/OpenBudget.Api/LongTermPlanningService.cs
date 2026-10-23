@@ -50,15 +50,16 @@ public sealed class LongTermPlanningService(BudgetDbContext db, TimeProvider tim
             .ThenBy(x => x.CategoryId)
             .ToListAsync(cancellationToken);
         var latestBudget = await db.Budgets.AsNoTracking()
+            .Where(x => x.BudgetId == "default")
             .Include(x => x.Groups).ThenInclude(x => x.Categories)
             .OrderByDescending(x => x.Month)
             .FirstOrDefaultAsync(cancellationToken);
         var currentYearBudgets = await db.Budgets.AsNoTracking()
-            .Where(x => string.Compare(x.Month, startMonth) >= 0 && string.Compare(x.Month, endMonth) <= 0)
+            .Where(x => x.BudgetId == "default" && string.Compare(x.Month, startMonth) >= 0 && string.Compare(x.Month, endMonth) <= 0)
             .Include(x => x.Groups).ThenInclude(x => x.Categories)
             .ToListAsync(cancellationToken);
         var priorBudget = await db.Budgets.AsNoTracking()
-            .Where(x => string.Compare(x.Month, startMonth) < 0)
+            .Where(x => x.BudgetId == "default" && string.Compare(x.Month, startMonth) < 0)
             .Include(x => x.Groups).ThenInclude(x => x.Categories)
             .OrderByDescending(x => x.Month)
             .FirstOrDefaultAsync(cancellationToken);

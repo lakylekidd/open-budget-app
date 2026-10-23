@@ -26,6 +26,7 @@ type CategoryGroup = { id: string; name: string; categories: Category[]; isArchi
 type Filter = 'All' | 'Overspent' | 'Underfunded' | 'Overfunded' | 'Money available' | 'Snoozed' | 'Archived';
 type BudgetState = { month: string; groups: CategoryGroup[]; note?: string; version: number; openingReadyToAssign: number; fundsAdded: number; ledgerIncome: number; readyToAssign: number };
 type BudgetPlan = { id: string; name: string; currency: string; version: number };
+type OwnedBudget = BudgetPlan & { isArchived: boolean; createdAt: string };
 
 const filters: Filter[] = ['All', 'Overspent', 'Underfunded', 'Overfunded', 'Money available', 'Snoozed', 'Archived'];
 
@@ -72,6 +73,9 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
 
 function BudgetApplication() {
   const [plan, setPlan] = useState<BudgetPlan>({ id: 'default', name: 'My Budget', currency: 'EUR', version: 1 });
+  const [ownedBudgets, setOwnedBudgets] = useState<OwnedBudget[]>([]);
+  const [selectedBudgetId, setSelectedBudgetId] = useState('');
+  const [budgetsLoaded, setBudgetsLoaded] = useState(false);
   const [accounts, setAccounts] = useState<Accounts>({ version: 1, accounts: [] });
   const [accountError, setAccountError] = useState(false);
   const [ledgerPending, setLedgerPending] = useState(false);
@@ -143,20 +147,32 @@ function BudgetApplication() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch('/api/budget', { signal: controller.signal })
+    fetch('/api/budgets', { signal: controller.signal })
       .then(async response => {
-        if (!response.ok) throw new Error(`Budget plan load failed (${response.status})`);
-        setPlan(await response.json() as BudgetPlan);
+        if (!response.ok) throw new Error(`Budget list load failed (${response.status})`);
+        const result = await response.json() as { budgets: OwnedBudget[] };
+        const available = result.budgets.filter(budget => !budget.isArchived);
+        setOwnedBudgets(available);
+        const remembered = window.localStorage.getItem('openbudget.activeBudgetId');
+        const selected = available.find(budget => budget.id === remembered) ?? available[0];
+        if (selected) {
+          setSelectedBudgetId(selected.id);
+          setPlan(selected);
+          window.localStorage.setItem('openbudget.activeBudgetId', selected.id);
+        }
+        setBudgetsLoaded(true);
       })
-      .catch(error => { if (error.name !== 'AbortError') setToast('Could not load budget details.'); });
+      .catch(error => { if (error.name !== 'AbortError') { setBudgetsLoaded(true); setToast('Could not load your budgets.'); } });
     return () => controller.abort();
   }, []);
 
   useEffect(() => {
+    if (!budgetsLoaded || !selectedBudgetId) return;
     const controller = new AbortController();
     loadedMonth.current = null;
     setSaveState('loading');
-    fetch(`/api/budget/${data.month}`, { signal: controller.signal })
+    setHistory([]); setFuture([]); setEditingId(null); setAssignmentError(''); setSelectedIds([]);
+    fetch(`/api/budgets/${selectedBudgetId}/months/${data.month}`, { signal: controller.signal })
       .then(async response => {
         if (!response.ok) throw new Error(`Budget load failed (${response.status})`);
         return await response.json() as BudgetState;
@@ -176,9 +192,10 @@ function BudgetApplication() {
         }
       });
     return () => controller.abort();
-  }, [data.month, budgetRefresh]);
+  }, [data.month, budgetRefresh, budgetsLoaded, selectedBudgetId]);
 
   useEffect(() => {
+    if (!budgetsLoaded || !selectedBudgetId) return;
     const controller = new AbortController();
     const { from, to } = monthBounds(data.month);
     setUpcomingLoading(true); setUpcomingError(''); setUpcomingItems([]); setSelectedCategoryId(null);
@@ -197,10 +214,10 @@ function BudgetApplication() {
     };
     void load();
     return () => controller.abort();
-  }, [data.month, budgetRefresh]);
+  }, [data.month, budgetRefresh, budgetsLoaded, selectedBudgetId]);
 
   useEffect(() => {
-    if (loadedMonth.current !== data.month || conflictBudget) return;
+    if (!selectedBudgetId || loadedMonth.current !== data.month || conflictBudget) return;
     if (lastSaved.current === JSON.stringify(data)) return;
     setSaveState('saving');
     const controller = new AbortController();
@@ -223,7 +240,7 @@ function BudgetApplication() {
         })),
       };
       try {
-        const response = await fetch(`/api/budget/${data.month}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request), signal: controller.signal });
+        const response = await fetch(`/api/budgets/${selectedBudgetId}/months/${data.month}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request), signal: controller.signal });
         if (response.status === 409) {
           const problem = await response.json();
           setConflictBudget(problem.current as BudgetState);
@@ -244,7 +261,7 @@ function BudgetApplication() {
       }
     }, 450);
     return () => window.clearTimeout(timer);
-  }, [data, conflictBudget]);
+  }, [data, conflictBudget, selectedBudgetId]);
 
   const allCategories = useMemo(() => data.groups.flatMap(group => group.categories), [data.groups]);
   const totals = useMemo(() => {
@@ -433,10 +450,11 @@ function BudgetApplication() {
   }
 
   async function renamePlan() {
+    if (!selectedBudgetId) return;
     const name = window.prompt('Budget name', plan.name)?.trim();
     if (!name || name === plan.name) return;
     try {
-      const response = await fetch('/api/budget', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, version: plan.version }) });
+      const response = await fetch(`/api/budgets/${selectedBudgetId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, version: plan.version }) });
       const result = await response.json();
       if (response.status === 409) {
         setPlan(result.current as BudgetPlan);
@@ -445,9 +463,47 @@ function BudgetApplication() {
       }
       if (!response.ok) throw new Error(result.error ?? 'Budget name could not be saved.');
       setPlan(result as BudgetPlan);
+      setOwnedBudgets(current => current.map(budget => budget.id === selectedBudgetId ? { ...budget, ...(result as OwnedBudget) } : budget));
       setToast('Budget name saved');
     } catch (error) {
       setToast(error instanceof Error ? error.message : 'Budget name could not be saved.');
+    }
+  }
+
+  function selectBudget(id: string) {
+    if (id === selectedBudgetId) return;
+    if (ledgerPending || planningPending || editingId || saveState === 'saving' || conflictBudget || (loadedMonth.current === data.month && lastSaved.current !== JSON.stringify(data))) {
+      setToast('Save or resolve the current changes before switching budgets.');
+      return;
+    }
+    const selected = ownedBudgets.find(budget => budget.id === id);
+    if (!selected) return;
+    loadedMonth.current = null;
+    lastSaved.current = null;
+    setPlan(selected);
+    setSelectedBudgetId(selected.id);
+    window.localStorage.setItem('openbudget.activeBudgetId', selected.id);
+    setData(current => ({ ...current, groups: [] }));
+  }
+
+  async function createBudget() {
+    const name = window.prompt('New budget name', 'My Budget')?.trim();
+    if (!name) return;
+    try {
+      const response = await fetch('/api/budgets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, currency: plan.currency || 'EUR' }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? 'Budget could not be created.');
+      const created = result as OwnedBudget;
+      setOwnedBudgets(current => [...current, created]);
+      setPlan(created);
+      setSelectedBudgetId(created.id);
+      window.localStorage.setItem('openbudget.activeBudgetId', created.id);
+      loadedMonth.current = null;
+      lastSaved.current = null;
+      setData(current => ({ ...current, groups: [] }));
+      setHistory([]); setFuture([]); setToast('Budget created');
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Budget could not be created.');
     }
   }
 
@@ -588,7 +644,7 @@ function BudgetApplication() {
   return <div className="app-shell">
     {mobileMenu && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMobileMenu(false)} />}
     <aside className={`sidebar ${mobileMenu ? 'mobile-open' : ''}`}>
-      <button className="budget-picker" onClick={renamePlan}><img src="/openbudget-logo.svg" alt="" /><span className="budget-picker-copy"><strong>{plan.name}</strong><small>{plan.currency} · Rename budget</small></span><Icon name="chevron" size={15} /></button>
+      <div className="budget-picker"><img src="/openbudget-logo.svg" alt="" /><span className="budget-picker-copy"><select aria-label="Active budget" value={selectedBudgetId} disabled={!budgetsLoaded || ownedBudgets.length === 0} onChange={event => selectBudget(event.target.value)}>{ownedBudgets.map(budget => <option key={budget.id} value={budget.id}>{budget.name}</option>)}</select><small>{plan.currency} · {ownedBudgets.length} {ownedBudgets.length === 1 ? 'budget' : 'budgets'}</small></span><button type="button" className="budget-action" aria-label="Rename budget" disabled={!selectedBudgetId} onClick={renamePlan}>✎</button><button type="button" className="budget-action" aria-label="Create budget" onClick={createBudget}>+</button></div>
       <div className="side-nav" role="navigation" aria-label="Main navigation">
         <button className={`nav-item ${activePage === 'Plan' ? 'active' : ''}`} onClick={() => navigate('Plan')}><Icon name="plan" size={22} /><span>Plan</span></button>
         <button className={`nav-item ${activePage === 'Long-Term Planning' ? 'active' : ''}`} onClick={() => navigate('Long-Term Planning')}><Icon name="calendar" size={22} /><span>Long-Term Planning</span></button>
@@ -606,7 +662,7 @@ function BudgetApplication() {
 
     <main className="main-area">
       <header className="topbar"><div className="breadcrumbs"><span>{plan.name}</span><Icon name="right" size={13} /><strong>{activePage}</strong></div><div className="topbar-right"><button className="share-button" onClick={() => setToast('Sharing is not connected in this local demo')}>Share</button><button className="top-avatar" aria-label="Profile">A</button></div></header>
-      {activePage === 'Accounts' ? <AccountsPage editAccountRequest={accountEditRequest} focusTransaction={focusTransaction} onPendingChange={setLedgerPending} selectedAccount={selectedAccount} onSelectAccount={setSelectedAccount} onChanged={() => setLedgerRefresh(value => value + 1)} onMenu={() => setMobileMenu(true)} /> : activePage === 'Plan' ? <div className="page-content"><div className="page-heading"><div><span className="eyebrow">YOUR MONEY, WITH A PLAN</span><h1>Plan</h1></div></div>{budgetPage}<div className="ledger-plan-status" role="status">{saveState === 'saved' ? 'Plan saved' : saveState === 'saving' ? 'Saving plan…' : saveState === 'loading' ? 'Loading plan…' : saveState === 'conflict' ? 'Resolve the conflicting plan edits' : 'Plan changes could not be saved'} {saveState === 'offline' && <button onClick={() => setBudgetRefresh(value => value + 1)}>Reload saved plan</button>}</div></div> : activePage === 'Long-Term Planning' ? <div className="page-content"><LongTermPlanning accounts={accounts.accounts} onSelectTransaction={(entry, scheduled) => showTransactionInAccount(entry, scheduled, 'Long-Term Planning')} onPendingChange={setPlanningPending} /></div> : <div className="page-content other-page"><div className="page-heading"><div><span className="eyebrow">MY BUDGET</span><h1>{activePage}</h1></div></div><section className="coming-card"><div className="coming-icon"><Icon name={otherPages[activePage].icon} size={24} /></div><h2>{otherPages[activePage].title}</h2><p>{otherPages[activePage].subtitle}</p><div className="coming-preview"><span /><span /><span /></div><button className="button button-primary" onClick={() => setActivePage('Plan')}>Back to your plan <Icon name="right" size={15} /></button><small>This view is queued for the next build slice.</small></section></div>}
+      {activePage === 'Accounts' ? <AccountsPage editAccountRequest={accountEditRequest} focusTransaction={focusTransaction} onPendingChange={setLedgerPending} selectedAccount={selectedAccount} onSelectAccount={setSelectedAccount} onChanged={() => setLedgerRefresh(value => value + 1)} onMenu={() => setMobileMenu(true)} /> : activePage === 'Plan' ? <div className="page-content"><div className="page-heading"><div><span className="eyebrow">YOUR MONEY, WITH A PLAN</span><h1>Plan</h1></div></div>{budgetsLoaded && ownedBudgets.length === 0 ? <section className="empty-state"><p>You do not have an active budget yet.</p><button type="button" onClick={createBudget}>Create your first budget</button></section> : budgetPage}<div className="ledger-plan-status" role="status">{saveState === 'saved' ? 'Plan saved' : saveState === 'saving' ? 'Saving plan…' : saveState === 'loading' ? 'Loading plan…' : saveState === 'conflict' ? 'Resolve the conflicting plan edits' : 'Plan changes could not be saved'} {saveState === 'offline' && <button onClick={() => setBudgetRefresh(value => value + 1)}>Reload saved plan</button>}</div></div> : activePage === 'Long-Term Planning' ? <div className="page-content"><LongTermPlanning accounts={accounts.accounts} onSelectTransaction={(entry, scheduled) => showTransactionInAccount(entry, scheduled, 'Long-Term Planning')} onPendingChange={setPlanningPending} /></div> : <div className="page-content other-page"><div className="page-heading"><div><span className="eyebrow">MY BUDGET</span><h1>{activePage}</h1></div></div><section className="coming-card"><div className="coming-icon"><Icon name={otherPages[activePage].icon} size={24} /></div><h2>{otherPages[activePage].title}</h2><p>{otherPages[activePage].subtitle}</p><div className="coming-preview"><span /><span /><span /></div><button className="button button-primary" onClick={() => setActivePage('Plan')}>Back to your plan <Icon name="right" size={15} /></button><small>This view is queued for the next build slice.</small></section></div>}
       <footer className="footer-note"><span>{saveState === 'loading' ? 'Loading budget…' : saveState === 'saving' ? 'Saving changes…' : saveState === 'conflict' ? 'Budget changed elsewhere' : saveState === 'offline' ? 'Changes not saved' : 'Changes saved to PostgreSQL'}</span><span>OpenBudget <span className="footer-separator">·</span> Local workspace</span></footer>
     </main>
 
