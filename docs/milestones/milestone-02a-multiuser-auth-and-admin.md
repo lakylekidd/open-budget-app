@@ -21,7 +21,7 @@ Implement authentication for all application users.
 - [x] Failed login attempts are rate-limited, with configurable account lockout.
 - [x] Password reset and recovery are supported through secure, expiring, single-use tokens.
 - [x] Suspended accounts cannot authenticate.
-- [ ] Authentication works independently for multiple concurrent users.
+- [x] Authentication works independently for multiple concurrent users.
 
 ## 2. Permanent Administrator Accounts
 

@@ -253,6 +253,11 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         using var userClient = app.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = true });
         Assert.Equal(HttpStatusCode.OK, (await adminClient.PostAsJsonAsync("/api/auth/login", new LoginRequest("root", "Strong-pass1!"))).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await userClient.PostAsJsonAsync("/api/auth/login", new LoginRequest("alice", "Strong-pass1!"))).StatusCode);
+        var adminSession = await adminClient.GetFromJsonAsync<UserSessionDto>("/api/auth/session");
+        var aliceSession = await userClient.GetFromJsonAsync<UserSessionDto>("/api/auth/session");
+        Assert.NotEqual(adminSession?.Id, aliceSession?.Id);
+        Assert.True(adminSession?.IsAdministrator);
+        Assert.False(aliceSession?.IsAdministrator);
         Assert.Equal(HttpStatusCode.Forbidden, (await userClient.GetAsync("/api/admin/users")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await userClient.PostAsync($"/api/admin/users/{aliceId}/suspend", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await userClient.PutAsJsonAsync($"/api/admin/users/{aliceId}/membership", new AdminMembershipRequest("plus", 2))).StatusCode);
