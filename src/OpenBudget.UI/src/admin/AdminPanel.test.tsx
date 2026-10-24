@@ -11,6 +11,7 @@ it('shows pending users and requires confirmation before approval', async () => 
     if (url.startsWith('/api/admin/users')) return Response.json([{ id: 'u1', userName: 'alice', email: 'alice@example.test', createdAt: '2026-10-01T00:00:00Z', lastLoginAt: null, status: 'Pending', isBootstrapAdministrator: false, lockoutEnd: null, membershipPlanId: 'free', budgetLimitOverride: null }]);
     if (url === '/api/admin/audit') return Response.json([]);
     if (url === '/api/auth/registration-mode') return Response.json({ mode: 'ApprovalRequired' });
+    if (url === '/api/admin/settings/email') return Response.json({ host: '', port: 587, from: '', username: null, enableSsl: true, hasPassword: false, isConfigured: false, source: 'none' });
     if (url === '/api/admin/dashboard') return Response.json({ totalUsers: 1, activeUsers: 0, pendingUsers: 1, lockedUsers: 0, suspendedUsers: 0, totalBudgets: 1, activeBudgets: 1, usersByMembership: [{ membershipPlanId: 'free', name: 'Free', userCount: 1 }], recentRegistrations: [{ userId: 'u1', userName: 'alice', createdAt: '2026-10-01T00:00:00Z', status: 'Pending' }], recentSecurityEvents: [{ id: 'e1', actorUserId: 'admin', targetUserId: 'u1', action: 'user.register', createdAt: '2026-10-01T00:00:00Z' }] });
     if (url === '/api/admin/membership-plans') return Response.json([{ id: 'free', name: 'Free', maxActiveBudgets: 1 }, { id: 'plus', name: 'Plus', maxActiveBudgets: 3 }, { id: 'pro', name: 'Pro', maxActiveBudgets: null }]);
     if (url === '/api/admin/users/u1/approve' && init?.method === 'POST') return new Response(null, { status: 204 });
@@ -40,6 +41,7 @@ it('lets administrators assign a membership tier and a budget-limit override', a
     if (url.startsWith('/api/admin/users')) return Response.json([{ id: 'u1', userName: 'alice', email: 'alice@example.test', createdAt: '2026-10-01T00:00:00Z', lastLoginAt: null, status: 'Active', isBootstrapAdministrator: false, lockoutEnd: null, membershipPlanId: 'free', budgetLimitOverride: null }]);
     if (url === '/api/admin/audit') return Response.json([]);
     if (url === '/api/auth/registration-mode') return Response.json({ mode: 'Open' });
+    if (url === '/api/admin/settings/email') return Response.json({ host: '', port: 587, from: '', username: null, enableSsl: true, hasPassword: false, isConfigured: false, source: 'none' });
     if (url === '/api/admin/dashboard') return Response.json({ totalUsers: 1, activeUsers: 1, pendingUsers: 0, lockedUsers: 0, suspendedUsers: 0, totalBudgets: 0, activeBudgets: 0, usersByMembership: [], recentRegistrations: [], recentSecurityEvents: [] });
     if (url === '/api/admin/membership-plans') return Response.json([{ id: 'free', name: 'Free', maxActiveBudgets: 1 }, { id: 'plus', name: 'Plus', maxActiveBudgets: 3 }]);
     if (url === '/api/admin/users/u1/membership') return new Response(null, { status: 204 });
@@ -64,6 +66,7 @@ it('requires confirmation and requests a password reset link without handling a 
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.startsWith('/api/admin/users')) return Response.json([{ id: 'u1', userName: 'alice', email: 'alice@example.test', createdAt: '2026-10-01T00:00:00Z', lastLoginAt: null, status: 'Active', isBootstrapAdministrator: false, lockoutEnd: null, membershipPlanId: 'free', budgetLimitOverride: null }]);
+    if (url === '/api/admin/settings/email') return Response.json({ host: '', port: 587, from: '', username: null, enableSsl: true, hasPassword: false, isConfigured: false, source: 'none' });
     if (url === '/api/auth/registration-mode') return Response.json({ mode: 'Open' });
     if (url === '/api/admin/dashboard') return Response.json({ totalUsers: 1, activeUsers: 1, pendingUsers: 0, lockedUsers: 0, suspendedUsers: 0, totalBudgets: 1, activeBudgets: 1, usersByMembership: [], recentRegistrations: [], recentSecurityEvents: [] });
     if (url === '/api/admin/membership-plans') return Response.json([{ id: 'free', name: 'Free', maxActiveBudgets: 1 }]);
@@ -88,12 +91,40 @@ it('denies access when the API does not grant the administrator role', async () 
   expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument();
 });
 
+it('saves SMTP settings without rendering the saved password and sends a delivery test', async () => {
+  const emailSettings = { host: 'smtp.example.test', port: 587, from: 'hello@example.test', username: 'mailer', enableSsl: true, hasPassword: true, isConfigured: true, source: 'admin' };
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.startsWith('/api/admin/users')) return Response.json([]);
+    if (url === '/api/auth/registration-mode') return Response.json({ mode: 'Disabled' });
+    if (url === '/api/admin/settings/email' && init?.method === 'PUT') return Response.json(emailSettings);
+    if (url === '/api/admin/settings/email') return Response.json(emailSettings);
+    if (url === '/api/admin/settings/email/test') return Response.json({ message: 'Test email sent.' }, { status: 202 });
+    if (url === '/api/admin/dashboard') return Response.json({ totalUsers: 0, activeUsers: 0, pendingUsers: 0, lockedUsers: 0, suspendedUsers: 0, totalBudgets: 0, activeBudgets: 0, usersByMembership: [], recentRegistrations: [], recentSecurityEvents: [] });
+    if (url === '/api/admin/membership-plans') return Response.json([{ id: 'free', name: 'Free', maxActiveBudgets: 1 }]);
+    return new Response(null, { status: 404 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  render(<AdminPanel />);
+  const user = userEvent.setup();
+  expect(await screen.findByText('Configured')).toBeInTheDocument();
+  expect(screen.getByLabelText('SMTP password')).toHaveValue('');
+  await user.type(screen.getByLabelText('SMTP password'), 'new-secret');
+  await user.click(screen.getByRole('button', { name: 'Save email settings' }));
+  expect(fetchMock).toHaveBeenCalledWith('/api/admin/settings/email', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ host: 'smtp.example.test', port: 587, from: 'hello@example.test', username: 'mailer', password: 'new-secret', enableSsl: true }) }));
+  await user.type(screen.getByLabelText('Test email recipient'), 'admin@example.test');
+  await user.click(screen.getByRole('button', { name: 'Send test email' }));
+  expect(fetchMock).toHaveBeenCalledWith('/api/admin/settings/email/test', expect.objectContaining({ method: 'POST', body: JSON.stringify({ to: 'admin@example.test' }) }));
+  expect(await screen.findByRole('status')).toHaveTextContent('Test email sent.');
+});
+
 it('invites a user by email without entering or returning a password', async () => {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url === '/api/admin/users/invite') return Response.json({ message: 'An account verification link has been sent.' }, { status: 202 });
     if (url.startsWith('/api/admin/users')) return Response.json([]);
     if (url === '/api/auth/registration-mode') return Response.json({ mode: 'Disabled' });
+    if (url === '/api/admin/settings/email') return Response.json({ host: '', port: 587, from: '', username: null, enableSsl: true, hasPassword: false, isConfigured: false, source: 'none' });
     if (url === '/api/admin/dashboard') return Response.json({ totalUsers: 0, activeUsers: 0, pendingUsers: 0, lockedUsers: 0, suspendedUsers: 0, totalBudgets: 0, activeBudgets: 0, usersByMembership: [], recentRegistrations: [], recentSecurityEvents: [] });
     if (url === '/api/admin/membership-plans') return Response.json([{ id: 'free', name: 'Free', maxActiveBudgets: 1 }]);
     return new Response(null, { status: 404 });
@@ -112,7 +143,7 @@ it('invites a user by email without entering or returning a password', async () 
     body: JSON.stringify({ userName: 'new-user', email: 'new@example.test', membershipPlanId: 'free' }),
   }));
   expect(await screen.findByRole('status')).toHaveTextContent('Verification link sent');
-  expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Invitation password')).not.toBeInTheDocument();
 });
 
 it('loads a user-specific status history when the administrator expands it', async () => {
@@ -123,6 +154,7 @@ it('loads a user-specific status history when the administrator expands it', asy
     ]);
     if (url.startsWith('/api/admin/users')) return Response.json([{ id: 'u1', userName: 'alice', email: 'alice@example.test', createdAt: '2026-10-01T00:00:00Z', lastLoginAt: null, status: 'Suspended', isBootstrapAdministrator: false, lockoutEnd: null, membershipPlanId: 'free', budgetLimitOverride: null }]);
     if (url === '/api/auth/registration-mode') return Response.json({ mode: 'Disabled' });
+    if (url === '/api/admin/settings/email') return Response.json({ host: '', port: 587, from: '', username: null, enableSsl: true, hasPassword: false, isConfigured: false, source: 'none' });
     if (url === '/api/admin/dashboard') return Response.json({ totalUsers: 1, activeUsers: 0, pendingUsers: 0, lockedUsers: 0, suspendedUsers: 1, totalBudgets: 0, activeBudgets: 0, usersByMembership: [], recentRegistrations: [], recentSecurityEvents: [] });
     if (url === '/api/admin/membership-plans') return Response.json([{ id: 'free', name: 'Free', maxActiveBudgets: 1 }]);
     return new Response(null, { status: 404 });

@@ -1,7 +1,7 @@
 # Graph Report - ynab-clone  (2026-10-24)
 
 ## Corpus Check
-- 185 files · ~117,785 words
+- 185 files · ~117,990 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 13 file(s) not represented in the graph (top: .ttf 4, .css 4, (none) 3)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `9fed94de`
+- Built from commit: `28062562`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -435,7 +435,7 @@ Cohesion: 0.67
 Nodes (3): Current release shape, Documentation, Documents
 
 ## Knowledge Gaps
-- **244 isolated node(s):** `CreatedAt`, `IsBootstrapAdministrator`, `IsSuspended`, `LastLoginAt`, `RequiresApproval` (+239 more)
+- **244 isolated node(s):** `Clock`, `ConnectionString`, `Email`, `Failure`, `EntitlementKey` (+239 more)
   These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 664 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **12 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
@@ -443,16 +443,16 @@ Nodes (3): Current release shape, Documentation, Documents
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `Cash ledger slice` connect `Payees.test.tsx` to `Architecture and current status`, `CategoryPicker`, `BudgetEntity`, `CancellationToken`, `AccountsPage.tsx`, `API`?**
-  _High betweenness centrality (0.299) - this node is a cross-community bridge._
-- **What connects `CreatedAt`, `IsBootstrapAdministrator`, `IsSuspended` to the rest of the system?**
+  _High betweenness centrality (0.319) - this node is a cross-community bridge._
+- **What connects `Clock`, `ConnectionString`, `Email` to the rest of the system?**
   _244 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `BudgetApplication` be split into smaller, more focused modules?**
   _Cohesion score 0.0463768115942029 - nodes in this community are weakly interconnected._
 - **Why does `LedgerService` connect `CancellationToken` to `OpenBudget.Api`, `List`, `BudgetEntity`, `TestClock`, `LedgerBalanceRow`, `TransactionEntity`, `Payees.test.tsx`, `List`, `BudgetDbContext`, `List`, `API`?**
-  _High betweenness centrality (0.193) - this node is a cross-community bridge._
+  _High betweenness centrality (0.207) - this node is a cross-community bridge._
 - **Should `CategoryEntity` be split into smaller, more focused modules?**
   _Cohesion score 0.125 - nodes in this community are weakly interconnected._
 - **Why does `BudgetDbContext` connect `BudgetDbContext` to `CategoryEntity`, `OpenBudget.Api`, `List`, `Task`, `MembershipEntitlements.cs`, `.SaveChangesAsync`, `CancellationToken`, `OpenBudgetUser`, `TransactionEntity`, `HttpClient`, `.AddOpenBudgetIdentity`, `LongTermPlanningCategoryEntity`, `PayeeEntity`, `UserMembershipEntity`, `TestClock`, `.MapAuthenticationEndpoints`, `BudgetPlanEntity`, `API`, `AccountEntity`, `ReconciliationEntity`, `CategoryGroupEntity`, `BudgetEntity`, `AdminAuditLogEntity`, `MembershipPlanEntitlementEntity`, `RegisterViewEntity`, `LedgerCommandEntity`, `.OnModelCreating`?**
-  _High betweenness centrality (0.126) - this node is a cross-community bridge._
+  _High betweenness centrality (0.117) - this node is a cross-community bridge._
 - **Should `OpenBudget.Api` be split into smaller, more focused modules?**
   _Cohesion score 0.11375661375661375 - nodes in this community are weakly interconnected._

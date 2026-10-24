@@ -975,6 +975,46 @@ namespace OpenBudget.Api.Migrations
                     b.ToTable("ScheduleOccurrences");
                 });
 
+            modelBuilder.Entity("OpenBudget.Api.SmtpSettingsEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("EnableSsl")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("EncryptedPassword")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("From")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Host")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("Port")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Username")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SmtpSettings");
+                });
+
             modelBuilder.Entity("OpenBudget.Api.SplitEntity", b =>
                 {
                     b.Property<Guid>("TransactionId")

@@ -54,7 +54,7 @@ beforeEach(()=>{
 });
 async function saved(){await screen.findByText('Plan saved');}
 async function next(direction:'Previous'|'Next',month:string){await userEvent.click(screen.getByRole('button',{name:direction+' month'}));await screen.findByRole('button',{name:month});await saved();}
-function row(){return screen.getByRole('button',{name:'Edit assigned for Electricity'}).closest('.category-row')!;}
+function row(){return screen.getByRole('button',{name:'Edit assigned for Electricity'}).closest('.category-row') as HTMLElement;}
 async function assign(value:string){await userEvent.click(screen.getByRole('button',{name:'Edit assigned for Electricity'}));const input=screen.getByRole('textbox',{name:'Assigned to Electricity'});await userEvent.clear(input);await userEvent.type(input,value);await userEvent.keyboard('{Enter}');}
 
 it('shows the all-money-assigned summary at zero and offers Assign in a funded month',async()=>{
@@ -71,6 +71,37 @@ it('shows the all-money-assigned summary at zero and offers Assign in a funded m
   await next('Next','Nov 2026');
   expect(summary.queryByText('All Money Assigned')).not.toBeInTheDocument();
   expect(summary.getByRole('button',{name:/Assign/})).toBeEnabled();
+});
+
+it('does not render the promotional card in the Plan summary panel',async()=>{
+  render(<App/>);await saved();
+  expect(screen.queryByText('For You')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:'Read the Blog'})).not.toBeInTheDocument();
+});
+
+it('rotates the collapse-all chevron with the group state',async()=>{
+  render(<App/>);await saved();
+  const collapseAll=screen.getByRole('button',{name:'Collapse all'});
+  expect(collapseAll).toHaveAttribute('aria-expanded','true');
+  expect(collapseAll.querySelector('svg')).toHaveAttribute('width','18');
+  expect(screen.getByRole('button',{name:'Toggle Home'}).querySelector('svg')).toHaveAttribute('width','18');
+  expect(collapseAll.querySelector('.group-chevron')).not.toHaveClass('closed');
+  await userEvent.click(collapseAll);
+  const expandAll=screen.getByRole('button',{name:'Expand all'});
+  expect(expandAll).toHaveAttribute('aria-expanded','false');
+  expect(expandAll.querySelector('.group-chevron')).toHaveClass('closed');
+  await userEvent.click(expandAll);
+  expect(screen.getByRole('button',{name:'Collapse all'}).querySelector('.group-chevron')).not.toHaveClass('closed');
+});
+
+it('uses compact category rows when progress bars are hidden',async()=>{
+  render(<App/>);await saved();
+  const table=document.querySelector('.budget-table') as HTMLElement;
+  expect(table).not.toHaveClass('compact');
+  await userEvent.click(screen.getByRole('button',{name:'Progress Bars Off'}));
+  expect(table).toHaveClass('compact');
+  await userEvent.click(screen.getByRole('button',{name:'Progress Bars On'}));
+  expect(table).not.toHaveClass('compact');
 });
 
 it('switches between owned budgets and remembers the selected budget',async()=>{
@@ -443,8 +474,13 @@ it('shows projected shortfall in category details and lists the scheduled transa
   scheduleRows=[schedule];
   months['2026-10']=budget('2026-10',20.6,0,20.6);
   render(<App/>);await saved();
+  const categoryRow=row();
   await userEvent.click(screen.getByRole('button',{name:/^Electricity$/}));
-  expect(row().querySelector('.available-cell')).toHaveClass('underfunded');
+  expect(categoryRow.querySelector('.available-cell')).toHaveClass('underfunded');
+  expect(within(categoryRow).getByRole('img',{name:'Upcoming transactions will make Electricity negative'})).toBeInTheDocument();
+  expect(categoryRow.querySelector('.category-upcoming')).not.toBeInTheDocument();
+  expect(Number.parseFloat((categoryRow.querySelector('.progress-orange') as HTMLElement).style.width)).toBeGreaterThan(0);
+  expect((categoryRow.querySelector('.progress-red') as HTMLElement).style.width).toBe('0%');
   expect(screen.getByText('Available After Upcoming')).toBeInTheDocument();
   expect(screen.getByText(/-€29\.30/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button',{name:/1 Upcoming Transaction/}));
@@ -455,6 +491,16 @@ it('shows projected shortfall in category details and lists the scheduled transa
   expect(await screen.findByRole('row',{name:/Gym/})).toHaveClass('register-row-selected');
   const scheduleRequests=vi.mocked(fetch).mock.calls.map(([path])=>String(path)).filter(path=>path.startsWith('/api/schedules?'));
   expect(scheduleRequests.some(path=>{const query=new URL(path,'http://localhost').searchParams;return query.get('accountId')===accountId&&query.get('from')==='2026-10-27'&&query.get('to')==='2026-10-27';})).toBe(true);
+});
+
+it('marks a collapsed category group when scheduled spending would make a subcategory negative',async()=>{
+  scheduleRows=[{id:'schedule-id',occurrenceId:'occurrence-id',repeat:'monthly',startDate:'2026-10-27',isPaused:false,endDate:null,count:null,toAccountId:null,
+    transaction:{id:'occurrence-id',accountId:'account-id',date:'2026-10-27',amount:-49.9,payee:'Gym',memo:'Membership',categoryId:'utilities',status:'uncleared',transferId:null,isOpening:false,splits:[],needsAttention:false,runningBalance:null,transferAccountName:null,isLocked:false}}];
+  months['2026-10']=budget('2026-10',20.6,0,20.6);
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Toggle Home'}));
+  expect(screen.getByRole('img',{name:'Upcoming transactions will make a subcategory negative'})).toBeInTheDocument();
+  expect(screen.queryByRole('img',{name:'Upcoming transactions will make Electricity negative'})).not.toBeInTheDocument();
 });
 
 it('keeps Available positive when current-month scheduled spending does not cause a shortfall',async()=>{

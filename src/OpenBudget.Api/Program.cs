@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using OpenBudget.Api;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,6 +10,10 @@ var connectionString = builder.Configuration.GetConnectionString("budgetdatabase
     ?? builder.Configuration.GetConnectionString("BudgetDatabase")
     ?? "Host=localhost;Port=5432;Database=budgetboard;Username=budgetboard;Password=budgetboard_dev";
 builder.Services.AddDbContext<BudgetDbContext>(options => options.UseNpgsql(connectionString));
+var dataProtection = builder.Services.AddDataProtection().SetApplicationName("OpenBudget");
+var dataProtectionKeyPath = builder.Configuration["DataProtection:KeyPath"];
+if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
+    dataProtection.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeyPath));
 builder.Services.AddScoped<BudgetRequestContext>();
 builder.Services.AddOpenBudgetIdentity(builder.Environment);
 builder.Services.Configure<ForwardedHeadersOptions>(options =>

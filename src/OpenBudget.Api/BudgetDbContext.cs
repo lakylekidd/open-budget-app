@@ -26,6 +26,7 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
     public DbSet<LedgerCommandEntity> LedgerCommands => Set<LedgerCommandEntity>();
     public DbSet<ReconciliationEntity> Reconciliations => Set<ReconciliationEntity>();
     public DbSet<ApplicationSettingEntity> ApplicationSettings => Set<ApplicationSettingEntity>();
+    public DbSet<SmtpSettingsEntity> SmtpSettings => Set<SmtpSettingsEntity>();
     public DbSet<AdminAuditLogEntity> AdminAuditLogs => Set<AdminAuditLogEntity>();
     public DbSet<MembershipPlanEntity> MembershipPlans => Set<MembershipPlanEntity>();
     public DbSet<UserMembershipEntity> UserMemberships => Set<UserMembershipEntity>();
@@ -37,6 +38,7 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
         base.OnModelCreating(modelBuilder);
         LedgerModel.Configure(modelBuilder);
         modelBuilder.Entity<ApplicationSettingEntity>(e => { e.HasKey(x => x.Key); e.Property(x => x.Key).HasMaxLength(100); e.Property(x => x.Value).HasMaxLength(500); });
+        modelBuilder.Entity<SmtpSettingsEntity>(e => { e.HasKey(x => x.Id); e.Property(x => x.Host).HasMaxLength(255); e.Property(x => x.From).HasMaxLength(256); e.Property(x => x.Username).HasMaxLength(256); e.Property(x => x.EncryptedPassword).HasMaxLength(2000); });
         modelBuilder.Entity<AdminAuditLogEntity>(e => { e.HasKey(x => x.Id); e.Property(x => x.ActorUserId).HasMaxLength(450); e.Property(x => x.TargetUserId).HasMaxLength(450); e.Property(x => x.Action).HasMaxLength(80); e.HasIndex(x => x.CreatedAt); });
         modelBuilder.Entity<MembershipPlanEntity>(e => { e.HasKey(x => x.Id); e.Property(x => x.Id).HasMaxLength(40); e.Property(x => x.Name).HasMaxLength(80); e.Property(x => x.MaxActiveBudgets).IsRequired(false); e.HasData(new MembershipPlanEntity { Id = "free", Name = "Free", MaxActiveBudgets = 1 }, new MembershipPlanEntity { Id = "plus", Name = "Plus", MaxActiveBudgets = 3 }, new MembershipPlanEntity { Id = "pro", Name = "Pro", MaxActiveBudgets = null }); });
         modelBuilder.Entity<UserMembershipEntity>(e => { e.HasKey(x => x.UserId); e.Property(x => x.UserId).HasMaxLength(450); e.Property(x => x.MembershipPlanId).HasMaxLength(40); e.Property(x => x.BillingProvider).HasMaxLength(80); e.Property(x => x.ExternalSubscriptionId).HasMaxLength(160); e.Property(x => x.Version).IsConcurrencyToken(); e.HasOne<OpenBudgetUser>().WithOne().HasForeignKey<UserMembershipEntity>(x => x.UserId).OnDelete(DeleteBehavior.Cascade); e.HasOne<MembershipPlanEntity>().WithMany().HasForeignKey(x => x.MembershipPlanId).OnDelete(DeleteBehavior.Restrict); });
@@ -183,6 +185,18 @@ public sealed class ApplicationSettingEntity
 {
     public string Key { get; set; } = "";
     public string Value { get; set; } = "";
+}
+
+public sealed class SmtpSettingsEntity
+{
+    public int Id { get; set; }
+    public string Host { get; set; } = "";
+    public int Port { get; set; } = 587;
+    public string From { get; set; } = "";
+    public string? Username { get; set; }
+    public string? EncryptedPassword { get; set; }
+    public bool EnableSsl { get; set; } = true;
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
 public sealed class AdminAuditLogEntity

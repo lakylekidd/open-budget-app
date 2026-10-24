@@ -6,7 +6,7 @@ EF Core migrations live in `src/OpenBudget.Api/Migrations`.
 
 ### Identity and account lifecycle
 
-ASP.NET Core Identity stores users, password hashes, roles, lockout state, email confirmation and security stamps in its `AspNet*` tables. `AspNetUsers` adds suspension, bootstrap-administrator, pending-approval, creation-time and last-login fields. `ApplicationSettings` stores the administrator-selected registration mode; the default is Disabled. `AdminAuditLogs` records the actor, target, action and timestamp for registration, registration-policy and account-lifecycle actions. Verification and reset tokens use Identity's data-protection token providers and are sent through configured SMTP; tokens are not persisted in application tables.
+ASP.NET Core Identity stores users, password hashes, roles, lockout state, email confirmation and security stamps in its `AspNet*` tables. `AspNetUsers` adds suspension, bootstrap-administrator, pending-approval, creation-time and last-login fields. `ApplicationSettings` stores the administrator-selected registration mode; the default is Disabled. `SmtpSettings` stores the one administrator-managed SMTP connection: host, port, sender address, optional username, TLS choice, update time, and an ASP.NET Data Protection-encrypted password. Passwords are never returned from the API or written to audit records. `AdminAuditLogs` records the actor, target, action and timestamp for registration, registration-policy, email-settings and account-lifecycle actions. Verification and reset tokens use Identity's data-protection token providers and are sent through configured SMTP; tokens are not persisted in application tables.
 
 ### `BudgetPlans`
 

@@ -23,7 +23,7 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Persistence | EF Core 10, Npgsql EF provider, PostgreSQL 17 |
 | Local orchestration | .NET Aspire 13.6.2 AppHost, PostgreSQL and JavaScript/Vite integrations |
 | API contract | Budget identity plus versioned monthly snapshot |
-| Authentication | ASP.NET Core Identity with cookie sessions, verified registration, password recovery and administrator role |
+| Authentication | ASP.NET Core Identity with cookie sessions, verified registration, branded SMTP email, password recovery and administrator role |
 
 ## Implemented user path
 
@@ -46,8 +46,8 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Move money between categories | Implemented as paired assignment changes in one monthly save |
 | Add, rename, reorder, archive/restore group/category | Implemented and persisted; clicking a group name opens its name popover, while a subcategory must first be selected before its name opens the same editor. Saved history is archived rather than deleted. |
 | Budget identity and name | One default budget, name editable and persisted |
-| Category filters, search, collapse, select, progress bars | Implemented; bars show remaining funds and uncovered overspending |
-| Category activity and scheduled spending | Monthly activity opens filtered ledger rows; selecting a category shows its selected-month upcoming transactions and projected availability in the right column. The upcoming summary opens a transaction list. Available is highlighted only when selected-month scheduled outflows would make it negative; a projected zero is not a shortfall. Clicking a category row's background or Assigned amount selects only that category and opens Assigned for editing; checkboxes support multi-selection. |
+| Category filters, search, collapse, select, progress bars | Implemented; bars show available funds in green, posted spending as an empty green-outlined segment, actual overspending in red, and only the uncovered portion of selected-month scheduled outflows in orange. A scheduled outflow that leaves Available at zero or above remains green; a partially funded one splits into green covered and orange uncovered portions. Hiding bars uses a denser category-table row layout. |
+| Category activity and scheduled spending | Monthly activity opens filtered ledger rows; selecting a category shows its selected-month upcoming transactions and projected availability in the right column. The upcoming summary opens a transaction list. Available is highlighted only when selected-month scheduled outflows would make it negative; a projected zero is not a shortfall. A compact orange marker appears beside an affected subcategory's checkbox, and a collapsed group shows a warning triangle when any contained subcategory has that projected shortfall. Clicking a category row's background or Assigned amount selects only that category and opens Assigned for editing; checkboxes support multi-selection. |
 | Category creation and ordering | Add categories from a group, drag groups/categories to reorder and move categories between groups; versioned monthly saves preserve category identity |
 | Undo/redo | In-memory UI history; edits are saved but no server-side audit event is recorded |
 | Month note | Persisted on the monthly snapshot |
@@ -58,7 +58,7 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Bank linking, credit/debt accounts | Future milestones |
 | Targets and assignment recommendations | Monthly Auto-Assign Underfunded covers current-month scheduled outflows that would make a selected category negative; with no category selection, Auto-Assign covers all active subcategories, otherwise only selected subcategories. Other actions use last month and trailing 12-month actual assignments/spending; manual assignment and reset actions use the existing versioned Plan save. Full target rules and preview/apply workflows remain planned. |
 | Reflect reports | Not implemented; entry remains a placeholder |
-| Identity sign-in, bootstrap administrators, verified registration/recovery and audited account lifecycle administration | Implemented |
+| Identity sign-in, bootstrap administrators, verified registration/recovery, admin-managed encrypted SMTP settings and audited account lifecycle administration | Implemented |
 | Owner-scoped budget identity, archive/restore, membership limits, monthly Plan snapshots, ledger/planning isolation and active budget selection | Implemented |
 
 The sidebar budget header highlights on hover and shows the signed-in email under the active budget name. Clicking it opens a menu with New Plan (create budget), plan/account entries, administrator-only Admin navigation, and Sign Out. Hovering Open Plan fades in an adjacent Recent Plans panel with a View All Plans option; it fades out when the pointer leaves both the item and panel. Selecting a budget switches the active budget. Rename, archive, delete, and restore controls are not exposed in this sidebar menu.

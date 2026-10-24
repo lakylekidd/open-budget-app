@@ -26,6 +26,9 @@ services:
       BootstrapAdmin__Username: ${BootstrapAdmin__Username:?Set BootstrapAdmin__Username in Coolify}
       BootstrapAdmin__Email: ${BootstrapAdmin__Email:?Set BootstrapAdmin__Email in Coolify}
       BootstrapAdmin__Password: ${BootstrapAdmin__Password:?Set BootstrapAdmin__Password in Coolify}
+      DataProtection__KeyPath: /var/openbudget-keys
+    volumes:
+      - openbudget-data-protection:/var/openbudget-keys
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,3 +58,4 @@ services:
 
 volumes:
   openbudget-data:
+  openbudget-data-protection:

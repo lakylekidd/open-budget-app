@@ -252,7 +252,7 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         Assert.DoesNotContain("token", responseBody, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Strong-pass1!", responseBody, StringComparison.Ordinal);
         var resetMessage = Assert.Single(app.Email.Messages, message => message.Subject.Contains("Reset"));
-        var resetLink = new Uri(resetMessage.Body);
+        var resetLink = ExtractActionLink(resetMessage.Content.Text);
         var query = QueryHelpers.ParseQuery(resetLink.Query);
         Assert.Equal(targetId, query["userId"].ToString());
         var resetRequest = new ResetPasswordRequest(query["userId"]!, query["token"]!, "Changed-pass2!");
@@ -338,13 +338,13 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         }
         Assert.Equal(HttpStatusCode.Accepted, (await client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("newuser", "new@example.test", "Strong-pass1!"))).StatusCode);
         Assert.Contains(app.Email.Messages, message => message.Subject.Contains("Verify"));
-        var confirmationLink = new Uri(app.Email.Messages.Single().Body);
+        var confirmationLink = ExtractActionLink(app.Email.Messages.Single().Content.Text);
         var query = QueryHelpers.ParseQuery(confirmationLink.Query);
         var confirmed = await client.PostAsJsonAsync("/api/auth/confirm-email", new TokenRequest(query["userId"]!, query["token"]!));
         Assert.Equal(HttpStatusCode.NoContent, confirmed.StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("newuser", "Strong-pass1!"))).StatusCode);
         Assert.Equal(HttpStatusCode.Accepted, (await client.PostAsJsonAsync("/api/auth/forgot-password", new ForgotPasswordRequest("new@example.test"))).StatusCode);
-        var resetLink = new Uri(app.Email.Messages.Single(message => message.Subject.Contains("Reset")).Body);
+        var resetLink = ExtractActionLink(app.Email.Messages.Single(message => message.Subject.Contains("Reset")).Content.Text);
         var resetQuery = QueryHelpers.ParseQuery(resetLink.Query);
         var resetRequest = new ResetPasswordRequest(resetQuery["userId"]!, resetQuery["token"]!, "Changed-pass2!");
         Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsJsonAsync("/api/auth/reset-password", resetRequest)).StatusCode);
@@ -475,6 +475,55 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
     }
 
     [Fact]
+    public async Task Administrator_can_manage_encrypted_email_settings_and_send_a_branded_test_message()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        await using (var scope = app.Services.CreateAsyncScope())
+        {
+            var roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<OpenBudgetUser>>();
+            await roles.CreateAsync(new IdentityRole(AuthenticationSetup.AdministratorRole));
+            var admin = new OpenBudgetUser { UserName = "root", Email = "root@example.test", EmailConfirmed = true };
+            var standardUser = new OpenBudgetUser { UserName = "ordinary", Email = "ordinary@example.test", EmailConfirmed = true };
+            Assert.True((await users.CreateAsync(admin, "Strong-pass1!")).Succeeded);
+            Assert.True((await users.CreateAsync(standardUser, "Strong-pass1!")).Succeeded);
+            await users.AddToRoleAsync(admin, AuthenticationSetup.AdministratorRole);
+        }
+        using var administrator = app.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = true });
+        using var ordinary = app.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = true });
+        Assert.Equal(HttpStatusCode.OK, (await administrator.PostAsJsonAsync("/api/auth/login", new LoginRequest("root", "Strong-pass1!"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await ordinary.PostAsJsonAsync("/api/auth/login", new LoginRequest("ordinary", "Strong-pass1!"))).StatusCode);
+
+        var request = new UpdateSmtpSettingsRequest("smtp.example.test", 587, "hello@example.test", "mailer", "secret-pass", true);
+        Assert.Equal(HttpStatusCode.Forbidden, (await ordinary.PutAsJsonAsync("/api/admin/settings/email", request)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await administrator.PutAsJsonAsync("/api/admin/settings/email", request with { Port = 0 })).StatusCode);
+        using var saved = await administrator.PutAsJsonAsync("/api/admin/settings/email", request);
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        var savedBody = await saved.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("secret-pass", savedBody);
+        Assert.Contains("hasPassword", savedBody, StringComparison.OrdinalIgnoreCase);
+
+        await using (var db = app.CreateDb())
+        {
+            var settings = await db.SmtpSettings.SingleAsync();
+            Assert.Equal("smtp.example.test", settings.Host);
+            Assert.NotEqual("secret-pass", settings.EncryptedPassword);
+        }
+        using var read = await administrator.GetAsync("/api/admin/settings/email");
+        Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+        Assert.DoesNotContain("secret-pass", await read.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.Forbidden, (await ordinary.PostAsJsonAsync("/api/admin/settings/email/test", new SendTestEmailRequest("recipient@example.test"))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await administrator.PostAsJsonAsync("/api/admin/settings/email/test", new SendTestEmailRequest("invalid"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, (await administrator.PostAsJsonAsync("/api/admin/settings/email/test", new SendTestEmailRequest("recipient@example.test"))).StatusCode);
+        var testMessage = Assert.Single(app.Email.Messages);
+        Assert.Equal("recipient@example.test", testMessage.To);
+        Assert.Contains("OpenBudget email is ready", testMessage.Content.Text);
+        Assert.Contains("OPENBUDGET", testMessage.Content.Html);
+        Assert.Contains("settings.email", (await administrator.GetFromJsonAsync<AdminAuditDto[]>("/api/admin/audit"))!.Select(item => item.Action));
+        Assert.Contains("settings.email.test", (await administrator.GetFromJsonAsync<AdminAuditDto[]>("/api/admin/audit"))!.Select(item => item.Action));
+    }
+
+    [Fact]
     public async Task Administrator_invites_verified_email_user_without_exposing_a_password_or_token()
     {
         await using var app = await fixture.CreateAppAsync();
@@ -514,9 +563,10 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
 
         var invite = Assert.Single(app.Email.Messages);
         Assert.Equal("new@example.test", invite.To);
-        Assert.Contains("Verify your email", invite.Body);
-        Assert.Contains("Forgot password", invite.Body);
-        var inviteUri = new Uri(invite.Body.Split("Verify your email using this link: ")[1].Split('\n')[0]);
+        Assert.Contains("Verify your email", invite.Content.Text);
+        Assert.Contains("Forgot password", invite.Content.Text);
+        Assert.Contains("OPENBUDGET", invite.Content.Html);
+        var inviteUri = ExtractActionLink(invite.Content.Text);
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(inviteUri.Query);
         var invitedId = query["userId"].ToString();
         var encodedToken = query["token"].ToString();
@@ -538,5 +588,11 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
         Assert.Equal(HttpStatusCode.ServiceUnavailable, failedInvite.StatusCode);
         await using var verify = app.CreateDb();
         Assert.False(await verify.Users.AnyAsync(user => user.UserName == "delivery-failure"));
+    }
+
+    private static Uri ExtractActionLink(string text)
+    {
+        var link = text.Split('\n').Single(line => line.StartsWith("http", StringComparison.Ordinal));
+        return new Uri(link);
     }
 }

@@ -1,7 +1,5 @@
 using System.Security.Claims;
 using System.Threading.RateLimiting;
-using System.Net;
-using System.Net.Mail;
 using System.Text;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.AspNetCore.Authentication;
@@ -46,31 +44,6 @@ public sealed record AdminDashboardDto(
 public sealed record AdminMembershipRequest(string MembershipPlanId, int? BudgetLimitOverride, DateOnly? StartsOn = null, DateOnly? ExpiresOn = null, string? BillingProvider = null, string? ExternalSubscriptionId = null);
 public sealed record AdminInviteUserRequest(string UserName, string Email, string MembershipPlanId = "free");
 
-public interface IAccountEmailSender
-{
-    bool IsConfigured { get; }
-    Task SendAsync(string to, string subject, string body, CancellationToken cancellationToken);
-}
-
-public sealed class SmtpAccountEmailSender(IConfiguration configuration) : IAccountEmailSender
-{
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(configuration["Smtp:Host"]) &&
-        !string.IsNullOrWhiteSpace(configuration["Smtp:From"]);
-
-    public async Task SendAsync(string to, string subject, string body, CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) throw new InvalidOperationException("SMTP delivery is not configured.");
-        using var client = new SmtpClient(configuration["Smtp:Host"], int.TryParse(configuration["Smtp:Port"], out var port) ? port : 587)
-        {
-            EnableSsl = !bool.TryParse(configuration["Smtp:EnableSsl"], out var ssl) || ssl,
-            Credentials = string.IsNullOrWhiteSpace(configuration["Smtp:Username"]) ? CredentialCache.DefaultNetworkCredentials :
-                new NetworkCredential(configuration["Smtp:Username"], configuration["Smtp:Password"])
-        };
-        using var message = new MailMessage(configuration["Smtp:From"]!, to, subject, body);
-        await client.SendMailAsync(message, cancellationToken);
-    }
-}
-
 public static class AuthenticationSetup
 {
     public const string AdministratorRole = "Administrator";
@@ -93,6 +66,7 @@ public static class AuthenticationSetup
                 QueueLimit = 0,
                 AutoReplenishment = true
             })));
+        services.AddScoped<AccountEmailSettingsService>();
         services.AddScoped<IAccountEmailSender, SmtpAccountEmailSender>();
         services.AddIdentity<OpenBudgetUser, IdentityRole>(options =>
         {
@@ -248,7 +222,7 @@ public static class AuthenticationSetup
         {
             var mode = await ReadRegistrationModeAsync(db, ct);
             if (mode == "Disabled") return Results.Problem("Registration is disabled.", statusCode: StatusCodes.Status403Forbidden);
-            if (!email.IsConfigured) return Results.Problem("Account email delivery is not configured.", statusCode: StatusCodes.Status503ServiceUnavailable);
+            if (!await email.IsConfiguredAsync(ct)) return Results.Problem("Account email delivery is not configured.", statusCode: StatusCodes.Status503ServiceUnavailable);
             if (string.IsNullOrWhiteSpace(request.UserName) || request.UserName.Length > 64 || string.IsNullOrWhiteSpace(request.Email) || request.Email.Length > 256 || string.IsNullOrWhiteSpace(request.Password))
                 return Results.BadRequest(new { error = "Username and email are required and must be within supported lengths." });
             var user = new OpenBudgetUser { UserName = request.UserName.Trim(), Email = request.Email.Trim(), RequiresApproval = mode == "ApprovalRequired" };
@@ -261,7 +235,7 @@ public static class AuthenticationSetup
             try
             {
                 var token = await users.GenerateEmailConfirmationTokenAsync(user);
-                await email.SendAsync(user.Email!, "Verify your OpenBudget account", BuildLink(context, "/confirm-email", user.Id, token, configuration, environment), ct);
+                await email.SendAsync(user.Email!, "Verify your OpenBudget account", AccountEmailTemplates.VerifyAccount(BuildLink(context, "/confirm-email", user.Id, token, configuration, environment)), ct);
                 return Results.Accepted(value: new { message = "If the account can be created, a verification message has been sent." });
             }
             catch
@@ -281,12 +255,12 @@ public static class AuthenticationSetup
         auth.MapPost("/forgot-password", async (ForgotPasswordRequest request, UserManager<OpenBudgetUser> users, IAccountEmailSender email, HttpContext context, IConfiguration configuration, IWebHostEnvironment environment, CancellationToken ct) =>
         {
             var user = await users.FindByEmailAsync(request.Email?.Trim() ?? "");
-            if (user is not null && user.EmailConfirmed && email.IsConfigured)
+            if (user is not null && user.EmailConfirmed && await email.IsConfiguredAsync(ct))
             {
                 try
                 {
                     var token = await users.GeneratePasswordResetTokenAsync(user);
-                    await email.SendAsync(user.Email!, "Reset your OpenBudget password", BuildLink(context, "/reset-password", user.Id, token, configuration, environment), ct);
+                    await email.SendAsync(user.Email!, "Reset your OpenBudget password", AccountEmailTemplates.ResetPassword(BuildLink(context, "/reset-password", user.Id, token, configuration, environment)), ct);
                 }
                 catch { /* Keep the response identical to avoid disclosing account existence. */ }
             }
@@ -318,6 +292,34 @@ public static class AuthenticationSetup
             await AddAdminAuditAsync(db, principal, "application", "settings.registration-mode", ct);
             await transaction.CommitAsync(ct);
             return Results.Ok(new { mode = request.Mode });
+        }).RequireAuthorization(policy => policy.RequireRole(AdministratorRole));
+        app.MapGet("/api/admin/settings/email", async (AccountEmailSettingsService settings, CancellationToken ct) =>
+            Results.Ok(await settings.GetSettingsAsync(ct)))
+            .RequireAuthorization(policy => policy.RequireRole(AdministratorRole));
+        app.MapPut("/api/admin/settings/email", async (UpdateSmtpSettingsRequest request, ClaimsPrincipal principal, BudgetDbContext db, AccountEmailSettingsService settings, CancellationToken ct) =>
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            var (saved, error) = await settings.SaveAsync(request, ct);
+            if (error is not null) return Results.BadRequest(new { error });
+            await AddAdminAuditAsync(db, principal, "application", "settings.email", ct);
+            await transaction.CommitAsync(ct);
+            return Results.Ok(saved);
+        }).RequireAuthorization(policy => policy.RequireRole(AdministratorRole));
+        app.MapPost("/api/admin/settings/email/test", async (SendTestEmailRequest request, ClaimsPrincipal principal, BudgetDbContext db, IAccountEmailSender email, CancellationToken ct) =>
+        {
+            var address = request.To?.Trim() ?? "";
+            if (!AccountEmailSettingsService.IsEmailAddress(address)) return Results.BadRequest(new { error = "Enter a valid recipient email address." });
+            if (!await email.IsConfiguredAsync(ct)) return Results.Problem("Account email delivery is not configured.", statusCode: StatusCodes.Status503ServiceUnavailable);
+            try
+            {
+                await email.SendAsync(address, "OpenBudget email delivery test", AccountEmailTemplates.Test(), ct);
+                await AddAdminAuditAsync(db, principal, "application", "settings.email.test", ct);
+                return Results.Accepted(value: new { message = "Test email sent." });
+            }
+            catch when (!ct.IsCancellationRequested)
+            {
+                return Results.Problem("Test email could not be sent. Check the SMTP settings and try again.", statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
         }).RequireAuthorization(policy => policy.RequireRole(AdministratorRole));
         app.MapGet("/api/admin/users", async (string? q, string? status, UserManager<OpenBudgetUser> users, BudgetDbContext db, CancellationToken ct) =>
         {
@@ -374,7 +376,7 @@ public static class AuthenticationSetup
                 return Results.BadRequest(new { error = "Username and email are required and must be within supported lengths." });
             if (!await db.MembershipPlans.AnyAsync(plan => plan.Id == request.MembershipPlanId, ct))
                 return Results.BadRequest(new { error = "The selected membership tier does not exist." });
-            if (!email.IsConfigured)
+            if (!await email.IsConfiguredAsync(ct))
                 return Results.Problem("Account email delivery is not configured.", statusCode: StatusCodes.Status503ServiceUnavailable);
 
             var user = new OpenBudgetUser { UserName = userName, Email = address };
@@ -390,8 +392,7 @@ public static class AuthenticationSetup
             {
                 var token = await users.GenerateEmailConfirmationTokenAsync(user);
                 var link = BuildLink(context, "/confirm-email", user.Id, token, configuration, environment);
-                await email.SendAsync(user.Email!, "You are invited to OpenBudget",
-                    $"Verify your email using this link: {link}\n\nAfter verification, use Forgot password on the sign-in page to set your password.", ct);
+                await email.SendAsync(user.Email!, "You are invited to OpenBudget", AccountEmailTemplates.Invitation(link), ct);
                 return Results.Accepted(value: new { message = "An account verification link has been sent." });
             }
             catch
@@ -516,13 +517,13 @@ public static class AuthenticationSetup
             if (user is null) return Results.NotFound();
             if (!user.EmailConfirmed || string.IsNullOrWhiteSpace(user.Email))
                 return Results.Conflict(new { error = "A verified email address is required before a password reset can be sent." });
-            if (!email.IsConfigured)
+            if (!await email.IsConfiguredAsync(ct))
                 return Results.Problem("Account email delivery is not configured.", statusCode: StatusCodes.Status503ServiceUnavailable);
             try
             {
                 var token = await users.GeneratePasswordResetTokenAsync(user);
                 var link = BuildLink(context, "/reset-password", user.Id, token, configuration, environment);
-                await email.SendAsync(user.Email, "Reset your OpenBudget password", link, ct);
+                await email.SendAsync(user.Email, "Reset your OpenBudget password", AccountEmailTemplates.ResetPassword(link), ct);
             }
             catch when (!ct.IsCancellationRequested)
             {
