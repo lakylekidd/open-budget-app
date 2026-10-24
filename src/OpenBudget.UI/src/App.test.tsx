@@ -269,6 +269,60 @@ it('disables the activity amount when the category has no activity',async()=>{
   expect(screen.getByRole('button',{name:'View transactions for Electricity activity'})).toBeEnabled();
 });
 
+it('selects the category and focuses Assigned when clicking its row background',async()=>{
+  months['2026-10'].groups[0].categories.push({id:'food',name:'Food',assigned:0,activity:0,available:0,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false});
+  render(<App/>);await saved();
+  const categoryRow=row() as HTMLElement;
+  const checkbox=within(categoryRow).getByRole('checkbox',{name:'Select Electricity'});
+  const foodCheckbox=screen.getByRole('checkbox',{name:'Select Food'});
+  expect(checkbox).not.toBeChecked();
+
+  await userEvent.click(foodCheckbox);
+  expect(foodCheckbox).toBeChecked();
+  await userEvent.click(categoryRow);
+
+  expect(checkbox).toBeChecked();
+  expect(foodCheckbox).not.toBeChecked();
+  expect(categoryRow).toHaveClass('category-selected');
+  expect(screen.getByRole('textbox',{name:'Assigned to Electricity'})).toHaveFocus();
+  expect(document.querySelector('.category-detail-card strong')).toHaveTextContent('Electricity');
+
+  await userEvent.click(foodCheckbox);
+  expect(checkbox).toBeChecked();
+  expect(foodCheckbox).toBeChecked();
+});
+
+it('selects the whole category row when opening its Assigned input',async()=>{
+  months['2026-10'].groups[0].categories.push({id:'food',name:'Food',assigned:0,activity:0,available:0,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false});
+  render(<App/>);await saved();
+  const assigned=screen.getByRole('button',{name:'Edit assigned for Food'});
+  const categoryRow=assigned.closest('.category-row') as HTMLElement;
+  const checkbox=within(categoryRow).getByRole('checkbox',{name:'Select Food'});
+
+  await userEvent.click(assigned);
+
+  expect(checkbox).toBeChecked();
+  expect(categoryRow).toHaveClass('category-selected');
+  expect(screen.getByRole('textbox',{name:'Assigned to Food'})).toHaveFocus();
+});
+
+it('shows selected-month upcoming activity in category details and opens its transaction list',async()=>{
+  scheduleRows=[{id:'schedule-id',occurrenceId:'occurrence-id',repeat:'monthly',startDate:'2026-10-31',isPaused:false,endDate:null,count:null,toAccountId:null,
+    transaction:{id:'occurrence-id',accountId:'account-id',date:'2026-10-31',amount:-67.99,payee:'Landlord',memo:'Monthly rent',categoryId:'utilities',status:'uncleared',transferId:null,isOpening:false,splits:[],needsAttention:false,runningBalance:null,transferAccountName:null,categoryName:null,isLocked:false}}];
+  render(<App/>);await saved();
+  await userEvent.click(row() as HTMLElement);
+
+  const upcoming=await screen.findByRole('button',{name:/1 Upcoming Transaction/});
+  expect(upcoming.closest('.category-detail-card')).toBeInTheDocument();
+  expect(upcoming).toHaveTextContent('Available After Upcoming');
+  expect(upcoming).toHaveTextContent('-€67.99');
+  await userEvent.click(upcoming);
+
+  expect(await screen.findByRole('heading',{name:'Upcoming activity · Electricity'})).toBeInTheDocument();
+  expect(screen.getByText('Landlord')).toBeInTheDocument();
+  expect(screen.getByText('Monthly rent')).toBeInTheDocument();
+});
+
 it('shows projected shortfall in category details and lists the scheduled transaction',async()=>{
   const accountId='11111111-1111-4111-8111-111111111111';
   focusAccounts=[{id:accountId,name:'Household',isClosed:false,balance:15,clearedBalance:0,unclearedBalance:15,accountType:'checking',isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0}];
