@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type Account, type CategoryOption, ApiError, requestJson } from './api';
 import { LedgerDialog } from './LedgerDialog';
+import { CategoryPicker } from './CategoryPicker';
 
 export type PayeeRule = { operator: 'is' | 'contains'; value: string };
 export type SavedPayee = {
@@ -167,7 +168,7 @@ export function ManagePayees({ accounts, categories, onClose, onChanged, onSaved
             <p>OpenBudget will auto-select the category for new transactions based on how the last 3 transactions for this payee were categorized.</p>
             <p>Current default category:<br /><strong>{categories.find(c => c.id === current.effectiveCategoryId)?.name ?? 'Inflow: Ready to Assign / Needs category'}</strong></p>
             <label><input type="radio" name="payee-category-mode" checked={current.categoryMode === 'always'} disabled={locked} onChange={() => edit({ categoryMode: 'always' })} />Always use my choice</label>
-            {current.categoryMode === 'always' && <select aria-label="Default category" disabled={locked} value={current.defaultCategoryId ?? ''} onChange={e => edit({ defaultCategoryId: e.target.value || null })}><option value="">Choose category</option>{categories.filter(c => !c.isArchived).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>}
+            {current.categoryMode === 'always' && <CategoryPicker label="Default category" includeInflow={false} categories={categories} disabled={locked} value={current.defaultCategoryId ?? ''} onChange={id => edit({ defaultCategoryId: id || null })} />}
             <label><input type="radio" name="payee-category-mode" checked={current.categoryMode === 'never'} disabled={locked} onChange={() => edit({ categoryMode: 'never', defaultCategoryId: null })} />Do not auto-categorize {selected.length === 1 ? current.name : 'these payees'}</label>
           </div></section>
           {selected.length === 1 && <section className="payee-card"><h3>Renaming ⚙</h3><div><p>Imported payees that match these rules will be renamed.</p>

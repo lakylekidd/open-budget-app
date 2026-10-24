@@ -138,9 +138,9 @@
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/App.tsx": {
-    "mtime": 1792792952.3644755,
-    "seen": 1792792964.8101041,
-    "ast_hash": "a6a8adf63dc6514eba0fdc4a48c212c8",
+    "mtime": 1792794154.1954792,
+    "seen": 1792794210.7448695,
+    "ast_hash": "876e1110165584e5e3a7f038c5d7c303",
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/main.tsx": {
@@ -366,9 +366,9 @@
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/App.test.tsx": {
-    "mtime": 1792792952.3614757,
-    "seen": 1792792964.8101041,
-    "ast_hash": "e221b3e8962abbbd05316613632b725e",
+    "mtime": 1792794162.7326963,
+    "seen": 1792794210.7448695,
+    "ast_hash": "c52d3c8435f7b622ef54cf45514d5a1c",
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/budgetMoney.test.ts": {
@@ -408,15 +408,15 @@
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/ledger/AccountsPage.test.tsx": {
-    "mtime": 1792692751.8880908,
-    "seen": 1792780543.141264,
-    "ast_hash": "fa67c82bd5c84aea5ae910fd9e392657",
+    "mtime": 1792794108.512053,
+    "seen": 1792794210.7448695,
+    "ast_hash": "4ab1979cf443445d411caf88fd69c193",
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/ledger/AccountsPage.tsx": {
-    "mtime": 1792692751.8916512,
-    "seen": 1792780543.141264,
-    "ast_hash": "699d17adde05bcb1c04a185e026de94e",
+    "mtime": 1792794103.503008,
+    "seen": 1792794210.7448695,
+    "ast_hash": "6c99c2b69586b005e53e686b96d3b195",
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/ledger/ApprovalButton.test.tsx": {
@@ -684,9 +684,9 @@
     "semantic_hash": ""
   },
   "docs/architecture.md": {
-    "mtime": 1792792951.8071172,
-    "seen": 1792792964.8101041,
-    "ast_hash": "748d64e3714925e6d3381e6865463d80",
+    "mtime": 1792794158.3003469,
+    "seen": 1792794210.74587,
+    "ast_hash": "84826245e5c8850468ee825cb55fdfea",
     "semantic_hash": ""
   },
   "docs/backend.md": {
@@ -996,8 +996,8 @@
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/AuthGate.tsx": {
-    "mtime": 1792792952.366473,
-    "seen": 1792792964.8101041,
+    "mtime": 1792793219.5862372,
+    "seen": 1792794210.7448695,
     "ast_hash": "3fbd8d73f4674eb45627ca6034041009",
     "semantic_hash": ""
   },

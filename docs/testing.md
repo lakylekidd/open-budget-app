@@ -32,7 +32,7 @@ UI tests use Vitest, jsdom and Testing Library with controlled API responses. Th
 | Rollback after intermediate saves, including future months | `Simulated_persistence_failure_rolls_back_both_transfer_legs_budget_and_receipt`; `Simulated_spending_failure_rolls_back_activity_income_and_future_carry_forward` |
 | Historical/date/account edits, future carry-forward and restart | `Historical_edits_propagate_into_existing_later_months_and_survive_restart`; `Moving_a_transaction_between_months_and_accounts_reverses_original_activity` |
 | Move a category between groups without losing assignment/activity or transaction labels | `Moving_a_category_between_groups_preserves_its_budget_state_and_transaction_identity` |
-| Plan category activity, account focus, upcoming shortfalls, drag ordering and progress display | `App.test.tsx`; `planHelpers.test.ts` |
+| Plan category activity, account focus, Available move/cover-overspending dialogs, zero Available disabled state, selected-month upcoming shortfall highlighting (including exact-zero and future-month boundaries), drag ordering and progress display | `App.test.tsx`; `planHelpers.test.ts` |
 | Upgrade preserving legacy activity/balances | `Upgrade_preserves_legacy_activity_and_available_values` applies old migrations, seeds legacy rows, then upgrades |
 | Server-owned calculations and invalid/unknown/archived input | `Plan_cannot_fabricate_income_or_change_server_owned_activity`; `Invalid_requests_do_not_change_balance_budget_version_or_audit`; `Archived_categories_invalid_transfers_and_missing_commands_do_not_write` |
 | Money precision, exact splits, refund/transfer rules, cleared balances | `LedgerRulesTests` and money-input unit tests |

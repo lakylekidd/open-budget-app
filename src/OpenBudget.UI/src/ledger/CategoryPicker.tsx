@@ -14,8 +14,8 @@ export function categoryGroups(categories:CategoryOption[], search:string) {
   return [...groups.values()];
 }
 
-export function CategoryPicker({value,categories,readyToAssign,disabled,notNeeded=false,form,label='Category',loading=false,error=false,onRetry,onOpen,onChange,onSplit,onTransfer,onNewCategory}: {
-  value:string;categories:CategoryOption[];readyToAssign?:number;disabled?:boolean;notNeeded?:boolean;form?:string;label?:string;loading?:boolean;error?:boolean;
+export function CategoryPicker({value,categories,readyToAssign,includeInflow=true,disabled,notNeeded=false,form,label='Category',loading=false,error=false,onRetry,onOpen,onChange,onSplit,onTransfer,onNewCategory}: {
+  value:string;categories:CategoryOption[];readyToAssign?:number;includeInflow?:boolean;disabled?:boolean;notNeeded?:boolean;form?:string;label?:string;loading?:boolean;error?:boolean;
   onRetry?:()=>void;onOpen?:()=>void;onChange:(id:string)=>void;onSplit?:()=>void;onTransfer?:()=>void;onNewCategory?:()=>void;
 }){
   const id=useId();const input=useRef<HTMLInputElement>(null);const popup=useRef<HTMLDivElement>(null);
@@ -26,7 +26,7 @@ export function CategoryPicker({value,categories,readyToAssign,disabled,notNeede
   const selected=categories.find(c=>c.id===value);
   const title=notNeeded?'Category not needed':value==='__split'?'Split (Multiple Categories)...':selected?`${selected.groupName?selected.groupName+': ':''}${selected.name}`:'';
   const groups=categoryGroups(categories,query??'');const showSelected=!!selected&&!query;
-  const showInflow=!query||`inflow ready to assign`.includes(query.trim().toLocaleLowerCase());
+  const showInflow=includeInflow&&(!query||`inflow ready to assign`.includes(query.trim().toLocaleLowerCase()));
   const choices=[...(showSelected?[{id:selected.id,name:selected.name,group:selected.groupName,available:selected.available,selected:true}]:[]),...(showInflow?[{id:'',name:'Ready to Assign',group:undefined,available:readyToAssign,selected:false}]:[]),...groups.flatMap(g=>g.categories.map(c=>({id:c.id,name:c.name,group:c.groupName,available:c.available,selected:false})))];
   function close(){setOpen(false);setQuery(null);setActive(-1);}
   function show(){if(!open)onOpen?.();setOpen(true);}

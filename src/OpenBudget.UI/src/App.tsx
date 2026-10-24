@@ -19,6 +19,7 @@ import { LongTermPlanning } from './longTermPlanning/LongTermPlanning';
 import { AuthGate } from './AuthGate';
 import { AdminPanel } from './admin/AdminPanel';
 import { ProfileSettings } from './ProfileSettings';
+import { CategoryPicker } from './ledger/CategoryPicker';
 
 type Category = {
   id: string;
@@ -159,6 +160,7 @@ function BudgetApplication() {
   const [moveFrom, setMoveFrom] = useState('coffee');
   const [moveTo, setMoveTo] = useState('clothing');
   const [moveAmount, setMoveAmount] = useState('25');
+  const [moveCovering, setMoveCovering] = useState(false);
   const [progressOn, setProgressOn] = useState(true);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [history, setHistory] = useState<BudgetState[]>([]);
@@ -330,9 +332,11 @@ function BudgetApplication() {
   const overspentCount = allCategories.filter(item => item.available < 0).length;
   const visibleCategories = data.groups.flatMap(group => group.categories.map(category => ({ ...category, isArchived: Boolean(category.isArchived || group.isArchived) })));
   const moveCategories = data.groups.filter(group => !group.isArchived).flatMap(group => group.categories.filter(category => !category.isArchived));
+  const moveCategoryOptions = data.groups.filter(group => !group.isArchived).flatMap(group => group.categories.filter(category => !category.isArchived).map(category => ({ id: category.id, name: category.name, available: category.available, groupId: group.id, groupName: group.name })));
   const matchingCategoryCount = visibleCategories.filter(matchesFilter).length;
   const selectedCategory = visibleCategories.find(category => category.id === selectedCategoryId);
-  const selectedUpcoming = selectedCategory ? upcomingItems.flatMap(item => { const amount = categoryTransactionAmount(item.transaction, selectedCategory.id); return amount < 0 ? [{ item, amount }] : []; }) : [];
+  const currentMonthUpcomingItems = upcomingItems.filter(item => item.transaction.date.startsWith(`${data.month}-`));
+  const selectedUpcoming = selectedCategory ? currentMonthUpcomingItems.flatMap(item => { const amount = categoryTransactionAmount(item.transaction, selectedCategory.id); return amount < 0 ? [{ item, amount }] : []; }) : [];
   const selectedUpcomingTotal = selectedUpcoming.reduce((sum, item) => sum + item.amount, 0);
 
   function updateCategory(id: string, updater: (category: Category) => Category) {
@@ -401,6 +405,17 @@ function BudgetApplication() {
     setMoveOpen(false);
     setToast(`${money(amount)} moved`);
     window.setTimeout(() => setToast(''), 2400);
+  }
+
+  function openMoveFrom(category: Category) {
+    const covering = category.available < 0;
+    const source = moveCategories.find(item => item.id !== category.id && item.available > 0);
+    const destination = moveCategories.find(item => item.id !== category.id);
+    setMoveCovering(covering);
+    setMoveFrom(covering ? source?.id ?? '' : category.id);
+    setMoveTo(covering ? category.id : destination?.id ?? '');
+    setMoveAmount(covering ? source ? String(Math.min(Math.abs(category.available), source.available)) : '' : String(category.available));
+    setMoveOpen(true);
   }
 
   function undo() {
@@ -485,7 +500,7 @@ function BudgetApplication() {
   }
 
   function openUpcoming(category: Category) {
-    const items = upcomingItems.flatMap(item => {
+    const items = currentMonthUpcomingItems.flatMap(item => {
       const amount = categoryTransactionAmount(item.transaction, category.id);
       return amount < 0 ? [{ entry: item.transaction, scheduled: true, categoryAmount: amount }] : [];
     });
@@ -636,18 +651,18 @@ function BudgetApplication() {
                 </div>
                 {!isCollapsed && shownCategories.map(category => {
                   const progress = categoryProgress(category.assigned, category.activity, category.available);
-                  const categoryUpcoming = upcomingItems.flatMap(item => { const amount = categoryTransactionAmount(item.transaction, category.id); return amount < 0 ? [{ item, amount }] : []; });
+                  const categoryUpcoming = currentMonthUpcomingItems.flatMap(item => { const amount = categoryTransactionAmount(item.transaction, category.id); return amount < 0 ? [{ item, amount }] : []; });
                   const upcomingTotal = categoryUpcoming.reduce((sum, item) => sum + item.amount, 0);
                   const hasUpcomingTransactions = categoryUpcoming.length > 0;
-                  const underfundedUpcoming = hasUpcomingTransactions && category.available + upcomingTotal < 0;
+                  const underfundedUpcoming = hasUpcomingTransactions && Math.round((category.available + upcomingTotal) * 100) < 0;
                   return <div className={`category-row ${category.available < 0 ? 'is-overspent' : ''} ${selectedCategoryId === category.id ? 'category-selected' : ''}`} key={category.id} draggable={!category.isArchived && !group.isArchived} onDragStart={event => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', category.id); setDragSource({ kind: 'category', id: category.id }); }} onDragEnd={() => { setDragSource(null); setDropTargetId(null); }} onDragOver={event => { if (dragSource?.kind === 'category') { event.preventDefault(); setDropTargetId(category.id); } }} onDrop={event => { event.preventDefault(); event.stopPropagation(); if (dragSource?.kind === 'category') dropCategory(dragSource.id, group.id, category.id); setDragSource(null); setDropTargetId(null); }}>
                     <div className="category-name-cell"><input type="checkbox" aria-label={`Select ${category.name}`} checked={selectedIds.includes(category.id)} onChange={event => setSelectedIds(current => event.target.checked ? [...current, category.id] : current.filter(id => id !== category.id))} /><div className="category-copy"><div className="category-label-line"><button className="category-name" title="Click to see category details; double-click to rename" disabled={category.isArchived || group.isArchived} onClick={() => setSelectedCategoryId(category.id)} onDoubleClick={() => { const name = window.prompt('Rename category', category.name)?.trim(); if(name) updateCategory(category.id, item => ({...item,name})); }}>{category.name}</button>{progressOn && <span className="category-status">{category.available < 0 ? 'Overspent' : category.snoozed ? 'Snoozed' : category.available === 0 && category.activity < 0 ? 'Fully Spent' : ''}</span>}</div>{progressOn && (category.assigned !== 0 || category.available !== 0) && <div className={`progress-track ${category.available < 0 ? 'over' : ''}`} aria-label={`Category progress: ${Math.round(progress.green)}% available${progress.red ? `, ${Math.round(progress.red)}% overspent` : ''}`}><span className="progress-green" style={{ width: `${progress.green}%` }} /><span className="progress-red" style={{ width: `${progress.red}%` }} /></div>}{underfundedUpcoming && <button className="category-upcoming" onClick={() => openUpcoming(category)} aria-label={`${categoryUpcoming.length} upcoming transactions for ${category.name}, ${money(upcomingTotal)}`}>{categoryUpcoming.length} Upcoming {categoryUpcoming.length === 1 ? 'Transaction' : 'Transactions'} <span>{money(upcomingTotal)}</span></button>}</div><div className="category-order-tools"><button aria-label={`Move ${category.name} up`} disabled={category.isArchived || group.isArchived} onClick={() => moveCategory(group.id, category.id, -1)}>↑</button><button aria-label={`Move ${category.name} down`} disabled={category.isArchived || group.isArchived} onClick={() => moveCategory(group.id, category.id, 1)}>↓</button></div><button className="category-archive" disabled={group.isArchived} aria-label={`${category.isArchived ? 'Restore' : 'Archive'} category ${category.name}`} onClick={() => toggleCategoryArchived(category.id)}>{category.isArchived ? 'Restore' : 'Archive'}</button></div>
                     <div className="assigned-cell">{editingId===category.id&&assignmentError&&<span role="alert" className="assignment-error">{assignmentError}</span>}
                       {editingId === category.id ? <input className="amount-input" autoFocus value={editValue} aria-invalid={Boolean(assignmentError)} onFocus={event => event.currentTarget.select()} onChange={event => {setEditValue(event.target.value);setAssignmentError('');}} onBlur={() => saveEdit(category)} onKeyDown={event => { if (event.key === 'Enter') saveEdit(category); if (event.key === 'Escape') {setEditingId(null);setAssignmentError('');} }} aria-label={`Assigned to ${category.name}`} /> : <button className="amount-button" disabled={category.isArchived || group.isArchived || saveState==='loading' || loadedMonth.current!==data.month || !!conflictBudget} onClick={() => startEdit(category)} aria-label={`Edit assigned for ${category.name}`}>{money(category.assigned)}</button>}
 
                     </div>
-                    <div className={`activity-cell ${category.activity < 0 ? 'negative' : ''}`}><button className="activity-button" aria-label={`View transactions for ${category.name} activity`} onClick={() => void openActivity(category)}>{money(category.activity)}</button></div>
-                    <div className={`available-cell ${category.available < 0 ? 'negative' : hasUpcomingTransactions ? 'underfunded' : category.available > 0 ? 'positive' : ''}`}><span>{money(category.available)}</span></div>
+                    <div className={`activity-cell ${category.activity < 0 ? 'negative' : ''}`}><button className="activity-button" disabled={category.activity === 0} aria-label={`View transactions for ${category.name} activity`} onClick={() => void openActivity(category)}>{money(category.activity)}</button></div>
+                    <div className={`available-cell ${category.available < 0 ? 'negative' : underfundedUpcoming ? 'underfunded' : category.available > 0 ? 'positive' : ''}`}>{category.available !== 0 ? <button className="available-button" aria-label={category.available < 0 ? `Cover overspending for ${category.name}` : `Move available money from ${category.name}`} onClick={() => openMoveFrom(category)}><span>{money(category.available)}</span></button> : <span>{money(category.available)}</span>}</div>
                   </div>;
                 })}
                 {!isCollapsed && shownCategories.length === 0 && <div className="empty-group">No categories match this filter.</div>}
@@ -732,7 +747,7 @@ function BudgetApplication() {
     <button className="help-bubble" aria-label="Help" onClick={() => setToast('Local demo help: edit Assigned values, move money with Fix This, or add a Category Group.')}>?</button>
     {profileOpen && <ProfileSettings onClose={() => setProfileOpen(false)} />}
     {conflictBudget && <div className="modal-backdrop" role="presentation"><section className="move-modal conflict-modal" role="dialog" aria-modal="true" aria-labelledby="conflict-title"><span className="eyebrow">BUDGET UPDATED ELSEWHERE</span><h2 id="conflict-title">Choose which plan to keep</h2><p className="modal-copy">Another session saved this month while you were editing. Load that version or reapply your edits over it.</p><div className="conflict-actions"><button className="button" onClick={() => resolveConflict(false)}>Load latest</button><button className="button button-primary" onClick={() => resolveConflict(true)}>Reapply my changes</button></div></section></div>}
-    {moveOpen && <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMoveOpen(false); }}><section className="move-modal" role="dialog" aria-modal="true" aria-labelledby="move-title"><div className="modal-heading"><div className="modal-icon"><Icon name="transfer" /></div><button className="icon-button" aria-label="Close move money dialog" onClick={() => setMoveOpen(false)}><Icon name="close" /></button></div><span className="eyebrow">GIVE YOUR MONEY A NEW JOB</span><h2 id="move-title">Move money</h2><p className="modal-copy">Shift money between categories. Your total plan stays the same.</p><form onSubmit={applyMove}><label>Move from<select value={moveFrom} onChange={event => setMoveFrom(event.target.value)}>{moveCategories.map(category => <option key={category.id} value={category.id}>{category.name} · {money(category.available)}</option>)}</select></label><div className="modal-arrow"><Icon name="arrow" /></div><label>Move to<select value={moveTo} onChange={event => setMoveTo(event.target.value)}>{moveCategories.map(category => <option key={category.id} value={category.id}>{category.name} · {money(category.available)}</option>)}</select></label><label className="amount-label">Amount<div className="modal-amount"><span>€</span><input autoFocus inputMode="decimal" value={moveAmount} onChange={event => setMoveAmount(event.target.value)} aria-label="Amount to move" /></div></label><button className="button button-primary modal-submit" type="submit">Move {money(parseAssignment(moveAmount)??0)}</button></form></section></div>}
+    {moveOpen && <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMoveOpen(false); }}><section className="move-modal move-available-modal" role="dialog" aria-modal="true" aria-labelledby="move-title"><h2 id="move-title">{moveCovering ? 'Cover overspending' : 'Move'}</h2><form onSubmit={applyMove}>{moveCovering && <CategoryPicker label="Move from" categories={moveCategoryOptions.filter(category => category.available > 0 && category.id !== moveTo)} value={moveFrom} onChange={setMoveFrom} includeInflow={false} /> }<label>Amount<input autoFocus inputMode="decimal" value={moveAmount} onChange={event => setMoveAmount(event.target.value)} aria-label="Amount to move" /></label><CategoryPicker label="Move to" categories={moveCategoryOptions.filter(category => category.id !== moveFrom)} value={moveTo} onChange={setMoveTo} includeInflow={false} disabled={moveCovering} /><div className="move-available-actions"><button type="button" onClick={() => setMoveOpen(false)}>Cancel</button><button className="button-primary" type="submit" disabled={!moveFrom || !moveTo || moveTo === moveFrom}>OK</button></div></form></section></div>}
     {categoryDialog && <PlanTransactionList title={categoryDialog.title} items={categoryDialog.items} accounts={accounts.accounts} loading={categoryDialog.loading} error={categoryDialog.error} onClose={closeCategoryDialog} onRetry={categoryDialog.kind === 'activity' ? () => { const category = visibleCategories.find(item => item.id === categoryDialog.categoryId); if (category) void openActivity(category); } : undefined} onSelect={showTransactionInAccount} />}
     {toast && <div className="toast" role="status"><span className="toast-check"><Icon name="check" size={14} /></span>{toast}<button aria-label="Dismiss notification" onClick={() => setToast('')}><Icon name="close" size={14} /></button></div>}
   </div>;

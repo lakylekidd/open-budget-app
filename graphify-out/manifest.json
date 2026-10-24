@@ -60,9 +60,9 @@
     "semantic_hash": "c34df1548ec419588a533463ae3a2c35"
   },
   "src/OpenBudget.Api/Migrations/BudgetDbContextModelSnapshot.cs": {
-    "mtime": 1792792952.344366,
-    "seen": 1792792964.8101041,
-    "ast_hash": "0fb5c5fdc05b5fa06071d119515b06c5",
+    "mtime": 1792799010.0078268,
+    "seen": 1792799853.8703387,
+    "ast_hash": "938ff08aa8a38d82fdd6a13d981c4084",
     "semantic_hash": ""
   },
   "src/OpenBudget.Api/OpenBudget.Api.csproj": {
@@ -138,9 +138,9 @@
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/App.tsx": {
-    "mtime": 1792794154.1954792,
-    "seen": 1792794210.7448695,
-    "ast_hash": "876e1110165584e5e3a7f038c5d7c303",
+    "mtime": 1792798772.8157377,
+    "seen": 1792799853.8703387,
+    "ast_hash": "e9a19a0c1c02e667bf6ac4d2fee1397e",
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/main.tsx": {
@@ -186,9 +186,9 @@
     "semantic_hash": ""
   },
   "src/OpenBudget.Api/LedgerContracts.cs": {
-    "mtime": 1792608245.9696603,
-    "seen": 1792643276.9358935,
-    "ast_hash": "de569e7e6cdbb8cff815a9ec096eb6fc",
+    "mtime": 1792799134.3625247,
+    "seen": 1792799853.8703387,
+    "ast_hash": "b1b75ec1774380c3e6fa8b2429f7bb25",
     "semantic_hash": ""
   },
   "src/OpenBudget.Api/LedgerGate.cs": {
@@ -198,9 +198,9 @@
     "semantic_hash": ""
   },
   "src/OpenBudget.Api/LedgerModel.cs": {
-    "mtime": 1792792952.3126216,
-    "seen": 1792792964.8101041,
-    "ast_hash": "34a371d304db8042f0291e5c2345b94d",
+    "mtime": 1792798994.4061983,
+    "seen": 1792799853.8703387,
+    "ast_hash": "c9a1713f078b0b5d1c3775f5e5883561",
     "semantic_hash": ""
   },
   "src/OpenBudget.Api/LedgerRules.cs": {
@@ -330,9 +330,9 @@
     "semantic_hash": ""
   },
   "src/OpenBudget.Api/RegisterViewService.cs": {
-    "mtime": 1792792952.3513367,
-    "seen": 1792792964.8101041,
-    "ast_hash": "e53851da3d32ffbb31d0db2eef8b83fc",
+    "mtime": 1792799134.3625247,
+    "seen": 1792799853.8703387,
+    "ast_hash": "4351353b09aa499876647f744c4aad0f",
     "semantic_hash": ""
   },
   "src/OpenBudget.Api/ScheduleContracts.cs": {
@@ -366,9 +366,9 @@
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/App.test.tsx": {
-    "mtime": 1792794162.7326963,
-    "seen": 1792794210.7448695,
-    "ast_hash": "c52d3c8435f7b622ef54cf45514d5a1c",
+    "mtime": 1792798830.2575564,
+    "seen": 1792799853.8703387,
+    "ast_hash": "260175cdc608f0ba29469834d692aaa8",
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/budgetMoney.test.ts": {
@@ -408,15 +408,15 @@
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/ledger/AccountsPage.test.tsx": {
-    "mtime": 1792794108.512053,
-    "seen": 1792794210.7448695,
-    "ast_hash": "4ab1979cf443445d411caf88fd69c193",
+    "mtime": 1792799066.475063,
+    "seen": 1792799853.8716366,
+    "ast_hash": "a732223890aa0210edd11296bf0c3510",
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/ledger/AccountsPage.tsx": {
-    "mtime": 1792794103.503008,
-    "seen": 1792794210.7448695,
-    "ast_hash": "6c99c2b69586b005e53e686b96d3b195",
+    "mtime": 1792799293.5436366,
+    "seen": 1792799853.8716366,
+    "ast_hash": "816958c8c633e573592bc36f0cd72d21",
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/ledger/ApprovalButton.test.tsx": {
@@ -546,9 +546,9 @@
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/ledger/ViewOptions.tsx": {
-    "mtime": 1792605735.5566168,
-    "seen": 1792643276.9358935,
-    "ast_hash": "a819bb41ca8ace694dbf4207781f4f21",
+    "mtime": 1792799021.928506,
+    "seen": 1792799853.8716366,
+    "ast_hash": "26157272fefa3c9c19cf04e317466cec",
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/ledger/api.test.ts": {
@@ -582,9 +582,9 @@
     "semantic_hash": ""
   },
   "tests/OpenBudget.IntegrationTests/LedgerApiTests.cs": {
-    "mtime": 1792648685.2201724,
-    "seen": 1792649787.6429613,
-    "ast_hash": "2545f4bb794754c6418f08ebdd48d0fb",
+    "mtime": 1792799070.278509,
+    "seen": 1792799853.8716366,
+    "ast_hash": "607831d42d2abc5523374305542616da",
     "semantic_hash": ""
   },
   "tests/OpenBudget.IntegrationTests/OpenBudget.IntegrationTests.csproj": {
@@ -678,15 +678,15 @@
     "semantic_hash": ""
   },
   "docs/api.md": {
-    "mtime": 1792792951.8042002,
-    "seen": 1792792964.8101041,
-    "ast_hash": "da9144584d7d3a8ba51d0691efa6bf01",
+    "mtime": 1792799301.085224,
+    "seen": 1792799853.8716366,
+    "ast_hash": "f9b5b7899f162c51c17ce245fb360234",
     "semantic_hash": ""
   },
   "docs/architecture.md": {
-    "mtime": 1792794158.3003469,
-    "seen": 1792794210.74587,
-    "ast_hash": "84826245e5c8850468ee825cb55fdfea",
+    "mtime": 1792799053.608711,
+    "seen": 1792799853.8716366,
+    "ast_hash": "49b9e53c83cccb6ebf4efbef45456499",
     "semantic_hash": ""
   },
   "docs/backend.md": {
@@ -726,9 +726,9 @@
     "semantic_hash": ""
   },
   "docs/milestones/milestone-02-accounts-register.md": {
-    "mtime": 1792649282.3534195,
-    "seen": 1792649787.6429613,
-    "ast_hash": "c5106840e6f235048e6e350462ef0514",
+    "mtime": 1792799053.609696,
+    "seen": 1792799853.8716366,
+    "ast_hash": "3c9ae2a08c7f81bc55b9f7ea0de58122",
     "semantic_hash": ""
   },
   "docs/milestones/milestone-03-goals-and-assignment.md": {
@@ -996,9 +996,9 @@
     "semantic_hash": ""
   },
   "src/OpenBudget.UI/src/AuthGate.tsx": {
-    "mtime": 1792793219.5862372,
-    "seen": 1792794210.7448695,
-    "ast_hash": "3fbd8d73f4674eb45627ca6034041009",
+    "mtime": 1792798772.8168902,
+    "seen": 1792799853.8703387,
+    "ast_hash": "b76f63d86776c2ce8df0185461bc5815",
     "semantic_hash": ""
   },
   "tests/OpenBudget.IntegrationTests/AuthenticationApiTests.cs": {
@@ -1155,6 +1155,18 @@
     "mtime": 1792792952.376171,
     "seen": 1792792964.8101041,
     "ast_hash": "3fddecc879096f0385226e63bc9206ba",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261023234329_RegisterColumnWidths.Designer.cs": {
+    "mtime": 1792799010.005686,
+    "seen": 1792799853.8703387,
+    "ast_hash": "e7bf6a4cbac02701b54e673079f2d7cf",
+    "semantic_hash": ""
+  },
+  "src/OpenBudget.Api/Migrations/20261023234329_RegisterColumnWidths.cs": {
+    "mtime": 1792799010.005686,
+    "seen": 1792799853.8703387,
+    "ast_hash": "613d2a9da2ef74124f2195bebd6faf94",
     "semantic_hash": ""
   }
 }

@@ -258,6 +258,17 @@ it('opens category activity and takes a reconciled transaction to its account de
   expect(requests.some(path=>{const query=new URL(path,'http://localhost').searchParams;return query.get('accountId')===accountId&&query.get('includeReconciled')==='true'&&query.get('from')==='2026-10-27'&&query.get('to')==='2026-10-27'&&!query.has('categoryId')&&!query.has('status');})).toBe(true);
 });
 
+it('disables the activity amount when the category has no activity',async()=>{
+  render(<App/>);await saved();
+  const activity=screen.getByRole('button',{name:'View transactions for Electricity activity'});
+  expect(activity).toBeDisabled();
+
+  await next('Previous','Sept 2026');
+  expect(screen.getByRole('button',{name:'View transactions for Electricity activity'})).toBeDisabled();
+  await next('Previous','Aug 2026');
+  expect(screen.getByRole('button',{name:'View transactions for Electricity activity'})).toBeEnabled();
+});
+
 it('shows projected shortfall in category details and lists the scheduled transaction',async()=>{
   const accountId='11111111-1111-4111-8111-111111111111';
   focusAccounts=[{id:accountId,name:'Household',isClosed:false,balance:15,clearedBalance:0,unclearedBalance:15,accountType:'checking',isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0}];
@@ -267,6 +278,7 @@ it('shows projected shortfall in category details and lists the scheduled transa
   months['2026-10']=budget('2026-10',20.6,0,20.6);
   render(<App/>);await saved();
   await userEvent.click(screen.getByRole('button',{name:/^Electricity$/}));
+  expect(row().querySelector('.available-cell')).toHaveClass('underfunded');
   expect(screen.getByText('Available After Upcoming')).toBeInTheDocument();
   expect(screen.getByText(/-€29\.30/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button',{name:/1 Upcoming Transaction/}));
@@ -279,14 +291,71 @@ it('shows projected shortfall in category details and lists the scheduled transa
   expect(scheduleRequests.some(path=>{const query=new URL(path,'http://localhost').searchParams;return query.get('accountId')===accountId&&query.get('from')==='2026-10-27'&&query.get('to')==='2026-10-27';})).toBe(true);
 });
 
-it('highlights Available when a category has upcoming transactions, even without a projected shortfall',async()=>{
+it('keeps Available positive when current-month scheduled spending does not cause a shortfall',async()=>{
   scheduleRows=[{id:'schedule-id',occurrenceId:'occurrence-id',repeat:'monthly',startDate:'2026-10-27',isPaused:false,endDate:null,count:null,toAccountId:null,
     transaction:{id:'occurrence-id',accountId:'account-id',date:'2026-10-27',amount:-10,payee:'Gym',memo:'Membership',categoryId:'utilities',status:'uncleared',transferId:null,isOpening:false,splits:[],needsAttention:false,runningBalance:null,transferAccountName:null,categoryName:null,isLocked:false}}];
   months['2026-10']=budget('2026-10',20,0,20);
   render(<App/>);await saved();
-  const available=row().querySelector('.available-cell')!;
-  expect(available).toHaveClass('underfunded');
-  expect(available).not.toHaveClass('positive');
+  const available=row().querySelector('.available-cell') as HTMLElement;
+  expect(available).toHaveClass('positive');
+  expect(available).not.toHaveClass('underfunded');
+});
+
+it('does not highlight Available for a future-month scheduled transaction',async()=>{
+  scheduleRows=[{id:'schedule-id',occurrenceId:'occurrence-id',repeat:'monthly',startDate:'2026-11-27',isPaused:false,endDate:null,count:null,toAccountId:null,
+    transaction:{id:'occurrence-id',accountId:'account-id',date:'2026-11-27',amount:-1600,payee:'Rent',memo:'Monthly rent',categoryId:'utilities',status:'uncleared',transferId:null,isOpening:false,splits:[],needsAttention:false,runningBalance:null,transferAccountName:null,categoryName:null,isLocked:false}}];
+  months['2026-10']=budget('2026-10',1500,0,1500);
+  render(<App/>);await saved();
+  const available=row().querySelector('.available-cell') as HTMLElement;
+  expect(available).toHaveClass('positive');
+  expect(available).not.toHaveClass('underfunded');
+  expect(screen.queryByRole('button',{name:/Upcoming Transaction/})).not.toBeInTheDocument();
+});
+
+it('does not highlight Available when current-month scheduled spending leaves exactly zero',async()=>{
+  scheduleRows=[{id:'schedule-id',occurrenceId:'occurrence-id',repeat:'monthly',startDate:'2026-10-31',isPaused:false,endDate:null,count:null,toAccountId:null,
+    transaction:{id:'occurrence-id',accountId:'account-id',date:'2026-10-31',amount:-1500,payee:'Landlord',memo:'Monthly rent',categoryId:'utilities',status:'uncleared',transferId:null,isOpening:false,splits:[],needsAttention:false,runningBalance:null,transferAccountName:null,categoryName:null,isLocked:false}}];
+  months['2026-10']=budget('2026-10',1500,0,1500);
+  render(<App/>);await saved();
+  const available=row().querySelector('.available-cell') as HTMLElement;
+  expect(available).toHaveClass('positive');
+  expect(available).not.toHaveClass('underfunded');
+});
+
+it('opens move money from a positive Available amount and keeps zero Available plain text',async()=>{
+  months['2026-10'].groups[0].categories.push({id:'food',name:'Food',assigned:0,activity:0,available:0,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false});
+  render(<App/>);await saved();
+  const available=row().querySelector('.available-cell') as HTMLElement;
+  expect(within(available).getByRole('button',{name:'Move available money from Electricity'})).toBeInTheDocument();
+  const foodRow=screen.getByRole('button',{name:'Edit assigned for Food'}).closest('.category-row') as HTMLElement;
+  expect(within(foodRow).queryByRole('button',{name:'Move available money from Food'})).not.toBeInTheDocument();
+
+  await userEvent.click(within(available).getByRole('button',{name:'Move available money from Electricity'}));
+  const dialog=screen.getByRole('dialog',{name:'Move'});
+  expect(within(dialog).getByLabelText('Amount to move')).toHaveValue('15');
+  expect(within(dialog).getByLabelText('Move to')).toHaveValue('Home: Food');
+  await userEvent.clear(within(dialog).getByLabelText('Amount to move'));
+  await userEvent.type(within(dialog).getByLabelText('Amount to move'),'5');
+  await userEvent.click(within(dialog).getByRole('button',{name:'OK'}));
+  await waitFor(()=>expect(writes).toHaveLength(1));
+  expect(writes[0].groups).toEqual(expect.arrayContaining([expect.objectContaining({categories:expect.arrayContaining([expect.objectContaining({id:'utilities',assigned:-5}),expect.objectContaining({id:'food',assigned:5})])})]));
+});
+
+it('opens cover overspending from a negative Available amount',async()=>{
+  months['2026-10']=budget('2026-10',0,-10,-10);
+  months['2026-10'].groups[0].categories.push({id:'food',name:'Food',assigned:20,activity:0,available:20,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false});
+  render(<App/>);await saved();
+  const available=row().querySelector('.available-cell') as HTMLElement;
+  const cover=within(available).getByRole('button',{name:'Cover overspending for Electricity'});
+  expect(cover).toBeInTheDocument();
+  await userEvent.click(cover);
+  const dialog=screen.getByRole('dialog',{name:'Cover overspending'});
+  expect(within(dialog).getByLabelText('Move from')).toHaveValue('Home: Food');
+  expect(within(dialog).getByLabelText('Amount to move')).toHaveValue('10');
+  expect(within(dialog).getByLabelText('Move to')).toHaveValue('Home: Electricity');
+  await userEvent.click(within(dialog).getByRole('button',{name:'OK'}));
+  await waitFor(()=>expect(writes).toHaveLength(1));
+  expect(writes[0].groups).toEqual(expect.arrayContaining([expect.objectContaining({categories:expect.arrayContaining([expect.objectContaining({id:'utilities',assigned:10}),expect.objectContaining({id:'food',assigned:10})])})]));
 });
 
 it('adds a category from the group popover and saves it to the month',async()=>{
