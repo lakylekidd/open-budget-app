@@ -7,8 +7,10 @@ type Month={month:string;note:string;version:number;fundsAdded:number;openingRea
 const budget=(month:string,assigned=0,activity=0,available=0):Month=>({month,note:'',version:1,fundsAdded:0,openingReadyToAssign:500,ledgerIncome:0,readyToAssign:500-assigned,groups:[{id:'home',name:'Home',sortOrder:0,isArchived:false,categories:[{id:'utilities',name:'Electricity',assigned,activity,available,target:0,icon:'',snoozed:false,sortOrder:0,isArchived:false}]}]});
 const response=(data:unknown)=>new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
 let months:Record<string,Month>;let ownedBudgets:{id:string;name:string;currency:string;version:number;isArchived:boolean;createdAt:string}[];let archivedBudgets:{id:string;name:string;currency:string;version:number;isArchived:boolean;createdAt:string}[];let writes:Record<string,unknown>[];let releaseSave:(()=>void)|undefined;let holdSave:boolean;let focusRows:Record<string,unknown>[];let focusAccounts:Record<string,unknown>[];let scheduleRows:Record<string,unknown>[];
+let planningHistory:Record<number,unknown>;
+const planningYear=(year:number,actuals:Record<string,{assigned:number|null;spent:number|null}>)=>({year,version:1,hasPlanningData:false,months:[],groups:[{id:'home',name:'Home',sortOrder:0,isArchived:false,categories:[{id:'utilities',name:'Electricity',sortOrder:0,isArchived:false,months:Array.from({length:12},(_,index)=>{const month=`${year}-${String(index+1).padStart(2,'0')}`;const actual=actuals[month];return {month,plannedBudgetOverride:null,plannedBudgetBeforeMonth:0,plannedBudget:0,plannedExpenses:0,plannedAvailable:0,actualAssigned:actual?.assigned??null,actualExpenses:actual?.spent??null,actualAvailable:null};})}]}]});
 beforeEach(()=>{
-  window.history.replaceState(null, '', '/');
+  window.history.replaceState(null, '', '/');planningHistory={};
   window.localStorage.clear();ownedBudgets=[{id:'default',name:'Test budget',currency:'EUR',version:1,isArchived:false,createdAt:'2026-01-01T00:00:00Z'}];archivedBudgets=[];months={'2026-08':budget('2026-08',50,-35,15),'2026-09':budget('2026-09',0,0,15),'2026-10':budget('2026-10',0,0,15),'2026-11':budget('2026-11',0,0,15)};writes=[];holdSave=false;releaseSave=undefined;focusRows=[];focusAccounts=[];scheduleRows=[];
   vi.stubGlobal('fetch',vi.fn(async(path:string,init?:RequestInit)=>{
     if(path==='/api/auth/session')return response({id:'u1',userName:'alice',email:'alice@example.test',isAdministrator:true});
@@ -20,7 +22,7 @@ beforeEach(()=>{
     if(path==='/api/budgets?includeArchived=true')return response({budgets:[...ownedBudgets,...archivedBudgets],limit:{membership:'pro',membershipName:'Pro',maxActiveBudgets:null,activeBudgets:ownedBudgets.length,budgetLimitOverride:null}});
     if(path.startsWith('/api/long-term-planning/')){
       const year=Number(path.split('/').at(-1));
-      return response({year,version:1,hasPlanningData:false,months:Array.from({length:12},(_,index)=>({month:`${year}-${String(index+1).padStart(2,'0')}`,expectedIncome:0,hasExpectedIncome:false,expectedExpenses:0,remaining:0,hasActualData:false})),groups:[]});
+      return response(planningHistory[year]??{year,version:1,hasPlanningData:false,months:Array.from({length:12},(_,index)=>({month:`${year}-${String(index+1).padStart(2,'0')}`,expectedIncome:0,hasExpectedIncome:false,expectedExpenses:0,remaining:0,hasActualData:false})),groups:[]});
     }
     if(path.startsWith('/api/schedules?'))return response({version:1,page:1,pageSize:100,total:scheduleRows.length,items:scheduleRows});
     if(path.startsWith('/api/register-views/'))return response({version:1,datePreset:'all',fromMonth:null,toMonth:null,showReconciled:false,showRunningBalance:false,showFlags:false,showImages:false});
@@ -55,7 +57,7 @@ async function next(direction:'Previous'|'Next',month:string){await userEvent.cl
 function row(){return screen.getByRole('button',{name:'Edit assigned for Electricity'}).closest('.category-row')!;}
 async function assign(value:string){await userEvent.click(screen.getByRole('button',{name:'Edit assigned for Electricity'}));const input=screen.getByRole('textbox',{name:'Assigned to Electricity'});await userEvent.clear(input);await userEvent.type(input,value);await userEvent.keyboard('{Enter}');}
 
-it('shows the all-money-assigned summary at zero and restores the income action in a funded month',async()=>{
+it('shows the all-money-assigned summary at zero and offers Assign in a funded month',async()=>{
   months['2026-10'].readyToAssign=0;
   render(<App/>);await saved();
   expect(screen.getByRole('button',{name:'Budget menu'})).toHaveTextContent('Test budget');
@@ -68,7 +70,7 @@ it('shows the all-money-assigned summary at zero and restores the income action 
   expect(summary.queryByRole('button',{name:'Record income'})).not.toBeInTheDocument();
   await next('Next','Nov 2026');
   expect(summary.queryByText('All Money Assigned')).not.toBeInTheDocument();
-  expect(summary.getByRole('button',{name:'Record income'})).toBeEnabled();
+  expect(summary.getByRole('button',{name:/Assign/})).toBeEnabled();
 });
 
 it('switches between owned budgets and remembers the selected budget',async()=>{
@@ -213,7 +215,117 @@ it.each([{amount:0.01,label:'Ready to assign'},{amount:-0.01,label:'Assigned mor
   const summary=within(screen.getByRole('region',{name:'Ready to assign'}));
   expect(summary.getByText(label)).toBeInTheDocument();
   expect(summary.queryByText('All Money Assigned')).not.toBeInTheDocument();
-  expect(summary.getByRole('button',{name:'Record income'})).toBeEnabled();
+  expect(summary.getByRole('button',{name:amount>0?/Assign/:/Record income/})).toBeEnabled();
+});
+
+it('opens the category group rename popover and persists the new name',async()=>{
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Home'}));
+  const dialog=screen.getByRole('dialog',{name:'Rename category group'});
+  const name=within(dialog).getByRole('textbox',{name:'Name'});
+  expect(name).toHaveValue('Home');
+  await userEvent.clear(name);await userEvent.type(name,'Household');
+  await userEvent.click(within(dialog).getByRole('button',{name:'OK'}));
+  await waitFor(()=>expect(writes).toHaveLength(1));
+  expect(writes[0].groups).toMatchObject([{name:'Household'}]);
+});
+
+it('requires a subcategory to be selected before its rename popover opens',async()=>{
+  render(<App/>);await saved();
+  const categoryName=screen.getByRole('button',{name:'Electricity'});
+  await userEvent.click(categoryName);
+  expect(screen.queryByRole('dialog',{name:'Rename subcategory'})).not.toBeInTheDocument();
+  expect(screen.getByRole('checkbox',{name:'Select Electricity'})).toBeChecked();
+  expect(categoryName).toHaveClass('is-selected');
+  await userEvent.click(categoryName);
+  const dialog=screen.getByRole('dialog',{name:'Rename subcategory'});
+  const name=within(dialog).getByRole('textbox',{name:'Name'});
+  expect(name).toHaveValue('Electricity');
+  await userEvent.clear(name);await userEvent.type(name,'Power');
+  await userEvent.click(within(dialog).getByRole('button',{name:'OK'}));
+  await waitFor(()=>expect(writes).toHaveLength(1));
+  expect(writes[0].groups).toMatchObject([{categories:[{name:'Power'}]}]);
+});
+
+it('expands Auto-Assign options and caps category assignments at Ready to Assign',async()=>{
+  scheduleRows=[{id:'rent-schedule',occurrenceId:'rent-occurrence',repeat:'monthly',startDate:'2026-10-27',isPaused:false,endDate:null,count:null,toAccountId:null,
+    transaction:{id:'rent-occurrence',accountId:'account-id',date:'2026-10-27',amount:-1000,payee:'Landlord',memo:'Rent',categoryId:'utilities',status:'uncleared',transferId:null,isOpening:false,splits:[],needsAttention:false,runningBalance:null,transferAccountName:null,categoryName:null,isLocked:false}}];
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:/Auto-Assign/}));
+  const underfunded=await screen.findByRole('button',{name:'Underfunded €985.00'});
+  await waitFor(()=>expect(underfunded).toBeEnabled());
+  await userEvent.click(underfunded);
+  await waitFor(()=>expect(writes).toHaveLength(1));
+  const categories=(writes[0].groups as {categories:{id:string;assigned:number}[]}[]).flatMap(group=>group.categories);
+  expect(categories.find(category=>category.id==='utilities')?.assigned).toBe(500);
+});
+
+it('auto-assigns scheduled shortfalls across every subcategory from Ready to Assign when none are selected',async()=>{
+  months['2026-10'].groups[0].categories.push({id:'food',name:'Food',assigned:0,activity:0,available:0,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false});
+  scheduleRows=[
+    {id:'rent-schedule',occurrenceId:'rent-occurrence',repeat:'monthly',startDate:'2026-10-27',isPaused:false,endDate:null,count:null,toAccountId:null,transaction:{id:'rent-occurrence',accountId:'account-id',date:'2026-10-27',amount:-100,payee:'Landlord',memo:'Rent',categoryId:'utilities',status:'uncleared',transferId:null,isOpening:false,splits:[],needsAttention:false,runningBalance:null,transferAccountName:null,categoryName:null,isLocked:false}},
+    {id:'food-schedule',occurrenceId:'food-occurrence',repeat:'monthly',startDate:'2026-10-28',isPaused:false,endDate:null,count:null,toAccountId:null,transaction:{id:'food-occurrence',accountId:'account-id',date:'2026-10-28',amount:-50,payee:'Grocer',memo:'Groceries',categoryId:'food',status:'uncleared',transferId:null,isOpening:false,splits:[],needsAttention:false,runningBalance:null,transferAccountName:null,categoryName:null,isLocked:false}},
+  ];
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Assign'}));
+  const underfunded=await screen.findByRole('button',{name:'Underfunded €135.00'});
+  await waitFor(()=>expect(underfunded).toBeEnabled());
+  await userEvent.click(underfunded);
+  await waitFor(()=>expect(writes).toHaveLength(1));
+  const categories=(writes[0].groups as {categories:{id:string;assigned:number}[]}[]).flatMap(group=>group.categories);
+  expect(categories.find(category=>category.id==='utilities')?.assigned).toBe(85);
+  expect(categories.find(category=>category.id==='food')?.assigned).toBe(50);
+});
+
+it('limits scheduled Underfunded auto-assignment to selected subcategories',async()=>{
+  months['2026-10'].groups[0].categories.push({id:'food',name:'Food',assigned:0,activity:0,available:0,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false});
+  scheduleRows=[
+    {id:'rent-schedule',occurrenceId:'rent-occurrence',repeat:'monthly',startDate:'2026-10-27',isPaused:false,endDate:null,count:null,toAccountId:null,transaction:{id:'rent-occurrence',accountId:'account-id',date:'2026-10-27',amount:-100,payee:'Landlord',memo:'Rent',categoryId:'utilities',status:'uncleared',transferId:null,isOpening:false,splits:[],needsAttention:false,runningBalance:null,transferAccountName:null,categoryName:null,isLocked:false}},
+    {id:'food-schedule',occurrenceId:'food-occurrence',repeat:'monthly',startDate:'2026-10-28',isPaused:false,endDate:null,count:null,toAccountId:null,transaction:{id:'food-occurrence',accountId:'account-id',date:'2026-10-28',amount:-50,payee:'Grocer',memo:'Groceries',categoryId:'food',status:'uncleared',transferId:null,isOpening:false,splits:[],needsAttention:false,runningBalance:null,transferAccountName:null,categoryName:null,isLocked:false}},
+  ];
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('checkbox',{name:'Select Food'}));
+  await userEvent.click(screen.getByRole('button',{name:'Assign'}));
+  const underfunded=await screen.findByRole('button',{name:'Underfunded €50.00'});
+  await waitFor(()=>expect(underfunded).toBeEnabled());
+  await userEvent.click(underfunded);
+  await waitFor(()=>expect(writes).toHaveLength(1));
+  const categories=(writes[0].groups as {categories:{id:string;assigned:number}[]}[]).flatMap(group=>group.categories);
+  expect(categories.find(category=>category.id==='utilities')?.assigned).toBe(0);
+  expect(categories.find(category=>category.id==='food')?.assigned).toBe(50);
+});
+
+it('loads historical values for the last-month and 12-month assignment options',async()=>{
+  planningHistory[2025]=planningYear(2025,{'2025-10':{assigned:120,spent:80}});
+  planningHistory[2026]=planningYear(2026,{'2026-09':{assigned:360,spent:240}});
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:/Auto-Assign/}));
+  expect(await screen.findByRole('button',{name:'Assigned Last Month €360.00'})).toBeEnabled();
+  expect(screen.getByRole('button',{name:'Spent Last Month €240.00'})).toBeEnabled();
+  expect(screen.getByRole('button',{name:'Average Assigned €40.00'})).toBeEnabled();
+  expect(screen.getByRole('button',{name:'Average Spent €26.67'})).toBeEnabled();
+  const historyRequests=vi.mocked(fetch).mock.calls.map(([path])=>String(path)).filter(path=>path.startsWith('/api/long-term-planning/'));
+  expect(historyRequests).toContain('/api/long-term-planning/2025');
+  expect(historyRequests).toContain('/api/long-term-planning/2026');
+});
+
+it('manually assigns a chosen amount to a selected subcategory',async()=>{
+  months['2026-10'].groups[0].categories.push({id:'food',name:'Food',assigned:0,activity:0,available:0,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false});
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Assign'}));
+  expect(screen.getByRole('tab',{name:'Auto'})).toHaveAttribute('aria-selected','true');
+  expect(screen.getByRole('button',{name:/Underfunded/})).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('tab',{name:'Manually'}));
+  const amount=screen.getByRole('textbox',{name:'Amount to assign'});
+  expect(amount).toHaveValue('500.00');
+  await userEvent.clear(amount);await userEvent.type(amount,'125.50');
+  await userEvent.click(screen.getByRole('combobox',{name:'To'}));
+  await userEvent.click(within(screen.getByRole('group',{name:'Home'})).getByRole('option',{name:/Food/}));
+  expect(screen.getByRole('combobox',{name:'To'})).toHaveValue('Home: Food');
+  await userEvent.click(within(document.querySelector('.manual-assign-form') as HTMLElement).getByRole('button',{name:/^Assign$/}));
+  await waitFor(()=>expect(writes).toHaveLength(1));
+  const categories=(writes[0].groups as {categories:{id:string;assigned:number}[]}[]).flatMap(group=>group.categories);
+  expect(categories.find(category=>category.id==='food')?.assigned).toBe(125.5);
 });
 
 it('shows September carry, saves fifty more, and reloads corrections made to August',async()=>{

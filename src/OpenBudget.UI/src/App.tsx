@@ -3,6 +3,7 @@ import { AccountSidebarRow } from './ledger/AccountSidebarRow';
 import { AccountsPage } from './ledger/AccountsPage';
 import { type Accounts, type Entry, type Register, type ScheduledItem, type Schedules, requestJson } from './ledger/api';
 import { parseAssignment } from './budgetMoney';
+import CategoryNamePopover from './CategoryNamePopover';
 
 function rememberActiveBudget(id: string | null) {
   if (id) {
@@ -20,6 +21,9 @@ import { AuthGate } from './AuthGate';
 import { AdminPanel } from './admin/AdminPanel';
 import { ProfileSettings } from './ProfileSettings';
 import { CategoryPicker } from './ledger/CategoryPicker';
+import { AutoAssignOptions } from './AutoAssignOptions';
+import { buildAutoAssignOptions, previousBudgetMonths, type AssignmentHistory, type AutoAssignOption } from './planAutoAssign';
+import type { LongTermPlanning as LongTermPlanningData } from './longTermPlanning/longTermPlanningMath';
 
 type Category = {
   id: string;
@@ -111,6 +115,17 @@ function BudgetApplication() {
   const [budgetRefresh, setBudgetRefresh] = useState(0);
   const [data, setData] = useState<BudgetState>({ month: '2026-10', groups: [], note: '', version: 1, openingReadyToAssign: 0, fundsAdded: 0, ledgerIncome: 0, readyToAssign: 0 });
   const [saveState, setSaveState] = useState<'loading' | 'saved' | 'saving' | 'offline' | 'conflict'>('loading');
+  const [assignmentHistory, setAssignmentHistory] = useState<AssignmentHistory>({});
+  const [assignmentHistoryLoading, setAssignmentHistoryLoading] = useState(true);
+  const [assignmentHistoryError, setAssignmentHistoryError] = useState('');
+  const [assignmentHistoryRetry, setAssignmentHistoryRetry] = useState(0);
+  const [autoAssignExpanded, setAutoAssignExpanded] = useState(false);
+  const [assignMenuOpen, setAssignMenuOpen] = useState(false);
+  const [assignTab, setAssignTab] = useState<'auto' | 'manual'>('auto');
+  const [manualAssignAmount, setManualAssignAmount] = useState('');
+  const [manualAssignCategory, setManualAssignCategory] = useState('');
+  const [manualAssignError, setManualAssignError] = useState('');
+  const assignmentHistoryMonths = useMemo(() => previousBudgetMonths(data.month, 12), [data.month]);
   const loadedMonth = useRef<string | null>(null);
   const lastSaved = useRef<string | null>(null);
   const saveController = useRef<AbortController | null>(null);
@@ -175,6 +190,9 @@ function BudgetApplication() {
   const [addCategoryGroupId, setAddCategoryGroupId] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [categoryNameError, setCategoryNameError] = useState('');
+  const [nameEditor, setNameEditor] = useState<{ kind: 'group' | 'category'; id: string } | null>(null);
+  const [nameDraft, setNameDraft] = useState('');
+  const [nameEditorError, setNameEditorError] = useState('');
   const [dragSource, setDragSource] = useState<{ kind: 'group' | 'category'; id: string } | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
@@ -275,6 +293,43 @@ function BudgetApplication() {
   }, [data.month, budgetRefresh, budgetsLoaded, selectedBudgetId]);
 
   useEffect(() => {
+    if (!budgetsLoaded || !selectedBudgetId) return;
+    const controller = new AbortController();
+    const years = [...new Set(assignmentHistoryMonths.map(month => Number(month.slice(0, 4))))];
+    setAssignmentHistory({});
+    setAssignmentHistoryLoading(true);
+    setAssignmentHistoryError('');
+    setAutoAssignExpanded(false);
+    setAssignMenuOpen(false);
+    const load = async () => {
+      try {
+        const plans = await Promise.all(years.map(year => requestJson<LongTermPlanningData>(`/api/long-term-planning/${year}`, { signal: controller.signal })));
+        if (controller.signal.aborted) return;
+        const monthSet = new Set(assignmentHistoryMonths);
+        const history: AssignmentHistory = {};
+        for (const plan of plans) {
+          for (const group of plan.groups) {
+            for (const category of group.categories) {
+              for (const actual of category.months) {
+                if (!monthSet.has(actual.month)) continue;
+                history[actual.month] ??= {};
+                history[actual.month][category.id] = { assigned: actual.actualAssigned, spent: actual.actualExpenses };
+              }
+            }
+          }
+        }
+        setAssignmentHistory(history);
+      } catch (error) {
+        if (!controller.signal.aborted && error instanceof Error) setAssignmentHistoryError(error.message);
+      } finally {
+        if (!controller.signal.aborted) setAssignmentHistoryLoading(false);
+      }
+    };
+    void load();
+    return () => controller.abort();
+  }, [assignmentHistoryMonths, assignmentHistoryRetry, budgetRefresh, budgetsLoaded, selectedBudgetId]);
+
+  useEffect(() => {
     if (!selectedBudgetId || loadedMonth.current !== data.month || conflictBudget) return;
     if (lastSaved.current === JSON.stringify(data)) return;
     setSaveState('saving');
@@ -322,6 +377,17 @@ function BudgetApplication() {
   }, [data, conflictBudget, selectedBudgetId]);
 
   const allCategories = useMemo(() => data.groups.flatMap(group => group.categories), [data.groups]);
+  const assignableCategories = useMemo(() => data.groups.filter(group => !group.isArchived).flatMap(group => group.categories.filter(category => !category.isArchived)), [data.groups]);
+  const currentMonthUpcomingItems = useMemo(() => upcomingItems.filter(item => item.transaction.date.startsWith(`${data.month}-`)), [upcomingItems, data.month]);
+  const autoAssignCategories = useMemo(() => selectedIds.length > 0 ? assignableCategories.filter(category => selectedIds.includes(category.id)) : assignableCategories, [assignableCategories, selectedIds]);
+  const scheduledOutflows = useMemo(() => Object.fromEntries(assignableCategories.map(category => {
+    const outflowCents = currentMonthUpcomingItems.reduce((total, item) => {
+      const amount = categoryTransactionAmount(item.transaction, category.id);
+      return amount < 0 ? total + Math.round(amount * 100) : total;
+    }, 0);
+    return [category.id, outflowCents / 100];
+  })), [assignableCategories, currentMonthUpcomingItems]);
+  const autoAssignOptions = useMemo(() => buildAutoAssignOptions(autoAssignCategories, assignmentHistory, assignmentHistoryMonths, scheduledOutflows), [autoAssignCategories, assignmentHistory, assignmentHistoryMonths, scheduledOutflows]);
   const totals = useMemo(() => {
     const assigned = allCategories.reduce((sum, item) => sum + item.assigned, 0);
     const activity = allCategories.reduce((sum, item) => sum + item.activity, 0);
@@ -335,7 +401,6 @@ function BudgetApplication() {
   const moveCategoryOptions = data.groups.filter(group => !group.isArchived).flatMap(group => group.categories.filter(category => !category.isArchived).map(category => ({ id: category.id, name: category.name, available: category.available, groupId: group.id, groupName: group.name })));
   const matchingCategoryCount = visibleCategories.filter(matchesFilter).length;
   const selectedCategory = visibleCategories.find(category => category.id === selectedCategoryId);
-  const currentMonthUpcomingItems = upcomingItems.filter(item => item.transaction.date.startsWith(`${data.month}-`));
   const selectedUpcoming = selectedCategory ? currentMonthUpcomingItems.flatMap(item => { const amount = categoryTransactionAmount(item.transaction, selectedCategory.id); return amount < 0 ? [{ item, amount }] : []; }) : [];
   const selectedUpcomingTotal = selectedUpcoming.reduce((sum, item) => sum + item.amount, 0);
 
@@ -407,6 +472,82 @@ function BudgetApplication() {
     window.setTimeout(() => setToast(''), 2400);
   }
 
+  function applyAssignmentChanges(adjustments: { categoryId: string; deltaCents: number }[]) {
+    const changes = new Map(adjustments.filter(item => item.deltaCents !== 0).map(item => [item.categoryId, item.deltaCents]));
+    if (changes.size === 0) return 0;
+    setData(current => {
+      setHistory(stack => [...stack.slice(-49), current]);
+      setFuture([]);
+      return { ...current, groups: current.groups.map(group => ({ ...group, categories: group.categories.map(category => {
+        const deltaCents = changes.get(category.id) ?? 0;
+        return deltaCents === 0 ? category : { ...category, assigned: (Math.round(category.assigned * 100) + deltaCents) / 100 };
+      }) })) };
+    });
+    return [...changes.values()].filter(delta => delta > 0).reduce((total, delta) => total + delta, 0);
+  }
+
+  function applyAutoAssignOption(option: AutoAssignOption) {
+    if (saveState !== 'saved' || assignmentHistoryLoading || option.requiresHistory && assignmentHistoryError) return;
+    let readyCents = Math.max(0, Math.round(data.readyToAssign * 100));
+    let recommendedCents = 0;
+    const adjustments = option.adjustments.map(item => {
+      if (item.deltaCents <= 0) return item;
+      recommendedCents += item.deltaCents;
+      const deltaCents = Math.min(item.deltaCents, readyCents);
+      readyCents -= deltaCents;
+      return { ...item, deltaCents };
+    });
+    const appliedCents = applyAssignmentChanges(adjustments);
+    setAssignMenuOpen(false);
+    setAutoAssignExpanded(false);
+    if (!adjustments.some(item => item.deltaCents !== 0)) {
+      setToast(`${option.label}: no changes to apply.`);
+    } else if (recommendedCents > appliedCents) {
+      setToast(`${money(appliedCents / 100)} assigned. Some categories still need ${money((recommendedCents - appliedCents) / 100)}.`);
+    } else {
+      setToast(`${option.label} applied`);
+    }
+    window.setTimeout(() => setToast(''), 3000);
+  }
+
+  function openAssignMenu() {
+    setAssignTab('auto');
+    setManualAssignAmount(Math.max(0, data.readyToAssign).toFixed(2));
+    setManualAssignCategory('');
+    setManualAssignError('');
+    setAssignMenuOpen(current => !current);
+  }
+
+  function submitManualAssignment(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const amount = parseAssignment(manualAssignAmount);
+    if (!manualAssignCategory || !amount || amount <= 0) {
+      setManualAssignError('Choose a subcategory and enter an amount greater than zero.');
+      return;
+    }
+    if (saveState !== 'saved' || Math.round(amount * 100) > Math.max(0, Math.round(data.readyToAssign * 100))) {
+      setManualAssignError('The amount cannot exceed Ready to Assign.');
+      return;
+    }
+    if (!assignableCategories.some(category => category.id === manualAssignCategory)) {
+      setManualAssignError('Choose an active subcategory.');
+      return;
+    }
+    const applied = applyAssignmentChanges([{ categoryId: manualAssignCategory, deltaCents: Math.round(amount * 100) }]);
+    if (applied > 0) {
+      setAssignMenuOpen(false);
+      setToast(`${money(applied / 100)} assigned`);
+      window.setTimeout(() => setToast(''), 2400);
+    }
+  }
+
+  const assignmentActionsDisabled = saveState !== 'saved' || assignmentHistoryLoading;
+  const canApplyAutoOption = (option: AutoAssignOption) => {
+    if (option.requiresHistory && assignmentHistoryError) return false;
+    if (option.requiresUpcoming && (upcomingLoading || upcomingError)) return false;
+    return !option.adjustments.some(item => item.deltaCents > 0) || data.readyToAssign > 0;
+  };
+
   function openMoveFrom(category: Category) {
     const covering = category.available < 0;
     const source = moveCategories.find(item => item.id !== category.id && item.available > 0);
@@ -435,6 +576,58 @@ function BudgetApplication() {
     if (!name) return;
     const id = `group-${crypto.randomUUID()}`;
     setData(current => { setHistory(stack => [...stack.slice(-49), current]); setFuture([]); return { ...current, groups: [...current.groups, { id, name, categories: [], isArchived: false }] }; });
+  }
+
+  function openNameEditor(kind: 'group' | 'category', id: string, name: string) {
+    setNameEditor({ kind, id });
+    setNameDraft(name);
+    setNameEditorError('');
+  }
+
+  function nameEditorCanDelete() {
+    if (!nameEditor || loadedMonth.current !== data.month || !lastSaved.current) return false;
+    try {
+      const saved = JSON.parse(lastSaved.current) as BudgetState;
+      if (nameEditor.kind === 'group') return !saved.groups.some(group => group.id === nameEditor.id);
+      return !saved.groups.some(group => group.categories.some(category => category.id === nameEditor.id));
+    } catch { return false; }
+  }
+
+  function saveNameEditor() {
+    if (!nameEditor) return;
+    const name = nameDraft.trim();
+    const maxLength = nameEditor.kind === 'group' ? 120 : 160;
+    if (!name) { setNameEditorError('Enter a name.'); return; }
+    if (name.length > maxLength) { setNameEditorError(`Names can be up to ${maxLength} characters.`); return; }
+    setData(current => {
+      setHistory(stack => [...stack.slice(-49), current]);
+      setFuture([]);
+      return nameEditor.kind === 'group'
+        ? { ...current, groups: current.groups.map(group => group.id === nameEditor.id ? { ...group, name } : group) }
+        : { ...current, groups: current.groups.map(group => ({ ...group, categories: group.categories.map(category => category.id === nameEditor.id ? { ...category, name } : category) })) };
+    });
+    setNameEditor(null);
+  }
+
+  function hideNameEditorTarget() {
+    if (!nameEditor) return;
+    if (nameEditor.kind === 'group') toggleGroupArchived(nameEditor.id);
+    else toggleCategoryArchived(nameEditor.id);
+    setSelectedCategoryId(null);
+    setSelectedIds(current => nameEditor.kind === 'category' ? current.filter(id => id !== nameEditor.id) : current.filter(id => !data.groups.find(group => group.id === nameEditor.id)?.categories.some(category => category.id === id)));
+    setNameEditor(null);
+  }
+
+  function deleteUnsavedNameEditorTarget() {
+    if (!nameEditor || !nameEditorCanDelete()) return;
+    setData(current => {
+      setHistory(stack => [...stack.slice(-49), current]);
+      setFuture([]);
+      return nameEditor.kind === 'group'
+        ? { ...current, groups: current.groups.filter(group => group.id !== nameEditor.id) }
+        : { ...current, groups: current.groups.map(group => ({ ...group, categories: group.categories.filter(category => category.id !== nameEditor.id) })) };
+    });
+    setNameEditor(null);
   }
 
   function toggleCategoryArchived(id: string) {
@@ -595,14 +788,34 @@ function BudgetApplication() {
         <div className="toolbar-actions"><button className="shared-button" onClick={() => setToast('Sharing is not connected in this local demo')}><Icon name="users" size={18} /> Shared</button><button className="icon-button mobile-menu-trigger" aria-label="Open menu" onClick={() => setMobileMenu(value => !value)}><Icon name="menu" /></button></div>
       </div>
 
-      <section className={`ready-card ${data.readyToAssign === 0 ? 'all-money-assigned' : data.readyToAssign < 0 ? 'assigned-over' : 'funds-ready'}`} aria-label="Ready to assign">
+  <section className={`ready-card ${data.readyToAssign === 0 ? 'all-money-assigned' : data.readyToAssign < 0 ? 'assigned-over' : 'funds-ready'} ${assignMenuOpen ? 'assign-menu-open' : ''}`} aria-label="Ready to assign">
         <div className="ready-copy">
           <strong>{money(data.readyToAssign)}</strong>
           <span className="ready-hint">{data.readyToAssign < 0 ? 'Assigned more than available' : data.readyToAssign > 0 ? 'Ready to assign' : 'All Money Assigned'}</span>
         </div>
         {data.readyToAssign === 0
           ? <span className="all-assigned-check" aria-hidden="true"><Icon name="check" size={26}/></span>
-          : <button className="ready-link" onClick={addFunds}>Record income</button>}
+          : data.readyToAssign > 0
+            ? <button className="ready-link assign-ready-button" aria-expanded={assignMenuOpen} aria-haspopup="dialog" onClick={openAssignMenu}>Assign <Icon name="chevron" size={13} /></button>
+            : <button className="ready-link" onClick={addFunds}>Record income</button>}
+        {assignMenuOpen && data.readyToAssign > 0 && <section className="assign-menu-popover" role="dialog" aria-label="Assign money">
+          <div className="assign-tabs" role="tablist" aria-label="Assignment method">
+            <button type="button" role="tab" aria-selected={assignTab === 'auto'} className={assignTab === 'auto' ? 'active' : ''} onClick={() => setAssignTab('auto')}>Auto</button>
+            <button type="button" role="tab" aria-selected={assignTab === 'manual'} className={assignTab === 'manual' ? 'active' : ''} onClick={() => setAssignTab('manual')}>Manually</button>
+          </div>
+          {assignTab === 'auto' ? <div className="assign-menu-content">
+            {assignmentHistoryLoading && <p role="status">Loading the last 12 months…</p>}
+            {assignmentHistoryError && <p className="assign-history-error" role="alert">Could not load past assignments. Historical options are unavailable. <button type="button" onClick={() => setAssignmentHistoryRetry(value => value + 1)}>Retry</button></p>}
+            {upcomingLoading && <p role="status">Loading this month’s scheduled transactions…</p>}
+            {upcomingError && <p className="assign-history-error" role="alert">Could not load scheduled transactions. Underfunded is unavailable. <button type="button" onClick={() => setBudgetRefresh(value => value + 1)}>Retry</button></p>}
+            <AutoAssignOptions options={autoAssignOptions} formatAmount={money} disabled={assignmentActionsDisabled} canApply={canApplyAutoOption} onApply={applyAutoAssignOption} />
+          </div> : <form className="manual-assign-form" onSubmit={submitManualAssignment}>
+            <label>Assign:<input aria-label="Amount to assign" inputMode="decimal" value={manualAssignAmount} onChange={event => { setManualAssignAmount(event.target.value); setManualAssignError(''); }} disabled={saveState !== 'saved'} /></label>
+            <CategoryPicker label="To" categories={moveCategoryOptions} value={manualAssignCategory} onChange={value => { setManualAssignCategory(value); setManualAssignError(''); }} includeInflow={false} disabled={saveState !== 'saved'} />
+            {manualAssignError && <span role="alert" className="manual-assign-error">{manualAssignError}</span>}
+            <footer><button type="button" onClick={() => setAssignMenuOpen(false)}>Cancel</button><button type="submit" className="button-primary" disabled={saveState !== 'saved'}>Assign</button></footer>
+          </form>}
+        </section>}
       </section>
 
       <div className="filter-bar">
@@ -643,7 +856,8 @@ function BudgetApplication() {
               const isCollapsed = collapsed.includes(group.id);
               return <div className={`category-group ${dropTargetId === group.id ? 'drop-target' : ''}`} key={group.id} onDragOver={event => { if (dragSource) { event.preventDefault(); setDropTargetId(group.id); } }} onDrop={event => { event.preventDefault(); if (dragSource) dropGroup(dragSource.id, group.id); }}>
                 <div className="group-row">
-                  <div className="group-name"><button className="group-collapse" aria-label={`Toggle ${group.name}`} aria-expanded={!isCollapsed} onClick={() => toggleGroup(group.id)}><span className={`group-chevron ${isCollapsed ? 'closed' : ''}`}><Icon name="chevron" size={12} /></span></button><input type="checkbox" aria-label={`Select ${group.name}`} checked={group.categories.length > 0 && group.categories.every(category => selectedIds.includes(category.id))} onChange={event => setSelectedIds(current => event.target.checked ? [...new Set([...current, ...group.categories.map(category => category.id)])] : current.filter(id => !group.categories.some(category => category.id === id)))} /><button className="group-label" draggable={!group.isArchived} title="Drag to reorder this group" onDragStart={event => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', group.id); setDragSource({ kind: 'group', id: group.id }); }} onDragEnd={() => { setDragSource(null); setDropTargetId(null); }} onDoubleClick={() => { const name = window.prompt('Rename category group', group.name)?.trim(); if(name) setData(current => ({...current,groups:current.groups.map(item => item.id === group.id ? {...item,name} : item)})); }}>{group.name}</button>{!group.isArchived && <button className="group-add" onClick={() => addCategory(group.id)} aria-label={`Add category to ${group.name}`}><Icon name="plus" size={16} /></button>}<div className="group-order-tools"><button aria-label={`Move ${group.name} up`} onClick={() => moveGroup(group.id, -1)}>↑</button><button aria-label={`Move ${group.name} down`} onClick={() => moveGroup(group.id, 1)}>↓</button></div></div>
+                  <div className="group-name"><button className="group-collapse" aria-label={`Toggle ${group.name}`} aria-expanded={!isCollapsed} onClick={() => toggleGroup(group.id)}><span className={`group-chevron ${isCollapsed ? 'closed' : ''}`}><Icon name="chevron" size={12} /></span></button><input type="checkbox" aria-label={`Select ${group.name}`} checked={group.categories.length > 0 && group.categories.every(category => selectedIds.includes(category.id))} onChange={event => setSelectedIds(current => event.target.checked ? [...new Set([...current, ...group.categories.map(category => category.id)])] : current.filter(id => !group.categories.some(category => category.id === id)))} /><button className="group-label" draggable={!group.isArchived} title="Drag to reorder this group" onDragStart={event => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', group.id); setDragSource({ kind: 'group', id: group.id }); }} onDragEnd={() => { setDragSource(null); setDropTargetId(null); }} onClick={() => openNameEditor('group', group.id, group.name)}>{group.name}</button>{!group.isArchived && <button className="group-add" onClick={() => addCategory(group.id)} aria-label={`Add category to ${group.name}`}><Icon name="plus" size={16} /></button>}<div className="group-order-tools"><button aria-label={`Move ${group.name} up`} onClick={() => moveGroup(group.id, -1)}>↑</button><button aria-label={`Move ${group.name} down`} onClick={() => moveGroup(group.id, 1)}>↓</button></div></div>
+                  {nameEditor?.kind === 'group' && nameEditor.id === group.id && <CategoryNamePopover name={nameDraft} label="category group" maxLength={120} error={nameEditorError} canDelete={nameEditorCanDelete()} hideLabel={group.isArchived ? 'Restore' : 'Hide'} onNameChange={value => { setNameDraft(value); setNameEditorError(''); }} onSubmit={saveNameEditor} onHide={hideNameEditorTarget} onDelete={deleteUnsavedNameEditorTarget} onCancel={() => setNameEditor(null)} />}
                   <div className="group-assigned">{money(group.categories.reduce((sum, item) => sum + item.assigned, 0))}</div>
                   <div className="group-activity">{money(group.categories.reduce((sum, item) => sum + item.activity, 0))}</div>
                   <div className={`group-available ${groupTotal < 0 ? 'negative' : ''}`}>{money(groupTotal)}</div>
@@ -662,7 +876,8 @@ function BudgetApplication() {
                     setSelectedCategoryId(category.id);
                     startEdit(category);
                   }} onDragStart={event => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', category.id); setDragSource({ kind: 'category', id: category.id }); }} onDragEnd={() => { setDragSource(null); setDropTargetId(null); }} onDragOver={event => { if (dragSource?.kind === 'category') { event.preventDefault(); setDropTargetId(category.id); } }} onDrop={event => { event.preventDefault(); event.stopPropagation(); if (dragSource?.kind === 'category') dropCategory(dragSource.id, group.id, category.id); setDragSource(null); setDropTargetId(null); }}>
-                    <div className="category-name-cell"><input type="checkbox" aria-label={`Select ${category.name}`} checked={selectedIds.includes(category.id)} onChange={event => setSelectedIds(current => event.target.checked ? [...current, category.id] : current.filter(id => id !== category.id))} /><div className="category-copy"><div className="category-label-line"><button className="category-name" title="Click to see category details; double-click to rename" disabled={category.isArchived || group.isArchived} onClick={() => setSelectedCategoryId(category.id)} onDoubleClick={() => { const name = window.prompt('Rename category', category.name)?.trim(); if(name) updateCategory(category.id, item => ({...item,name})); }}>{category.name}</button>{progressOn && <span className="category-status">{category.available < 0 ? 'Overspent' : category.snoozed ? 'Snoozed' : category.available === 0 && category.activity < 0 ? 'Fully Spent' : ''}</span>}</div>{progressOn && (category.assigned !== 0 || category.available !== 0) && <div className={`progress-track ${category.available < 0 ? 'over' : ''}`} aria-label={`Category progress: ${Math.round(progress.green)}% available${progress.red ? `, ${Math.round(progress.red)}% overspent` : ''}`}><span className="progress-green" style={{ width: `${progress.green}%` }} /><span className="progress-red" style={{ width: `${progress.red}%` }} /></div>}{underfundedUpcoming && <button className="category-upcoming" onClick={() => openUpcoming(category)} aria-label={`${categoryUpcoming.length} upcoming transactions for ${category.name}, ${money(upcomingTotal)}`}>{categoryUpcoming.length} Upcoming {categoryUpcoming.length === 1 ? 'Transaction' : 'Transactions'} <span>{money(upcomingTotal)}</span></button>}</div><div className="category-order-tools"><button aria-label={`Move ${category.name} up`} disabled={category.isArchived || group.isArchived} onClick={() => moveCategory(group.id, category.id, -1)}>↑</button><button aria-label={`Move ${category.name} down`} disabled={category.isArchived || group.isArchived} onClick={() => moveCategory(group.id, category.id, 1)}>↓</button></div><button className="category-archive" disabled={group.isArchived} aria-label={`${category.isArchived ? 'Restore' : 'Archive'} category ${category.name}`} onClick={() => toggleCategoryArchived(category.id)}>{category.isArchived ? 'Restore' : 'Archive'}</button></div>
+                    <div className="category-name-cell"><input type="checkbox" aria-label={`Select ${category.name}`} checked={selectedIds.includes(category.id)} onChange={event => setSelectedIds(current => event.target.checked ? [...current, category.id] : current.filter(id => id !== category.id))} /><div className="category-copy"><div className="category-label-line"><button className={`category-name ${selectedIds.includes(category.id) ? 'is-selected' : ''}`} title={selectedIds.includes(category.id) ? `Rename ${category.name}` : `Select ${category.name} before renaming`} disabled={category.isArchived || group.isArchived} onClick={() => { if (selectedIds.includes(category.id)) openNameEditor('category', category.id, category.name); else { setSelectedIds([category.id]); setSelectedCategoryId(category.id); startEdit(category); } }}>{category.name}</button>{progressOn && <span className="category-status">{category.available < 0 ? 'Overspent' : category.snoozed ? 'Snoozed' : category.available === 0 && category.activity < 0 ? 'Fully Spent' : ''}</span>}</div>{progressOn && (category.assigned !== 0 || category.available !== 0) && <div className={`progress-track ${category.available < 0 ? 'over' : ''}`} aria-label={`Category progress: ${Math.round(progress.green)}% available${progress.red ? `, ${Math.round(progress.red)}% overspent` : ''}`}><span className="progress-green" style={{ width: `${progress.green}%` }} /><span className="progress-red" style={{ width: `${progress.red}%` }} /></div>}{underfundedUpcoming && <button className="category-upcoming" onClick={() => openUpcoming(category)} aria-label={`${categoryUpcoming.length} upcoming transactions for ${category.name}, ${money(upcomingTotal)}`}>{categoryUpcoming.length} Upcoming {categoryUpcoming.length === 1 ? 'Transaction' : 'Transactions'} <span>{money(upcomingTotal)}</span></button>}</div><div className="category-order-tools"><button aria-label={`Move ${category.name} up`} disabled={category.isArchived || group.isArchived} onClick={() => moveCategory(group.id, category.id, -1)}>↑</button><button aria-label={`Move ${category.name} down`} disabled={category.isArchived || group.isArchived} onClick={() => moveCategory(group.id, category.id, 1)}>↓</button></div><button className="category-archive" disabled={group.isArchived} aria-label={`${category.isArchived ? 'Restore' : 'Archive'} category ${category.name}`} onClick={() => toggleCategoryArchived(category.id)}>{category.isArchived ? 'Restore' : 'Archive'}</button></div>
+                    {nameEditor?.kind === 'category' && nameEditor.id === category.id && <CategoryNamePopover name={nameDraft} label="subcategory" maxLength={160} error={nameEditorError} canDelete={nameEditorCanDelete()} hideLabel={category.isArchived ? 'Restore' : 'Hide'} onNameChange={value => { setNameDraft(value); setNameEditorError(''); }} onSubmit={saveNameEditor} onHide={hideNameEditorTarget} onDelete={deleteUnsavedNameEditorTarget} onCancel={() => setNameEditor(null)} />}
                     <div className="assigned-cell">{editingId===category.id&&assignmentError&&<span role="alert" className="assignment-error">{assignmentError}</span>}
                       {editingId === category.id ? <input className="amount-input" autoFocus value={editValue} aria-invalid={Boolean(assignmentError)} onFocus={event => event.currentTarget.select()} onChange={event => {setEditValue(event.target.value);setAssignmentError('');}} onBlur={() => saveEdit(category)} onKeyDown={event => { if (event.key === 'Enter') saveEdit(category); if (event.key === 'Escape') {setEditingId(null);setAssignmentError('');} }} aria-label={`Assigned to ${category.name}`} /> : <button className="amount-button" disabled={category.isArchived || group.isArchived || saveState==='loading' || loadedMonth.current!==data.month || !!conflictBudget} onClick={() => { setSelectedIds([category.id]); setSelectedCategoryId(category.id); startEdit(category); }} aria-label={`Edit assigned for ${category.name}`}>{money(category.assigned)}</button>}
 
@@ -684,7 +899,16 @@ function BudgetApplication() {
           <section className="summary-card"><button className="summary-title" onClick={() => setToast('Monthly summary')}><span>{new Date(data.month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long'})}'s Summary</span><Icon name="chevron" size={15} /></button><div className="summary-body">
             <div className="summary-line"><span>Ready to Assign</span><strong>{money(data.readyToAssign)}</strong></div><div className="summary-line"><span>Assigned in {new Date(data.month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long'})}</span><strong>{money(totals.assigned)}</strong></div><div className="summary-line"><span>Activity</span><strong>{money(totals.activity)}</strong></div><div className="summary-line summary-total"><span>Available</span><strong>{money(totals.available)}</strong></div>
             <div className="summary-rule" /><div className="summary-subhead">Cost to Be Me</div><div className="summary-line"><span>{new Date(data.month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long'})}’s Targets</span><strong>{money(targetSum)}</strong></div><div className="target-progress"><span style={{width:'14%'}} /></div><div className="summary-line"><span>Expected Income</span><strong>{money(data.ledgerIncome)} <button className="edit-income" aria-label="Edit income" onClick={() => setToast('Income settings')}>↗</button></strong></div><div className="income-progress"/><div className="summary-footnote">Next month's targets could increase your total to {money(targetSum)}</div></div></section>
-          <button className="auto-assign-card" onClick={() => setToast('Auto-Assign options')}><span>ϟ</span><strong>Auto-Assign</strong><Icon name="right" size={15} /></button>
+          <section className={`auto-assign-widget ${autoAssignExpanded ? 'expanded' : ''}`}>
+            <button className="auto-assign-card" aria-expanded={autoAssignExpanded} onClick={() => setAutoAssignExpanded(value => !value)}><span>ϟ</span><strong>Auto-Assign</strong><Icon name="chevron" size={15} /></button>
+            {autoAssignExpanded && <div className="auto-assign-panel">
+              {assignmentHistoryLoading && <p role="status">Loading the last 12 months…</p>}
+              {assignmentHistoryError && <p className="assign-history-error" role="alert">Could not load past assignments. Historical options are unavailable. <button type="button" onClick={() => setAssignmentHistoryRetry(value => value + 1)}>Retry</button></p>}
+              {upcomingLoading && <p role="status">Loading this month’s scheduled transactions…</p>}
+              {upcomingError && <p className="assign-history-error" role="alert">Could not load scheduled transactions. Underfunded is unavailable. <button type="button" onClick={() => setBudgetRefresh(value => value + 1)}>Retry</button></p>}
+              <AutoAssignOptions options={autoAssignOptions} formatAmount={money} disabled={assignmentActionsDisabled} canApply={canApplyAutoOption} onApply={applyAutoAssignOption} />
+            </div>}
+          </section>
           <section className="future-card"><div className="future-header"><strong>Assigned in Future Months</strong><Icon name="chevron" size={15} /></div><button onClick={() => changeMonth(1)}><span className="future-month">◷ &nbsp; {new Date(Number(data.month.slice(0,4)),Number(data.month.slice(5)),1).toLocaleDateString('en-GB',{month:'long'})}</span><span>{money(0)}</span></button></section>
           <section className="for-you-card"><strong>For You <Icon name="chevron" size={15} /></strong><h3>You’re all caught up!</h3><p>Want to keep going? There’s plenty more where that came from.</p><button onClick={() => setToast('This local demo has no connected blog')}>Read the Blog</button></section>
                 </aside>

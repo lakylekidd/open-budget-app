@@ -132,6 +132,7 @@ it('opens forecast and actual expense activity and passes selected transactions 
 });
 
 it('defaults to the current year and uses distinct past, current, and future month states', async () => {
+  const user = userEvent.setup();
   const year = new Date().getFullYear();
   const now = currentMonth();
   const future = futureMonth();
@@ -144,16 +145,16 @@ it('defaults to the current year and uses distinct past, current, and future mon
   expect(grid).toBeInTheDocument();
   expect(screen.queryByRole('textbox', { name: `Groceries Assigned ${monthName(past)} ${year}` })).not.toBeInTheDocument();
   expect(screen.queryByRole('textbox', { name: `Expected Income ${monthName(past)} ${year}` })).not.toBeInTheDocument();
-  expect(input('Groceries', 'Assigned', now)).toBeEnabled();
-  expect(input('Groceries', 'Assigned', future)).toBeEnabled();
+  expect(screen.getByRole('button', { name: `Groceries Assigned ${monthName(now)} ${year}` })).toBeEnabled();
+  expect(screen.getByRole('button', { name: `Groceries Assigned ${monthName(future)} ${year}` })).toBeEnabled();
   const groceriesRow = Array.from(grid.querySelectorAll('.lt-category-row')).find(row => row.textContent?.includes('Groceries'))!;
   const januaryCell = groceriesRow.querySelector('.lt-month-values')!;
   expect(Array.from(groceriesRow.querySelectorAll('.lt-pair-labels span'), label => label.textContent)).toEqual(['Planned', 'Actual']);
   expect(Array.from(januaryCell.querySelectorAll('.lt-subrow'), row => row.getAttribute('data-subrow'))).toEqual(['planned', 'actual']);
   expect(januaryCell.querySelector('[data-subrow="planned"]')).toHaveTextContent('500.00');
   expect(januaryCell.querySelector('[data-subrow="actual"]')).toHaveTextContent('300.00');
+  await user.click(screen.getByRole('button', { name: `Groceries Assigned ${monthName(now)} ${year}` }));
   const assignedInput = input('Groceries', 'Assigned', now) as HTMLInputElement;
-  assignedInput.focus();
   await new Promise(resolve => requestAnimationFrame(() => resolve(undefined)));
   expect(assignedInput.selectionStart).toBe(0);
   expect(assignedInput.selectionEnd).toBe(assignedInput.value.length);
@@ -167,6 +168,31 @@ it('defaults to the current year and uses distinct past, current, and future mon
   expect(screen.queryByRole('textbox', { name: `Expected Income January ${year - 1}` })).not.toBeInTheDocument();
 });
 
+it('colors negative Available red and zero-or-positive Available green for planned and actual values', async () => {
+  const year = new Date().getFullYear();
+  const plan = planFor(year);
+  plan.groups[0].categories[0].months[0].plannedAvailable = -25;
+  plan.groups[0].categories[0].months[0].actualAvailable = -5;
+  plan.groups[0].categories[1].months[0].plannedAvailable = 0;
+  plan.groups[0].categories[1].months[0].actualAvailable = 0;
+  plans[year] = plan;
+  const { container } = render(<LongTermPlanning />);
+  await annualGrid(year);
+
+  const categoryRows = Array.from(container.querySelectorAll('.lt-category-row'));
+  const groceries = categoryRows.find(row => row.textContent?.includes('Groceries'))!;
+  const transport = categoryRows.find(row => row.textContent?.includes('Transport'))!;
+  const groceriesJanuary = groceries.querySelector('.lt-month-values')!;
+  const transportJanuary = transport.querySelector('.lt-month-values')!;
+  const availableLine = (cell: Element, kind: 'planned' | 'actual') => cell.querySelector(`[data-subrow="${kind}"] .lt-value-line:nth-child(3)`);
+
+  expect(availableLine(groceriesJanuary, 'planned')).toHaveClass('lt-available-negative');
+  expect(availableLine(groceriesJanuary, 'actual')).toHaveClass('lt-available-negative');
+  expect(availableLine(transportJanuary, 'planned')).toHaveClass('lt-available-positive');
+  expect(availableLine(transportJanuary, 'actual')).toHaveClass('lt-available-positive');
+  expect(availableLine(container.querySelector('.lt-group-row')!, 'planned')).toHaveClass('lt-available-negative');
+});
+
 it('navigates years, previews remaining to be assigned, and preserves later overrides', async () => {
   const user = userEvent.setup();
   render(<LongTermPlanning />);
@@ -176,6 +202,7 @@ it('navigates years, previews remaining to be assigned, and preserves later over
   await annualGrid(year);
 
   const june = `${year}-06`;
+  await user.click(screen.getByRole('button', { name: `Groceries Assigned ${monthName(june)} ${year}` }));
   const budgetInput = input('Groceries', 'Assigned', june);
   await user.clear(budgetInput);
   await user.type(budgetInput, '650');
@@ -186,8 +213,8 @@ it('navigates years, previews remaining to be assigned, and preserves later over
   expect(juneHeader).toHaveTextContent('€1,250.00');
   await user.keyboard('{Enter}');
   await screen.findByText('Planning changes saved.');
-  expect(input('Groceries', 'Assigned', `${year}-08`)).toHaveValue('650.00');
-  expect(input('Groceries', 'Assigned', `${year}-09`)).toHaveValue('700.00');
+  expect(screen.getByRole('button', { name: `Groceries Assigned August ${year}` })).toHaveTextContent('€650.00');
+  expect(screen.getByRole('button', { name: `Groceries Assigned September ${year}` })).toHaveTextContent('€700.00');
   expect(juneHeader).toHaveTextContent('€1,250.00');
   expect(screen.queryByRole('button', { name: `Remove Groceries override for June ${year}` })).not.toBeInTheDocument();
 

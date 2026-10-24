@@ -44,19 +44,19 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Month navigation and independent month records | Implemented with one-time carry-forward initialization |
 | Edit assigned amount and Ready to Assign | Server-calculated and versioned |
 | Move money between categories | Implemented as paired assignment changes in one monthly save |
-| Add, rename, reorder, archive/restore group/category | Implemented and persisted |
+| Add, rename, reorder, archive/restore group/category | Implemented and persisted; clicking a group name opens its name popover, while a subcategory must first be selected before its name opens the same editor. Saved history is archived rather than deleted. |
 | Budget identity and name | One default budget, name editable and persisted |
 | Category filters, search, collapse, select, progress bars | Implemented; bars show remaining funds and uncovered overspending |
 | Category activity and scheduled spending | Monthly activity opens filtered ledger rows; selecting a category shows its selected-month upcoming transactions and projected availability in the right column. The upcoming summary opens a transaction list. Available is highlighted only when selected-month scheduled outflows would make it negative; a projected zero is not a shortfall. Clicking a category row's background or Assigned amount selects only that category and opens Assigned for editing; checkboxes support multi-selection. |
 | Category creation and ordering | Add categories from a group, drag groups/categories to reorder and move categories between groups; versioned monthly saves preserve category identity |
 | Undo/redo | In-memory UI history; edits are saved but no server-side audit event is recorded |
 | Month note | Persisted on the monthly snapshot |
-| Long-Term Planning | Implemented; annual grid, separate forecast persistence, effective-month overrides, read-only actuals and cross-year carry-forward |
+| Long-Term Planning | Implemented; annual grid with click-to-edit planned Assigned amounts, separate forecast persistence, effective-month overrides, read-only actuals and cross-year carry-forward |
 | Cash accounts, register, transfers, splits, reconciliation | Implemented; real ledger-backed balances, server filters/pagination and retained audit |
 | Account View Options | Server-persisted per-account presets, month range and visibility switches, independently versioned |
 | Scheduled register | Anchored recurrence rules, forecasts, idempotent due-day posting, approval and occurrence review |
 | Bank linking, credit/debt accounts | Future milestones |
-| Targets and assignment recommendations | Basic static target/progress display only |
+| Targets and assignment recommendations | Monthly Auto-Assign Underfunded covers current-month scheduled outflows that would make a selected category negative; with no category selection, Auto-Assign covers all active subcategories, otherwise only selected subcategories. Other actions use last month and trailing 12-month actual assignments/spending; manual assignment and reset actions use the existing versioned Plan save. Full target rules and preview/apply workflows remain planned. |
 | Reflect reports | Not implemented; entry remains a placeholder |
 | Identity sign-in, bootstrap administrators, verified registration/recovery and audited account lifecycle administration | Implemented |
 | Owner-scoped budget identity, archive/restore, membership limits, monthly Plan snapshots, ledger/planning isolation and active budget selection | Implemented |

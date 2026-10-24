@@ -51,6 +51,11 @@ function actualLabel(value: number | null | undefined) {
   return value === null || value === undefined ? '—' : formatMoney(value);
 }
 
+function availableTone(metric: Metric, value: number | null | undefined) {
+  if ((metric !== 'plannedAvailable' && metric !== 'actualAvailable') || value === null || value === undefined) return '';
+  return value < 0 ? 'lt-available-negative' : 'lt-available-positive';
+}
+
 function selectInputContents(input: HTMLInputElement) {
   window.requestAnimationFrame(() => {
     if (document.activeElement === input) input.select();
@@ -211,18 +216,26 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
       const isEditing = editing?.month === month.month && editing.categoryId === category.id && editing.field === field;
       const display = value.plannedBudget;
       return <div className="lt-value-line" key={metric}>
-        <input
+        {isEditing ? <input
           aria-label={`${category.name} Assigned ${monthName(month.month)} ${year}`}
           className="lt-money-input"
           inputMode="decimal"
-          value={isEditing ? editing.raw : inputAmount(display)}
+          autoFocus
+          value={editing.raw}
           disabled={locked}
-          aria-invalid={Boolean(isEditing && editing.amount === null)}
-          onFocus={event => { const input = event.currentTarget; if (!isEditing) beginEdit(change, display); selectInputContents(input); }}
+          aria-invalid={Boolean(editing.amount === null)}
+          onFocus={event => selectInputContents(event.currentTarget)}
           onChange={event => updateDraft(event.target.value)}
           onBlur={commitDraft}
           onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); commitDraft(); event.currentTarget.blur(); } if (event.key === 'Escape') { cancelEditRef.current = true; setEditing(null); setMessage(''); onPendingChange?.(false); event.currentTarget.blur(); } }}
-        />
+        /> : <button
+          type="button"
+          className="lt-money-display"
+          aria-label={`${category.name} Assigned ${monthName(month.month)} ${year}`}
+          title="Click to edit the planned assignment"
+          disabled={locked}
+          onClick={() => beginEdit(change, display)}
+        >{formatMoney(display)}</button>}
       </div>;
     }
     if (metric === 'plannedExpenses' || metric === 'actualExpenses') {
@@ -235,7 +248,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
         </button>
       </div>;
     }
-    return <div className={`lt-value-line ${metric.startsWith('actual') ? 'lt-actual-value' : ''}`} key={metric}>
+    return <div className={`lt-value-line ${metric.startsWith('actual') ? 'lt-actual-value' : ''} ${availableTone(metric, value?.[metric])}`} key={metric}>
       <span className="lt-readonly-value">{metricValue(category, monthIndex, metric)}</span>
     </div>;
   }
@@ -249,7 +262,8 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
         {groupValues(group, monthIndex, metric)}
       </button></div>;
     }
-    return <div className={`lt-value-line ${metric.startsWith('actual') ? 'lt-actual-value' : ''}`} key={metric}>
+    const availableValue = metric === 'plannedAvailable' || metric === 'actualAvailable' ? total(group, monthIndex, metric) : null;
+    return <div className={`lt-value-line ${metric.startsWith('actual') ? 'lt-actual-value' : ''} ${availableTone(metric, availableValue)}`} key={metric}>
       <span className="lt-readonly-value">{groupValues(group, monthIndex, metric)}</span>
     </div>;
   }

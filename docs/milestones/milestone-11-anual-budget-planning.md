@@ -22,7 +22,7 @@ At the top of every month column are **Expected Income**, **Expected Expenses**,
 
 Selecting Expected Income, Expected Expenses, or a read-only category/group Expenses value opens an activity list for that month. Selecting a listed transaction opens its account register with the row selected. Future forecast occurrences appear as selected projected rows in the account register when they are later than the schedule's next occurrence.
 
-Below the summary, the screen displays the same category groups and subcategories used by the main budget. Each subcategory/month cell has two stacked rows: planned on top and actual underneath. The planned row includes editable Assigned, read-only scheduled Expenses, and calculated Available; the actual row shows read-only Assigned, Expenses, and Available values. This keeps each month a grid column and makes planned Assigned behave like the monthly Plan input.
+Below the summary, the screen displays the same category groups and subcategories used by the main budget. Each subcategory/month cell has two stacked rows: planned on top and actual underneath. The planned row shows Assigned in currency format until clicked, then opens the inline editor; scheduled Expenses and calculated Available remain read-only. Available values are red below zero and green at zero or above. The actual row shows read-only Assigned, Expenses, and Available values. This keeps each month a grid column and makes planned Assigned behave like the monthly Plan input.
 
 Category-group rows show planned totals on the title line and cannot be edited. Individual subcategories contain:
 
