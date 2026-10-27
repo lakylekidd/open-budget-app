@@ -155,6 +155,10 @@ public static class AccountEmailTemplates
         "Reset your OpenBudget password", "We received a request to reset your password. Choose a new password to get back to your budget.", "Reset password", link,
         "This reset link expires in two hours. If you did not request it, you can safely ignore this email.");
 
+    public static AccountEmailContent BudgetInvitation(string budgetName, string inviter, string link) => Build(
+        $"Join {budgetName} in OpenBudget", $"{inviter} invited you to plan together in the OpenBudget budget “{budgetName}”. Sign in with this email address to accept the shared budget.", "Open shared budget", link,
+        "The budget will appear automatically after you sign in with the invited email address.");
+
     public static AccountEmailContent Invitation(string link) => Build(
         "You’re invited to OpenBudget", "You have been invited to OpenBudget. Verify your email, then use Forgot password to choose your first password.", "Verify email", link,
         "This verification link expires in two hours.");

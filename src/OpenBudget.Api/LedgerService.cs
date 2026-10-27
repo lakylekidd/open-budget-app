@@ -331,8 +331,13 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
                 changed |= category.Activity != nextActivity;
                 category.Activity = nextActivity;
             }
-            rtaDelta = BudgetService.CalculateReadyToAssign(month) - oldRta;
-            categoryDeltas = categories.ToDictionary(c => c.Id, c => c.Available - oldAvailable.GetValueOrDefault(c.Id));
+            var carryChanges = BudgetCarryForward.CalculateChanges(
+                oldRta,
+                BudgetService.CalculateReadyToAssign(month),
+                oldAvailable,
+                categories);
+            rtaDelta = carryChanges.ReadyToAssignDelta;
+            categoryDeltas = new Dictionary<string, decimal>(carryChanges.AvailableDeltas, StringComparer.Ordinal);
             if (changed) month.Version++;
             previous = month;
         }

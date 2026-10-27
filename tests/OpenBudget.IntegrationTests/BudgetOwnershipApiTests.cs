@@ -11,6 +11,55 @@ namespace OpenBudget.IntegrationTests;
 public sealed class BudgetOwnershipApiTests(PostgresFixture fixture) : IClassFixture<PostgresFixture>
 {
     [Fact]
+    public async Task Owner_can_invite_collaborators_and_recent_plan_actions_include_the_actor()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        await CreateUserAsync(app, "manager", "manager@example.test");
+        await CreateUserAsync(app, "planner", "planner@example.test");
+        await CreateUserAsync(app, "outsider", "outsider@example.test");
+        using var manager = await LoginAsync(app, "manager");
+        using var planner = await LoginAsync(app, "planner");
+        using var outsider = await LoginAsync(app, "outsider");
+        var budget = await CreateBudgetAsync(manager, "Shared home");
+
+        var invite = await manager.PostAsJsonAsync($"/api/budgets/{budget.Id}/invitations", new InviteBudgetMemberRequest("planner@example.test"));
+        Assert.Equal(HttpStatusCode.Accepted, invite.StatusCode);
+        var sharing = await manager.GetFromJsonAsync<BudgetSharingDto>($"/api/budgets/{budget.Id}/sharing");
+        Assert.True(sharing!.CanManage); Assert.Equal(3, sharing.InvitesRemaining);
+        Assert.Equal("planner@example.test", Assert.Single(sharing.Members).Email);
+
+        using var listing = await planner.GetFromJsonAsync<JsonDocument>("/api/budgets");
+        var shared = Assert.Single(listing!.RootElement.GetProperty("budgets").EnumerateArray());
+        Assert.Equal(budget.Id, shared.GetProperty("id").GetString());
+        Assert.Equal("editor", shared.GetProperty("accessRole").GetString());
+        planner.DefaultRequestHeaders.Add("Cookie", $"openbudget.activeBudgetId={budget.Id}");
+        Assert.Equal(HttpStatusCode.OK, (await planner.GetAsync("/api/accounts")).StatusCode);
+        var month = await planner.GetFromJsonAsync<BudgetDto>($"/api/budgets/{budget.Id}/months/2026-10");
+        var update = new BudgetUpdateDto(month!.Month, month.Note, month.Version, month.FundsAdded,
+            month.Groups.Select(group => new CategoryGroupUpdateDto(group.Id, group.Name, group.SortOrder, group.IsArchived,
+                group.Categories.Select(category => new CategoryUpdateDto(category.Id, category.Name,
+                    category.Id == "groceries" ? 75m : category.Assigned, category.Target, category.Icon, category.Snoozed, category.SortOrder, category.IsArchived)).ToList())).ToList());
+        Assert.Equal(HttpStatusCode.OK, (await planner.PutAsJsonAsync($"/api/budgets/{budget.Id}/months/2026-10", update)).StatusCode);
+
+        var actions = await manager.GetFromJsonAsync<List<PlanActionDto>>($"/api/budgets/{budget.Id}/plan-actions");
+        var action = Assert.Single(actions!);
+        Assert.Equal("assigned", action.Kind); Assert.Equal(75, action.Amount); Assert.Equal("planner", action.ActorName); Assert.Equal("Groceries", action.ToCategoryName);
+        Assert.Equal(HttpStatusCode.NotFound, (await outsider.GetAsync($"/api/budgets/{budget.Id}/months/2026-10")).StatusCode);
+        Assert.False((await planner.GetFromJsonAsync<BudgetSharingDto>($"/api/budgets/{budget.Id}/sharing"))!.CanManage);
+        Assert.Equal(HttpStatusCode.NotFound, (await planner.PostAsJsonAsync($"/api/budgets/{budget.Id}/invitations", new InviteBudgetMemberRequest("friend@example.test"))).StatusCode);
+
+        Assert.Equal(HttpStatusCode.Accepted, (await manager.PostAsJsonAsync($"/api/budgets/{budget.Id}/invitations", new InviteBudgetMemberRequest("later@example.test"))).StatusCode);
+        await CreateUserAsync(app, "later", "later@example.test");
+        using var later = await LoginAsync(app, "later");
+        using var accepted = await later.GetFromJsonAsync<JsonDocument>("/api/budgets");
+        Assert.Contains(accepted!.RootElement.GetProperty("budgets").EnumerateArray(), item => item.GetProperty("id").GetString() == budget.Id);
+
+        var plannerId = sharing.Members.Single().Id;
+        Assert.Equal(HttpStatusCode.NoContent, (await manager.DeleteAsync($"/api/budgets/{budget.Id}/members/{plannerId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await planner.GetAsync($"/api/budgets/{budget.Id}/months/2026-10")).StatusCode);
+    }
+
+    [Fact]
     public async Task Budgets_are_owned_archivable_and_limited_by_membership()
     {
         await using var app = await fixture.CreateAppAsync();

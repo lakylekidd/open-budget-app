@@ -9,6 +9,9 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
     private readonly BudgetRequestContext budgetContext = budgetContext;
     public string ActiveBudgetId => budgetContext.BudgetId;
     public DbSet<BudgetPlanEntity> BudgetPlans => Set<BudgetPlanEntity>();
+    public DbSet<BudgetMemberEntity> BudgetMembers => Set<BudgetMemberEntity>();
+    public DbSet<BudgetInvitationEntity> BudgetInvitations => Set<BudgetInvitationEntity>();
+    public DbSet<PlanActionEntity> PlanActions => Set<PlanActionEntity>();
     public DbSet<LongTermPlanningStateEntity> LongTermPlanningStates => Set<LongTermPlanningStateEntity>();
     public DbSet<LongTermPlanningIncomeEntity> LongTermPlanningIncomes => Set<LongTermPlanningIncomeEntity>();
     public DbSet<LongTermPlanningCategoryEntity> LongTermPlanningCategories => Set<LongTermPlanningCategoryEntity>();
@@ -70,6 +73,40 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
             entity.HasIndex(x => new { x.OwnerUserId, x.IsArchived });
             entity.HasOne<OpenBudgetUser>().WithMany().HasForeignKey(x => x.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
             entity.HasMany(x => x.Months).WithOne(x => x.Plan).HasForeignKey(x => x.BudgetId).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<BudgetMemberEntity>(entity =>
+        {
+            entity.HasKey(x => new { x.BudgetId, x.UserId });
+            entity.Property(x => x.BudgetId).HasMaxLength(100);
+            entity.Property(x => x.UserId).HasMaxLength(450);
+            entity.Property(x => x.InvitedByUserId).HasMaxLength(450);
+            entity.Property(x => x.Role).HasMaxLength(20);
+            entity.HasIndex(x => x.UserId);
+            entity.HasOne<BudgetPlanEntity>().WithMany().HasForeignKey(x => x.BudgetId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<OpenBudgetUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<BudgetInvitationEntity>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.BudgetId).HasMaxLength(100);
+            entity.Property(x => x.Email).HasMaxLength(256);
+            entity.Property(x => x.NormalizedEmail).HasMaxLength(256);
+            entity.Property(x => x.InvitedByUserId).HasMaxLength(450);
+            entity.HasIndex(x => new { x.BudgetId, x.NormalizedEmail }).IsUnique();
+            entity.HasOne<BudgetPlanEntity>().WithMany().HasForeignKey(x => x.BudgetId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<PlanActionEntity>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.BudgetId).HasMaxLength(100);
+            entity.Property(x => x.Month).HasMaxLength(7);
+            entity.Property(x => x.ActorUserId).HasMaxLength(450);
+            entity.Property(x => x.Kind).HasMaxLength(20);
+            entity.Property(x => x.FromCategoryName).HasMaxLength(160);
+            entity.Property(x => x.ToCategoryName).HasMaxLength(160);
+            entity.Property(x => x.Amount).HasPrecision(14, 2);
+            entity.HasIndex(x => new { x.BudgetId, x.CreatedAt });
+            entity.HasOne<BudgetPlanEntity>().WithMany().HasForeignKey(x => x.BudgetId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<LongTermPlanningStateEntity>(entity =>
         {
@@ -241,6 +278,38 @@ public sealed class BudgetPlanEntity
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public long Version { get; set; } = 1;
     public List<BudgetEntity> Months { get; set; } = [];
+}
+
+public sealed class BudgetMemberEntity
+{
+    public string BudgetId { get; set; } = "";
+    public string UserId { get; set; } = "";
+    public string InvitedByUserId { get; set; } = "";
+    public string Role { get; set; } = "editor";
+    public DateTimeOffset JoinedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class BudgetInvitationEntity
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string BudgetId { get; set; } = "";
+    public string Email { get; set; } = "";
+    public string NormalizedEmail { get; set; } = "";
+    public string InvitedByUserId { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class PlanActionEntity
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string BudgetId { get; set; } = "";
+    public string Month { get; set; } = "";
+    public string ActorUserId { get; set; } = "";
+    public string Kind { get; set; } = "updated";
+    public decimal? Amount { get; set; }
+    public string? FromCategoryName { get; set; }
+    public string? ToCategoryName { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
 public sealed class MembershipPlanEntity

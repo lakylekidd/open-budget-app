@@ -5,22 +5,26 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace OpenBudget.Api;
 
-public sealed record OwnedBudgetDto(string Id, string Name, string Currency, long Version, bool IsArchived, DateTimeOffset CreatedAt);
+public sealed record OwnedBudgetDto(string Id, string Name, string Currency, long Version, bool IsArchived, DateTimeOffset CreatedAt, string AccessRole = "owner");
 public sealed record CreateOwnedBudgetRequest(string Name, string Currency = "EUR");
 public sealed record RenameOwnedBudgetRequest(string Name, long Version);
 public sealed record DeleteOwnedBudgetRequest(long Version);
 public sealed record BudgetLimitDto(string Membership, string MembershipName, int? MaxActiveBudgets, int ActiveBudgets, int? BudgetLimitOverride);
 
-public sealed class BudgetOwnershipService(BudgetDbContext db, BudgetRequestContext budgetContext)
+public sealed class BudgetOwnershipService(BudgetDbContext db, BudgetRequestContext budgetContext, BudgetSharingService sharing)
 {
     public Task<bool> OwnsBudgetAsync(string userId, string budgetId, CancellationToken cancellationToken) =>
         db.BudgetPlans.AnyAsync(x => x.Id == budgetId && x.OwnerUserId == userId && !x.IsArchived, cancellationToken);
 
+    public Task<bool> CanAccessBudgetAsync(string userId, string budgetId, CancellationToken cancellationToken) =>
+        sharing.CanAccessBudgetAsync(userId, budgetId, cancellationToken);
+
     public async Task<IResult> ListAsync(string userId, bool includeArchived, CancellationToken cancellationToken)
     {
+        await sharing.AcceptPendingInvitationsAsync(userId, cancellationToken);
         var budgets = await db.BudgetPlans.AsNoTracking()
-            .Where(x => x.OwnerUserId == userId && (includeArchived || !x.IsArchived))
-            .OrderBy(x => x.CreatedAt).Select(x => new OwnedBudgetDto(x.Id, x.Name, x.Currency, x.Version, x.IsArchived, x.CreatedAt))
+            .Where(x => (x.OwnerUserId == userId || db.BudgetMembers.Any(member => member.BudgetId == x.Id && member.UserId == userId)) && (includeArchived || !x.IsArchived))
+            .OrderBy(x => x.CreatedAt).Select(x => new OwnedBudgetDto(x.Id, x.Name, x.Currency, x.Version, x.IsArchived, x.CreatedAt, x.OwnerUserId == userId ? "owner" : "editor"))
             .ToListAsync(cancellationToken);
         var membership = await GetLimitAsync(userId, cancellationToken);
         return Results.Ok(new { budgets, limit = membership });
@@ -194,7 +198,7 @@ public sealed class BudgetOwnershipService(BudgetDbContext db, BudgetRequestCont
             if (!IsMonth(month)) return Results.BadRequest(new { error = "Month must use YYYY-MM format." });
             var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
             if (userId is null) return Results.Unauthorized();
-            if (!await ownership.OwnsBudgetAsync(userId, id, ct)) return Results.NotFound();
+            if (!await ownership.CanAccessBudgetAsync(userId, id, ct)) return Results.NotFound();
             budgetContext.BudgetId = id;
             return await gate.RunAsync(async () => Results.Ok(BudgetDto.From(await service.GetMonthAsync(id, month, ct))), ct);
         });
@@ -204,9 +208,9 @@ public sealed class BudgetOwnershipService(BudgetDbContext db, BudgetRequestCont
             if (request.Month != month) return Results.BadRequest(new { error = "Route month must match payload month." });
             var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
             if (userId is null) return Results.Unauthorized();
-            if (!await ownership.OwnsBudgetAsync(userId, id, ct)) return Results.NotFound();
+            if (!await ownership.CanAccessBudgetAsync(userId, id, ct)) return Results.NotFound();
             budgetContext.BudgetId = id;
-            var result = await gate.RunAsync(() => service.UpdateMonthAsync(id, request, ct), ct, value => value.Error is null && !value.IsConflict);
+            var result = await gate.RunAsync(() => service.UpdateMonthAsync(id, request, userId, ct), ct, value => value.Error is null && !value.IsConflict);
             if (result.IsConflict) return Results.Conflict(new { error = "This month changed in another session.", current = result.Budget });
             if (result.Error is not null) return Results.BadRequest(new { error = result.Error });
             return Results.Ok(result.Budget);

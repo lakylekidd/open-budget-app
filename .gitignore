@@ -1,4 +1,5 @@
 # JavaScript frontend
+/node_modules/
 src/OpenBudget.UI/node_modules/
 src/OpenBudget.UI/dist/
 src/OpenBudget.UI/*.tsbuildinfo

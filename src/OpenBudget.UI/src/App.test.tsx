@@ -8,10 +8,12 @@ const budget=(month:string,assigned=0,activity=0,available=0):Month=>({month,not
 const response=(data:unknown)=>new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
 let months:Record<string,Month>;let ownedBudgets:{id:string;name:string;currency:string;version:number;isArchived:boolean;createdAt:string}[];let archivedBudgets:{id:string;name:string;currency:string;version:number;isArchived:boolean;createdAt:string}[];let writes:Record<string,unknown>[];let releaseSave:(()=>void)|undefined;let holdSave:boolean;let focusRows:Record<string,unknown>[];let focusAccounts:Record<string,unknown>[];let scheduleRows:Record<string,unknown>[];
 let planningHistory:Record<number,unknown>;
+let sharing:{manager:Record<string,unknown>;members:Record<string,unknown>[];invitations:Record<string,unknown>[];canManage:boolean;invitesRemaining:number};let recentActions:Record<string,unknown>[];
 const planningYear=(year:number,actuals:Record<string,{assigned:number|null;spent:number|null}>)=>({year,version:1,hasPlanningData:false,months:[],groups:[{id:'home',name:'Home',sortOrder:0,isArchived:false,categories:[{id:'utilities',name:'Electricity',sortOrder:0,isArchived:false,months:Array.from({length:12},(_,index)=>{const month=`${year}-${String(index+1).padStart(2,'0')}`;const actual=actuals[month];return {month,plannedBudgetOverride:null,plannedBudgetBeforeMonth:0,plannedBudget:0,plannedExpenses:0,plannedAvailable:0,actualAssigned:actual?.assigned??null,actualExpenses:actual?.spent??null,actualAvailable:null};})}]}]});
 beforeEach(()=>{
   window.history.replaceState(null, '', '/');planningHistory={};
   window.localStorage.clear();ownedBudgets=[{id:'default',name:'Test budget',currency:'EUR',version:1,isArchived:false,createdAt:'2026-01-01T00:00:00Z'}];archivedBudgets=[];months={'2026-08':budget('2026-08',50,-35,15),'2026-09':budget('2026-09',0,0,15),'2026-10':budget('2026-10',0,0,15),'2026-11':budget('2026-11',0,0,15)};writes=[];holdSave=false;releaseSave=undefined;focusRows=[];focusAccounts=[];scheduleRows=[];
+  sharing={manager:{id:'u1',name:'alice',email:'alice@example.test',role:'manager',joinedAt:'2026-01-01T00:00:00Z'},members:[],invitations:[],canManage:true,invitesRemaining:4};recentActions=[];
   vi.stubGlobal('fetch',vi.fn(async(path:string,init?:RequestInit)=>{
     if(path==='/api/auth/session')return response({id:'u1',userName:'alice',email:'alice@example.test',isAdministrator:true});
     if(path==='/api/accounts')return response({version:1,accounts:focusAccounts});
@@ -20,6 +22,9 @@ beforeEach(()=>{
     if(path.startsWith('/api/budgets/')&&path.endsWith('/archive')){const id=path.split('/')[3];const budget=ownedBudgets.find(item=>item.id===id);if(budget){ownedBudgets=ownedBudgets.filter(item=>item.id!==id);archivedBudgets.push({...budget,isArchived:true,version:budget.version+1});}return new Response(null,{status:204});}
     if(path.startsWith('/api/budgets/')&&path.endsWith('/restore')){const id=path.split('/')[3];const budget=archivedBudgets.find(item=>item.id===id);if(budget){archivedBudgets=archivedBudgets.filter(item=>item.id!==id);ownedBudgets.push({...budget,isArchived:false,version:budget.version+1});}return new Response(null,{status:204});}
     if(path==='/api/budgets?includeArchived=true')return response({budgets:[...ownedBudgets,...archivedBudgets],limit:{membership:'pro',membershipName:'Pro',maxActiveBudgets:null,activeBudgets:ownedBudgets.length,budgetLimitOverride:null}});
+    if(path==='/api/budgets/default/sharing')return response(sharing);
+    if(path==='/api/budgets/default/invitations'&&init?.method==='POST'){const email=JSON.parse(String(init.body)).email;sharing.invitations.push({id:'invite-1',email,createdAt:'2026-10-24T12:00:00Z'});sharing.invitesRemaining--;return new Response(JSON.stringify({message:'Invitation saved. It will be accepted when this email signs in.'}),{status:202,headers:{'Content-Type':'application/json'}});}
+    if(path.startsWith('/api/budgets/default/plan-actions')){const kind=new URL(`http://local${path}`).searchParams.get('kind');return response(kind?recentActions.filter(action=>kind==='assigned'?action.kind==='assigned'||action.kind==='removed':action.kind===kind):recentActions);}
     if(path.startsWith('/api/long-term-planning/')){
       const year=Number(path.split('/').at(-1));
       return response(planningHistory[year]??{year,version:1,hasPlanningData:false,months:Array.from({length:12},(_,index)=>({month:`${year}-${String(index+1).padStart(2,'0')}`,expectedIncome:0,hasExpectedIncome:false,expectedExpenses:0,remaining:0,hasActualData:false})),groups:[]});
@@ -77,6 +82,31 @@ it('does not render the promotional card in the Plan summary panel',async()=>{
   render(<App/>);await saved();
   expect(screen.queryByText('For You')).not.toBeInTheDocument();
   expect(screen.queryByRole('button',{name:'Read the Blog'})).not.toBeInTheDocument();
+});
+
+it('shows actor-attributed Plan history in Recent Moves',async()=>{
+  recentActions=[{id:'move-1',month:'2026-10',kind:'moved',amount:50,fromCategoryName:'Rent',toCategoryName:'Groceries',actorUserId:'u2',actorName:'Sam',actorEmail:'sam@example.test',createdAt:'2026-10-24T12:00:00Z'}];
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:/Recent Moves/}));
+  const dialog=await screen.findByRole('dialog',{name:'Recent Moves'});
+  expect(within(dialog).getByText('Sam moved €50.00')).toBeInTheDocument();
+  expect(within(dialog).getByText(/from/)).toHaveTextContent('from Rent to Groceries · 2026-10');
+  await userEvent.click(within(dialog).getByRole('tab',{name:'Moved'}));
+  await waitFor(()=>expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/budgets/default/plan-actions?kind=moved',expect.objectContaining({signal:expect.any(AbortSignal)})));
+});
+
+it('opens Budget Together from the logo menu and invites a member',async()=>{
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Budget menu'}));
+  await userEvent.click(screen.getByRole('menuitem',{name:/Budget Together/}));
+  expect(await screen.findByRole('region',{name:'OpenBudget Together'})).toBeInTheDocument();
+  expect(screen.getByText('alice (you)')).toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText('Email address'),'friend@example.test');
+  await userEvent.click(screen.getByRole('button',{name:'Invite Member'}));
+  expect(await screen.findByText('friend@example.test')).toBeInTheDocument();
+  expect(screen.getByText(/Invitation saved/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button',{name:/Back to Plan/}));
+  await saved();
 });
 
 it('rotates the collapse-all chevron with the group state',async()=>{
@@ -145,8 +175,8 @@ it('restores the remembered owned budget on page load',async()=>{
 it('omits budget management controls from the sidebar menu',async()=>{
   render(<App/>);await saved();
   await userEvent.click(screen.getByRole('button',{name:'Budget menu'}));
-  expect(await screen.findByRole('menuitem',{name:'Admin'})).toHaveAttribute('href','/admin');
-  expect(screen.getByRole('menuitem',{name:'Sign Out'})).toBeInTheDocument();
+  expect(await screen.findByRole('menuitem',{name:/Admin/})).toHaveAttribute('href','/admin');
+  expect(screen.getByRole('menuitem',{name:/Sign Out/})).toBeInTheDocument();
   expect(screen.getByRole('menuitem',{name:/New Plan/})).toBeInTheDocument();
   expect(screen.getByRole('menuitem',{name:/Open Plan/})).toBeInTheDocument();
   for (const name of ['Rename budget','Create budget','Archive budget','Delete budget','Archived budget','Restore']) {
@@ -433,6 +463,12 @@ it('selects the category and focuses Assigned when clicking its row background',
   await userEvent.click(foodCheckbox);
   expect(checkbox).toBeChecked();
   expect(foodCheckbox).toBeChecked();
+
+  await userEvent.click(categoryRow);
+  expect(checkbox).not.toBeChecked();
+  expect(foodCheckbox).toBeChecked();
+  expect(categoryRow).not.toHaveClass('category-selected');
+  expect(screen.queryByRole('textbox',{name:'Assigned to Electricity'})).not.toBeInTheDocument();
 });
 
 it('selects the whole category row when opening its Assigned input',async()=>{
@@ -442,11 +478,14 @@ it('selects the whole category row when opening its Assigned input',async()=>{
   const categoryRow=assigned.closest('.category-row') as HTMLElement;
   const checkbox=within(categoryRow).getByRole('checkbox',{name:'Select Food'});
 
+  expect(assigned.querySelector('.assignment-adjust-icon svg')).toBeInTheDocument();
+
   await userEvent.click(assigned);
 
   expect(checkbox).toBeChecked();
   expect(categoryRow).toHaveClass('category-selected');
   expect(screen.getByRole('textbox',{name:'Assigned to Food'})).toHaveFocus();
+  expect(screen.getByRole('textbox',{name:'Assigned to Food'}).closest('.amount-input-shell')?.querySelector('.assignment-adjust-icon svg')).toBeInTheDocument();
 });
 
 it('shows selected-month upcoming activity in category details and opens its transaction list',async()=>{
@@ -592,6 +631,40 @@ it('drags a category into another group and saves the new membership',async()=>{
   const submitted= writes[0] as {groups:{id:string;categories:{id:string}[]}[]};
   expect(submitted.groups.find(group=>group.id==='home')?.categories.some(category=>category.id==='utilities')).toBe(false);
   expect(submitted.groups.find(group=>group.id==='other')?.categories.some(category=>category.id==='utilities')).toBe(true);
+});
+
+it('reorders a subcategory before another subcategory in its current group',async()=>{
+  const month=months['2026-10'];
+  month.groups[0].categories.push({id:'internet',name:'Internet',assigned:0,activity:0,available:0,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false});
+  render(<App/>);await saved();
+  const source=screen.getByRole('button',{name:/^Internet$/}).closest('.category-row')!;
+  const target=screen.getByRole('button',{name:/^Electricity$/}).closest('.category-row')!;
+  const dataTransfer={effectAllowed:'',setData:vi.fn()};
+  fireEvent.dragStart(source,{dataTransfer});fireEvent.drop(target,{dataTransfer});
+  await waitFor(()=>expect(writes).toHaveLength(1));
+  const submitted= writes[0] as {groups:{id:string;categories:{id:string}[]}[]};
+  expect(submitted.groups.find(group=>group.id==='home')?.categories.map(category=>category.id)).toEqual(['internet','utilities']);
+});
+
+it('allows a moved subcategory to be reordered in its destination group',async()=>{
+  const month=months['2026-10'];
+  month.groups.push({id:'other',name:'Other',sortOrder:1,isArchived:false,categories:[
+    {id:'other-first',name:'Other first',assigned:0,activity:0,available:0,target:0,icon:'',snoozed:false,sortOrder:0,isArchived:false},
+    {id:'other-second',name:'Other second',assigned:0,activity:0,available:0,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false}
+  ]});
+  render(<App/>);await saved();
+  const dataTransfer={effectAllowed:'',setData:vi.fn()};
+  const source=screen.getByRole('button',{name:/^Electricity$/}).closest('.category-row')!;
+  const destination=screen.getByRole('button',{name:/^Other$/}).closest('.category-group') as HTMLElement;
+  fireEvent.dragStart(source,{dataTransfer});fireEvent.drop(destination,{dataTransfer});
+  await waitFor(()=>expect(within(destination).getByRole('button',{name:/^Electricity$/})).toBeInTheDocument());
+  const moved=within(destination).getByRole('button',{name:/^Electricity$/}).closest('.category-row') as HTMLElement;
+  const first=within(destination).getByRole('button',{name:/^Other first$/}).closest('.category-row') as HTMLElement;
+  fireEvent.dragStart(moved,{dataTransfer});fireEvent.dragOver(first,{dataTransfer});fireEvent.drop(first,{dataTransfer});
+  await waitFor(()=>expect(writes).toHaveLength(1));
+  const submitted= writes[0] as {groups:{id:string;categories:{id:string}[]}[]};
+  expect(submitted.groups.find(group=>group.id==='home')?.categories.map(category=>category.id)).toEqual([]);
+  expect(submitted.groups.find(group=>group.id==='other')?.categories.map(category=>category.id)).toEqual(['utilities','other-first','other-second']);
 });
 
 it('opens Long-Term Planning from the main navigation',async()=>{

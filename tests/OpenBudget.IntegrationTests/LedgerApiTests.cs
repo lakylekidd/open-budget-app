@@ -113,15 +113,16 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
         await using var app = await fixture.CreateAppAsync(); var client = app.CreateClient();
         var account = await AddAccount(client, 100);
         var spend = await AddTransaction(client, account, -10, "groceries");
-        var next = await client.GetFromJsonAsync<BudgetDto>("/api/budget/2027-01");
-        Assert.Equal(-10, Category(next!, "groceries").Available);
+        var next = (await client.GetFromJsonAsync<BudgetDto>("/api/budget/2027-01"))!;
+        Assert.Equal(0, Category(next, "groceries").Available);
+        Assert.Equal(90, next.ReadyToAssign);
         await Put<MutationDto>(client, $"/api/transactions/{spend.Id}", await Request(client, account, -25, "groceries"));
         await AddTransaction(client, account, 50);
         await using var restarted = new TestApp(app.ConnectionString);
         var read = restarted.CreateClient();
-        next = await read.GetFromJsonAsync<BudgetDto>("/api/budget/2027-01");
-        Assert.Equal(-25, Category(next!, "groceries").Available);
-        Assert.Equal(150, next!.ReadyToAssign);
+        next = (await read.GetFromJsonAsync<BudgetDto>("/api/budget/2027-01"))!;
+        Assert.Equal(0, Category(next, "groceries").Available);
+        Assert.Equal(125, next.ReadyToAssign);
         Assert.Equal(125, (await Accounts(read)).Accounts[0].Balance);
         // Replaying reads must not reapply carry-forward deltas.
         Assert.Equivalent(next, await Get<BudgetDto>(read, "/api/budget/2027-01"), strict: true);
@@ -315,7 +316,9 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
         Assert.Equivalent(future, await Get<BudgetDto>(client, "/api/budget/2027-01"), strict: true);
         Assert.Equal(100, (await Accounts(client)).Accounts[0].Balance);
         await Post<MutationDto>(client, "/api/transactions", request);
-        Assert.Equal(-25, Category(await Get<BudgetDto>(client, "/api/budget/2027-01"), "groceries").Available);
+        var next = await Get<BudgetDto>(client, "/api/budget/2027-01");
+        Assert.Equal(0, Category(next, "groceries").Available);
+        Assert.Equal(75, next.ReadyToAssign);
     }
 
     [Fact]
