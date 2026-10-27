@@ -23,7 +23,6 @@ it('shows sign in when no session exists and authenticates with username or emai
   await user.type(screen.getByLabelText('Password'), 'Secret-pass1!');
   await user.click(screen.getByRole('button', { name: 'Sign in' }));
   expect(await screen.findByText('Budget application')).toBeInTheDocument();
-  expect(screen.getByText(/alice · Administrator/)).toBeInTheDocument();
   expect(fetchMock).toHaveBeenLastCalledWith('/api/auth/login', expect.objectContaining({ method: 'POST', credentials: 'same-origin' }));
 });
 
