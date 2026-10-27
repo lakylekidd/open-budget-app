@@ -1,6 +1,6 @@
 # Milestone 3 — Goals, templates, and guided assignment
 
-**Status:** Planned
+**Status:** In progress — monthly Auto-Assign actions are implemented; target rules, templates and recommendation preview/apply workflows remain planned.
 
 ## Goal
 

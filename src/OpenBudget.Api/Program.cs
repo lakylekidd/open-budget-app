@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using OpenBudget.Api;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,6 +10,10 @@ var connectionString = builder.Configuration.GetConnectionString("budgetdatabase
     ?? builder.Configuration.GetConnectionString("BudgetDatabase")
     ?? "Host=localhost;Port=5432;Database=budgetboard;Username=budgetboard;Password=budgetboard_dev";
 builder.Services.AddDbContext<BudgetDbContext>(options => options.UseNpgsql(connectionString));
+var dataProtection = builder.Services.AddDataProtection().SetApplicationName("OpenBudget");
+var dataProtectionKeyPath = builder.Configuration["DataProtection:KeyPath"];
+if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
+    dataProtection.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeyPath));
 builder.Services.AddScoped<BudgetRequestContext>();
 builder.Services.AddOpenBudgetIdentity(builder.Environment);
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
@@ -24,6 +29,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 builder.Services.AddScoped<BudgetService>();
 builder.Services.AddScoped<BudgetOwnershipService>();
+builder.Services.AddScoped<BudgetSharingService>();
 builder.Services.AddScoped<EntitlementService>();
 builder.Services.AddScoped<IAuthorizationHandler, EntitlementAuthorizationHandler>();
 builder.Services.AddScoped<LongTermPlanningService>();
@@ -57,9 +63,10 @@ app.Use(async (context, next) =>
         {
             var userId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             var db = context.RequestServices.GetRequiredService<BudgetDbContext>();
-            var owned = userId is not null && await db.BudgetPlans.AsNoTracking()
-                .AnyAsync(x => x.Id == budgetId && x.OwnerUserId == userId && !x.IsArchived, context.RequestAborted);
-            if (!owned)
+            var accessible = userId is not null && await db.BudgetPlans.AsNoTracking()
+                .AnyAsync(x => x.Id == budgetId && !x.IsArchived && (x.OwnerUserId == userId ||
+                    db.BudgetMembers.Any(member => member.BudgetId == budgetId && member.UserId == userId)), context.RequestAborted);
+            if (!accessible)
             {
                 budgetContext.BudgetId = BudgetRequestContext.DefaultBudgetId;
                 context.Response.Cookies.Delete("openbudget.activeBudgetId", new CookieOptions { Path = "/", SameSite = SameSiteMode.Strict });
@@ -155,6 +162,7 @@ app.MapGet("/health", async (BudgetDbContext db, CancellationToken cancellationT
 app.MapAuthenticationEndpoints();
 EntitlementService.MapEndpoints(app);
 BudgetOwnershipService.MapEndpoints(app);
+BudgetSharingService.MapEndpoints(app);
 
 app.MapGet("/api/budget/{month}", async (string month, BudgetService budgets, LedgerGate gate, CancellationToken cancellationToken) =>
 {

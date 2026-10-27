@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { type Account, type CategoryOption, type Entry, type Split, loadCategories, parseMoney, requestJson, today } from './api';
+import { type Account, type CategoryOption, type Entry, type Split, loadCategoryBudget, parseMoney, requestJson, today } from './api';
+import { CategoryPicker } from './CategoryPicker';
 
 export type TransactionFields = { accountId: string; date: string; amount: number; payee: string; memo: string; categoryId: string | null; status: string; splits: Split[] };
 
@@ -15,13 +16,14 @@ export function TransactionForm({ accounts, entry, selectedAccount, busy, onSubm
   const [status, setStatus] = useState<string>(entry?.status ?? 'uncleared');
   const [splits, setSplits] = useState((entry?.splits ?? []).map(s => ({ categoryId: s.categoryId, amount: String(s.amount) })));
   const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [readyToAssign, setReadyToAssign] = useState<number | undefined>();
   const [payees, setPayees] = useState<string[]>([]);
   const [categoryState, setCategoryState] = useState('loading');
   const [error, setError] = useState('');
   useEffect(() => {
     const controller = new AbortController();
     setCategoryState('loading');
-    loadCategories(date, controller.signal).then(items => { setCategories(items); setCategoryState('ready'); })
+    loadCategoryBudget(date, controller.signal).then(result => { setCategories(result.categories); setReadyToAssign(result.readyToAssign); setCategoryState('ready'); })
       .catch(error => { if (error.name !== 'AbortError') setCategoryState('error'); });
     return () => controller.abort();
   }, [date]);
@@ -37,7 +39,7 @@ export function TransactionForm({ accounts, entry, selectedAccount, busy, onSubm
     await onSubmit({ accountId, date, amount: parsed, payee, memo, categoryId: splits.length ? null : categoryId || null, status,
       splits: parsedSplits as Split[] });
   }
-  const categoryOptions = categories.filter(c => !c.isArchived).map(c => <option key={c.id} value={c.id}>{c.name}</option>);
+  const categoryProps = { categories, readyToAssign, loading: categoryState === 'loading', error: categoryState === 'error' };
   return <form onSubmit={submit} className="ledger-form">
     <p>Use a negative amount for spending and a positive amount for income or refunds.</p>
     <label>Account<select value={accountId} disabled={busy || entry?.isOpening} onChange={e => setAccountId(e.target.value)} required>{accounts.filter(a => !a.isClosed).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
@@ -47,10 +49,10 @@ export function TransactionForm({ accounts, entry, selectedAccount, busy, onSubm
     {!entry?.isOpening && <>
       {categoryState === 'loading' && <p role="status">Loading categories…</p>}
       {categoryState === 'error' && <p role="alert">Could not load categories. Change the date to retry.</p>}
-      {!splits.length && <label>Category<select value={categoryId} onChange={e => setCategoryId(e.target.value)}><option value="">Ready to Assign / Needs category</option>{categoryOptions}</select></label>}
+      {!splits.length && <CategoryPicker {...categoryProps} value={categoryId} onChange={setCategoryId} />}
       <p className="ledger-hint">Uncategorized income adds to Ready to Assign. Uncategorized spending reduces it until you choose a category.</p>
       {splits.map((split, index) => <div className="split-row" key={index}>
-        <label>Split {index + 1} category<select required value={split.categoryId} onChange={e => setSplits(items => items.map((item, i) => i === index ? { ...item, categoryId: e.target.value } : item))}><option value="">Choose category</option>{categoryOptions}</select></label>
+        <label>Split {index + 1} category<CategoryPicker {...categoryProps} label={`Split ${index + 1} category`} value={split.categoryId} onChange={id => setSplits(items => items.map((item, i) => i === index ? { ...item, categoryId: id } : item))} /></label>
         <label>Split {index + 1} amount<input inputMode="decimal" required value={split.amount} onChange={e => setSplits(items => items.map((item, i) => i === index ? { ...item, amount: e.target.value } : item))} /></label>
         <button type="button" aria-label={`Remove split ${index + 1}`} onClick={() => setSplits(items => items.filter((_, i) => i !== index))}>×</button>
       </div>)}

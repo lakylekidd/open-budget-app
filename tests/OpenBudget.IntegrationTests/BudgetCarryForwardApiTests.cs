@@ -47,13 +47,32 @@ public sealed class BudgetCarryForwardApiTests(PostgresFixture fixture) : IClass
         Assert.Equal(400,(await Month(read,October)).ReadyToAssign);Assert.Equal(465,Assert.Single((await Accounts(read)).Accounts).Balance);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Uncovered_overspending_resets_the_next_category_and_withholds_the_shortfall_from_ready_to_assign(bool precreated)
+    {
+        await using var app=await fixture.CreateAppAsync();var c=app.CreateClient();var account=await Account(c);
+        if(precreated){await Month(c,September);await Month(c,October);}
+        var spend=await Spend(c,account,new(2026,8,15),-75);
+        await AssertAvailable(c,August,-75,0);await AssertAvailable(c,September,0,0);await AssertAvailable(c,October,0,0);
+        Assert.Equal(425,(await Month(c,September)).ReadyToAssign);Assert.Equal(425,(await Month(c,October)).ReadyToAssign);
+
+        await Put<MutationDto>(c,$"/api/transactions/{spend}",await Row(c,account,new(2026,8,15),-50));
+        await AssertAvailable(c,September,0,0);Assert.Equal(450,(await Month(c,September)).ReadyToAssign);
+        await Assign(c,August,20);await AssertAvailable(c,August,-30,20);await AssertAvailable(c,September,0,0);
+        Assert.Equal(450,(await Month(c,September)).ReadyToAssign);
+        await Assign(c,August,80);await AssertAvailable(c,August,30,80);await AssertAvailable(c,September,30,0);
+        Assert.Equal(420,(await Month(c,September)).ReadyToAssign);
+    }
+
     [Fact]
     public async Task Increasing_decreasing_and_removing_past_assignments_preserves_each_later_assignment_across_gaps_and_years()
     {
         await using var app=await fixture.CreateAppAsync();var c=app.CreateClient();var account=await Account(c);
         foreach(var month in new[]{September,October,"2026-12","2027-01"})await Month(c,month);
         await Assign(c,August,50);await Spend(c,account,new(2026,8,15),-35);await Assign(c,September,50);await Assign(c,October,10);
-        foreach(var (amount,sep,oct) in new[]{(80m,95m,105m),(20m,35m,45m),(0m,15m,25m),(50m,65m,75m)}){
+        foreach(var (amount,sep,oct) in new[]{(80m,95m,105m),(20m,50m,60m),(0m,50m,60m),(50m,65m,75m)}){
             await Assign(c,August,amount);await AssertAvailable(c,August,amount-35,amount);await AssertAvailable(c,September,sep,50);
             await AssertAvailable(c,October,oct,10);await AssertAvailable(c,"2027-01",oct,0);
         }
@@ -70,7 +89,7 @@ public sealed class BudgetCarryForwardApiTests(PostgresFixture fixture) : IClass
         var spend=await Spend(c,account,new(2026,8,15),-35);await AssertAvailable(c,October,75,10);
         await Put<MutationDto>(c,$"/api/transactions/{spend}",await Row(c,account,new(2026,8,15),-45));await AssertAvailable(c,October,65,10);
         var refund=await Spend(c,account,new(2026,8,20),5);await AssertAvailable(c,October,70,10);
-        await Put<MutationDto>(c,$"/api/transactions/{spend}",await Row(c,account,new(2026,8,15),-45,"transport"));await AssertAvailable(c,October,115,10);await AssertAvailable(c,October,-45,0,"transport");
+        await Put<MutationDto>(c,$"/api/transactions/{spend}",await Row(c,account,new(2026,8,15),-45,"transport"));await AssertAvailable(c,October,115,10);await AssertAvailable(c,October,0,0,"transport");Assert.Equal(345,(await Month(c,October)).ReadyToAssign);
         await Put<MutationDto>(c,$"/api/transactions/{spend}",await Row(c,account,new(2026,9,15),-45));await AssertAvailable(c,August,55,50);await AssertAvailable(c,September,60,50);await AssertAvailable(c,October,70,10);await AssertAvailable(c,October,0,0,"transport");
         var reserve=await Account(c,amount:0);await Post<MutationDto>(c,"/api/transfers",new TransferRequest(Guid.NewGuid(),(await Accounts(c)).Version,account,reserve,new(2026,8,25),20,"Internal transfer"));await AssertAvailable(c,October,70,10);Assert.Equal(390,(await Month(c,October)).ReadyToAssign);
         await Delete(c,spend);await AssertAvailable(c,October,115,10);await Delete(c,refund);await AssertAvailable(c,October,110,10);
@@ -151,10 +170,11 @@ public sealed class BudgetCarryForwardApiTests(PostgresFixture fixture) : IClass
         }
         for(var pass=0;pass<12;pass++){
             var changed=(pass*5)%months.Length;assigned[changed]=(pass*17+3)/100m;await Assign(c,months[changed],assigned[changed]);
-            decimal available=0,totalAssigned=0;
+            decimal available=0,readyToAssign=500;
             for(var i=0;i<months.Length;i++){
-                available+=assigned[i]+activity[i];totalAssigned+=assigned[i];var actual=await Month(c,months[i]);
-                Assert.Equal(available,Electricity(actual).Available);Assert.Equal(assigned[i],Electricity(actual).Assigned);Assert.Equal(activity[i],Electricity(actual).Activity);Assert.Equal(500-totalAssigned,actual.ReadyToAssign);
+                if(i>0){readyToAssign+=Math.Min(available,0);available=Math.Max(available,0);}
+                readyToAssign-=assigned[i];available+=assigned[i]+activity[i];var actual=await Month(c,months[i]);
+                Assert.Equal(available,Electricity(actual).Available);Assert.Equal(assigned[i],Electricity(actual).Assigned);Assert.Equal(activity[i],Electricity(actual).Activity);Assert.Equal(readyToAssign,actual.ReadyToAssign);
                 Assert.Equivalent(actual,await Month(c,months[i]),strict:true);
             }
         }

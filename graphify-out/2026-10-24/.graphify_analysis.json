@@ -1,0 +1,395 @@
+{
+  "communities": {
+    "0": [
+      "ref_react",
+      "ref_react_dom",
+      "src_openbudget_ui_src_app",
+      "src_openbudget_ui_src_app_amountfrominput",
+      "src_openbudget_ui_src_app_app",
+      "src_openbudget_ui_src_app_app_addcategory",
+      "src_openbudget_ui_src_app_app_addfunds",
+      "src_openbudget_ui_src_app_app_addgroup",
+      "src_openbudget_ui_src_app_app_applymove",
+      "src_openbudget_ui_src_app_app_changemonth",
+      "src_openbudget_ui_src_app_app_matchesfilter",
+      "src_openbudget_ui_src_app_app_movecategory",
+      "src_openbudget_ui_src_app_app_movegroup",
+      "src_openbudget_ui_src_app_app_redo",
+      "src_openbudget_ui_src_app_app_renameplan",
+      "src_openbudget_ui_src_app_app_resolveconflict",
+      "src_openbudget_ui_src_app_app_saveedit",
+      "src_openbudget_ui_src_app_app_startedit",
+      "src_openbudget_ui_src_app_app_togglecategoryarchived",
+      "src_openbudget_ui_src_app_app_togglegroup",
+      "src_openbudget_ui_src_app_app_togglegrouparchived",
+      "src_openbudget_ui_src_app_app_undo",
+      "src_openbudget_ui_src_app_app_updatecategory",
+      "src_openbudget_ui_src_app_budgetplan",
+      "src_openbudget_ui_src_app_budgetstate",
+      "src_openbudget_ui_src_app_category",
+      "src_openbudget_ui_src_app_categorygroup",
+      "src_openbudget_ui_src_app_currency",
+      "src_openbudget_ui_src_app_filter",
+      "src_openbudget_ui_src_app_filters",
+      "src_openbudget_ui_src_app_icon",
+      "src_openbudget_ui_src_app_initialgroups",
+      "src_openbudget_ui_src_app_money",
+      "src_openbudget_ui_src_app_shortmonthtext",
+      "src_openbudget_ui_src_main",
+      "src_openbudget_ui_src_styles"
+    ],
+    "1": [
+      "cancellationtoken",
+      "iqueryable",
+      "src_openbudget_api_budgetcontracts_openbudget_api_budgetplandto",
+      "src_openbudget_api_budgetcontracts_openbudget_api_budgetplanupdateresult",
+      "src_openbudget_api_budgetcontracts_openbudget_api_budgetplanupdateresult_conflict",
+      "src_openbudget_api_budgetcontracts_openbudget_api_budgetplanupdateresult_invalid",
+      "src_openbudget_api_budgetcontracts_openbudget_api_budgetplanupdateresult_success",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetentity",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetentity_budgetid",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetentity_fundsadded",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetentity_groups",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetentity_month",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetentity_note",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetentity_openingreadytoassign",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetentity_plan",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetentity_version",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetplanentity",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetplanentity_currency",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetplanentity_id",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetplanentity_months",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetplanentity_name",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetplanentity_version",
+      "src_openbudget_api_budgetservice_openbudget_api_budgetservice",
+      "src_openbudget_api_budgetservice_openbudget_api_budgetservice_calculatereadytoassign",
+      "src_openbudget_api_budgetservice_openbudget_api_budgetservice_createnextmonth",
+      "src_openbudget_api_budgetservice_openbudget_api_budgetservice_createstartermonth",
+      "src_openbudget_api_budgetservice_openbudget_api_budgetservice_getmonthasync",
+      "src_openbudget_api_budgetservice_openbudget_api_budgetservice_getplanasync",
+      "src_openbudget_api_budgetservice_openbudget_api_budgetservice_ismoney",
+      "src_openbudget_api_budgetservice_openbudget_api_budgetservice_querymonth",
+      "src_openbudget_api_budgetservice_openbudget_api_budgetservice_toplandto",
+      "src_openbudget_api_budgetservice_openbudget_api_budgetservice_updateplanasync",
+      "src_openbudget_api_budgetservice_openbudget_api_budgetservice_validate",
+      "task"
+    ],
+    "2": [
+      "dbcontext",
+      "dbcontextoptions",
+      "dbset",
+      "modelbuilder",
+      "modelsnapshot",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetdbcontext",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetdbcontext_budgetplans",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetdbcontext_budgets",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetdbcontext_categories",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetdbcontext_categorygroups",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_budgetdbcontext_onmodelcreating",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categoryentity",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categoryentity_activity",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categoryentity_assigned",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categoryentity_available",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categoryentity_budgetmonth",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categoryentity_groupid",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categoryentity_icon",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categoryentity_id",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categoryentity_isarchived",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categoryentity_name",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categoryentity_openingavailable",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categoryentity_snoozed",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categoryentity_sortorder",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categoryentity_target",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categorygroupentity",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categorygroupentity_budgetmonth",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categorygroupentity_categories",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categorygroupentity_id",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categorygroupentity_isarchived",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categorygroupentity_name",
+      "src_openbudget_api_budgetdbcontext_openbudget_api_categorygroupentity_sortorder",
+      "src_openbudget_api_migrations_budgetdbcontextmodelsnapshot_openbudget_api_migrations_budgetdbcontextmodelsnapshot",
+      "src_openbudget_api_migrations_budgetdbcontextmodelsnapshot_openbudget_api_migrations_budgetdbcontextmodelsnapshot_buildmodel"
+    ],
+    "3": [
+      "csharp_namespace:4a02a0e133a09470",
+      "csharp_namespace:5ded6e9bd3f7a169",
+      "microsoft_entityframeworkcore",
+      "microsoft_entityframeworkcore_infrastructure",
+      "microsoft_entityframeworkcore_migrations",
+      "microsoft_entityframeworkcore_storage_valueconversion",
+      "migration",
+      "migrationbuilder",
+      "npgsql_entityframeworkcore_postgresql_metadata",
+      "src_openbudget_api_budgetdbcontext",
+      "src_openbudget_api_budgetservice",
+      "src_openbudget_api_migrations_20261021064416_initialcreate",
+      "src_openbudget_api_migrations_20261021064416_initialcreate_designer",
+      "src_openbudget_api_migrations_20261021064416_initialcreate_designer_openbudget_api_migrations_initialcreate",
+      "src_openbudget_api_migrations_20261021064416_initialcreate_designer_openbudget_api_migrations_initialcreate_buildtargetmodel",
+      "src_openbudget_api_migrations_20261021064416_initialcreate_openbudget_api_migrations_initialcreate_down",
+      "src_openbudget_api_migrations_20261021064416_initialcreate_openbudget_api_migrations_initialcreate_up",
+      "src_openbudget_api_migrations_20261021145111_budgetcore",
+      "src_openbudget_api_migrations_20261021145111_budgetcore_designer",
+      "src_openbudget_api_migrations_20261021145111_budgetcore_designer_openbudget_api_migrations_budgetcore",
+      "src_openbudget_api_migrations_20261021145111_budgetcore_designer_openbudget_api_migrations_budgetcore_buildtargetmodel",
+      "src_openbudget_api_migrations_20261021145111_budgetcore_openbudget_api_migrations_budgetcore_down",
+      "src_openbudget_api_migrations_20261021145111_budgetcore_openbudget_api_migrations_budgetcore_up",
+      "src_openbudget_api_migrations_20261021145927_namedbudget",
+      "src_openbudget_api_migrations_20261021145927_namedbudget_designer",
+      "src_openbudget_api_migrations_20261021145927_namedbudget_designer_openbudget_api_migrations_namedbudget",
+      "src_openbudget_api_migrations_20261021145927_namedbudget_designer_openbudget_api_migrations_namedbudget_buildtargetmodel",
+      "src_openbudget_api_migrations_20261021145927_namedbudget_openbudget_api_migrations_namedbudget_down",
+      "src_openbudget_api_migrations_20261021145927_namedbudget_openbudget_api_migrations_namedbudget_up",
+      "src_openbudget_api_migrations_budgetdbcontextmodelsnapshot",
+      "src_openbudget_api_program",
+      "system_text_regularexpressions"
+    ],
+    "4": [
+      "ref_types_react",
+      "ref_types_react_dom",
+      "ref_typescript",
+      "ref_vite",
+      "ref_vitejs_plugin_react",
+      "src_openbudget_ui_package",
+      "src_openbudget_ui_package_dependencies",
+      "src_openbudget_ui_package_dependencies_react",
+      "src_openbudget_ui_package_dependencies_react_dom",
+      "src_openbudget_ui_package_devdependencies",
+      "src_openbudget_ui_package_devdependencies_types_react",
+      "src_openbudget_ui_package_devdependencies_types_react_dom",
+      "src_openbudget_ui_package_devdependencies_typescript",
+      "src_openbudget_ui_package_devdependencies_vite",
+      "src_openbudget_ui_package_devdependencies_vitejs_plugin_react",
+      "src_openbudget_ui_package_name",
+      "src_openbudget_ui_package_private",
+      "src_openbudget_ui_package_scripts",
+      "src_openbudget_ui_package_scripts_build",
+      "src_openbudget_ui_package_scripts_dev",
+      "src_openbudget_ui_package_scripts_preview",
+      "src_openbudget_ui_package_type",
+      "src_openbudget_ui_package_version",
+      "src_openbudget_ui_vite_config"
+    ],
+    "5": [
+      "src_openbudget_apphost_properties_launchsettings",
+      "src_openbudget_apphost_properties_launchsettings_environmentvariables_aspire_dashboard_otlp_endpoint_url",
+      "src_openbudget_apphost_properties_launchsettings_environmentvariables_aspire_resource_service_endpoint_url",
+      "src_openbudget_apphost_properties_launchsettings_environmentvariables_aspnetcore_environment",
+      "src_openbudget_apphost_properties_launchsettings_environmentvariables_dotnet_environment",
+      "src_openbudget_apphost_properties_launchsettings_http_applicationurl",
+      "src_openbudget_apphost_properties_launchsettings_http_commandname",
+      "src_openbudget_apphost_properties_launchsettings_http_dotnetrunmessages",
+      "src_openbudget_apphost_properties_launchsettings_http_environmentvariables",
+      "src_openbudget_apphost_properties_launchsettings_http_launchbrowser",
+      "src_openbudget_apphost_properties_launchsettings_https_applicationurl",
+      "src_openbudget_apphost_properties_launchsettings_https_commandname",
+      "src_openbudget_apphost_properties_launchsettings_https_dotnetrunmessages",
+      "src_openbudget_apphost_properties_launchsettings_https_environmentvariables",
+      "src_openbudget_apphost_properties_launchsettings_https_launchbrowser",
+      "src_openbudget_apphost_properties_launchsettings_profiles",
+      "src_openbudget_apphost_properties_launchsettings_profiles_http",
+      "src_openbudget_apphost_properties_launchsettings_profiles_https",
+      "src_openbudget_apphost_properties_launchsettings_schema"
+    ],
+    "6": [
+      "src_openbudget_ui_tsconfig",
+      "src_openbudget_ui_tsconfig_compileroptions",
+      "src_openbudget_ui_tsconfig_compileroptions_allowimportingtsextensions",
+      "src_openbudget_ui_tsconfig_compileroptions_isolatedmodules",
+      "src_openbudget_ui_tsconfig_compileroptions_jsx",
+      "src_openbudget_ui_tsconfig_compileroptions_lib",
+      "src_openbudget_ui_tsconfig_compileroptions_module",
+      "src_openbudget_ui_tsconfig_compileroptions_moduleresolution",
+      "src_openbudget_ui_tsconfig_compileroptions_noemit",
+      "src_openbudget_ui_tsconfig_compileroptions_nofallthroughcasesinswitch",
+      "src_openbudget_ui_tsconfig_compileroptions_nounusedlocals",
+      "src_openbudget_ui_tsconfig_compileroptions_nounusedparameters",
+      "src_openbudget_ui_tsconfig_compileroptions_resolvejsonmodule",
+      "src_openbudget_ui_tsconfig_compileroptions_skiplibcheck",
+      "src_openbudget_ui_tsconfig_compileroptions_strict",
+      "src_openbudget_ui_tsconfig_compileroptions_target",
+      "src_openbudget_ui_tsconfig_compileroptions_usedefineforclassfields",
+      "src_openbudget_ui_tsconfig_include"
+    ],
+    "7": [
+      "src_openbudget_api_properties_launchsettings",
+      "src_openbudget_api_properties_launchsettings_environmentvariables_aspnetcore_environment",
+      "src_openbudget_api_properties_launchsettings_http_applicationurl",
+      "src_openbudget_api_properties_launchsettings_http_commandname",
+      "src_openbudget_api_properties_launchsettings_http_dotnetrunmessages",
+      "src_openbudget_api_properties_launchsettings_http_environmentvariables",
+      "src_openbudget_api_properties_launchsettings_http_launchbrowser",
+      "src_openbudget_api_properties_launchsettings_https_applicationurl",
+      "src_openbudget_api_properties_launchsettings_https_commandname",
+      "src_openbudget_api_properties_launchsettings_https_dotnetrunmessages",
+      "src_openbudget_api_properties_launchsettings_https_environmentvariables",
+      "src_openbudget_api_properties_launchsettings_https_launchbrowser",
+      "src_openbudget_api_properties_launchsettings_profiles",
+      "src_openbudget_api_properties_launchsettings_profiles_http",
+      "src_openbudget_api_properties_launchsettings_profiles_https",
+      "src_openbudget_api_properties_launchsettings_schema"
+    ],
+    "8": [
+      "list",
+      "src_openbudget_api_budgetcontracts",
+      "src_openbudget_api_budgetcontracts_openbudget_api_budgetdto",
+      "src_openbudget_api_budgetcontracts_openbudget_api_budgetdto_from",
+      "src_openbudget_api_budgetcontracts_openbudget_api_budgetplanupdatedto",
+      "src_openbudget_api_budgetcontracts_openbudget_api_budgetupdatedto",
+      "src_openbudget_api_budgetcontracts_openbudget_api_budgetupdateresult",
+      "src_openbudget_api_budgetcontracts_openbudget_api_budgetupdateresult_conflict",
+      "src_openbudget_api_budgetcontracts_openbudget_api_budgetupdateresult_invalid",
+      "src_openbudget_api_budgetcontracts_openbudget_api_budgetupdateresult_success",
+      "src_openbudget_api_budgetcontracts_openbudget_api_categorydto",
+      "src_openbudget_api_budgetcontracts_openbudget_api_categorygroupdto",
+      "src_openbudget_api_budgetcontracts_openbudget_api_categorygroupupdatedto",
+      "src_openbudget_api_budgetcontracts_openbudget_api_categoryupdatedto",
+      "src_openbudget_api_budgetservice_openbudget_api_budgetservice_updatemonthasync"
+    ],
+    "9": [
+      "nuget_aspire_hosting_javascript",
+      "nuget_aspire_hosting_postgresql",
+      "nuget_microsoft_entityframeworkcore_design",
+      "nuget_npgsql_entityframeworkcore_postgresql",
+      "openbudget",
+      "sdk_aspire_apphost_sdk_13_6_2",
+      "sdk_microsoft_net_sdk_web",
+      "src_openbudget_api_openbudget_api",
+      "src_openbudget_api_openbudget_api_csproj_framework_net10_0",
+      "src_openbudget_apphost_openbudget_apphost"
+    ],
+    "10": [
+      "src_openbudget_apphost_apphost"
+    ],
+    "11": [
+      "src_openbudget_ui_src_vite_env_d"
+    ]
+  },
+  "cohesion": {
+    "0": 0.0746031746031746,
+    "1": 0.10160427807486631,
+    "2": 0.06417112299465241,
+    "3": 0.12903225806451613,
+    "4": 0.08695652173913043,
+    "5": 0.1286549707602339,
+    "6": 0.1111111111111111,
+    "7": 0.13333333333333333,
+    "8": 0.29523809523809524,
+    "9": 0.24444444444444444,
+    "10": 1.0,
+    "11": 1.0
+  },
+  "gods": [
+    {
+      "id": "src_openbudget_ui_src_app_app",
+      "label": "App()",
+      "degree": 24
+    },
+    {
+      "id": "src_openbudget_api_budgetdbcontext_openbudget_api_budgetentity",
+      "label": "BudgetEntity",
+      "degree": 20
+    },
+    {
+      "id": "src_openbudget_api_budgetdbcontext_openbudget_api_categoryentity",
+      "label": "CategoryEntity",
+      "degree": 20
+    },
+    {
+      "id": "src_openbudget_ui_tsconfig_compileroptions",
+      "label": "compilerOptions",
+      "degree": 16
+    },
+    {
+      "id": "src_openbudget_api_budgetdbcontext_openbudget_api_categorygroupentity",
+      "label": "CategoryGroupEntity",
+      "degree": 15
+    },
+    {
+      "id": "src_openbudget_api_budgetdbcontext_openbudget_api_budgetdbcontext",
+      "label": "BudgetDbContext",
+      "degree": 14
+    },
+    {
+      "id": "src_openbudget_api_budgetservice_openbudget_api_budgetservice",
+      "label": "BudgetService",
+      "degree": 13
+    },
+    {
+      "id": "src_openbudget_api_budgetdbcontext_openbudget_api_budgetplanentity",
+      "label": "BudgetPlanEntity",
+      "degree": 12
+    },
+    {
+      "id": "csharp_namespace:4a02a0e133a09470",
+      "label": "OpenBudget.Api",
+      "degree": 8
+    },
+    {
+      "id": "src_openbudget_api_budgetcontracts_openbudget_api_budgetdto",
+      "label": "BudgetDto",
+      "degree": 7
+    }
+  ],
+  "surprises": [
+    {
+      "source": "BudgetService",
+      "target": "BudgetDbContext",
+      "source_files": [
+        "src/OpenBudget.Api/BudgetService.cs",
+        "src/OpenBudget.Api/BudgetDbContext.cs"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "OpenBudget.AppHost",
+      "target": "net10.0",
+      "source_files": [
+        "src/OpenBudget.AppHost/OpenBudget.AppHost.csproj",
+        "src/OpenBudget.Api/OpenBudget.Api.csproj"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "references",
+      "why": "peripheral node `net10.0` unexpectedly reaches hub `OpenBudget.AppHost`"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `CategoryEntity` connect `CategoryEntity` to `.UpdateMonthAsync`, `BudgetEntity`, `OpenBudget.Api`?",
+      "why": "High betweenness centrality (0.052) - this node is a cross-community bridge."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 3 inferred relationships involving `CategoryEntity` (e.g. with `.CreateNextMonth()` and `.CreateStarterMonth()`) actually correct?",
+      "why": "`CategoryEntity` has 3 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `BudgetId`, `FundsAdded`, `Groups` to the rest of the system?",
+      "why": "45 weakly-connected nodes found - possible documentation gaps or missing edges."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `App` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.0746031746031746 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `OpenBudget.Api` connect `OpenBudget.Api` to `.UpdateMonthAsync`?",
+      "why": "High betweenness centrality (0.048) - this node is a cross-community bridge."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 3 inferred relationships involving `CategoryGroupEntity` (e.g. with `.CreateNextMonth()` and `.CreateStarterMonth()`) actually correct?",
+      "why": "`CategoryGroupEntity` has 3 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `BudgetEntity` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.10160427807486631 - nodes in this community are weakly interconnected."
+    }
+  ]
+}

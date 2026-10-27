@@ -16,11 +16,13 @@ it('shows sign in when no session exists and authenticates with username or emai
   vi.stubGlobal('fetch', fetchMock);
   render(<AuthGate><div>Budget application</div></AuthGate>);
   const user = userEvent.setup();
+  expect(await screen.findByRole('img', { name: 'OpenBudget' })).toBeInTheDocument();
+  expect(screen.getByText('Make every euro feel intentional.')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Forgot password?' })).toHaveClass('auth-recovery-link');
   await user.type(await screen.findByLabelText('Username or email'), 'alice@example.test');
   await user.type(screen.getByLabelText('Password'), 'Secret-pass1!');
   await user.click(screen.getByRole('button', { name: 'Sign in' }));
   expect(await screen.findByText('Budget application')).toBeInTheDocument();
-  expect(screen.getByText(/alice · Administrator/)).toBeInTheDocument();
   expect(fetchMock).toHaveBeenLastCalledWith('/api/auth/login', expect.objectContaining({ method: 'POST', credentials: 'same-origin' }));
 });
 

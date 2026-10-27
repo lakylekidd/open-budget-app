@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { defaultFlags } from './Flags';
@@ -40,7 +40,7 @@ beforeEach(() => {
       if (failMutation === 'conflict') { failMutation = null; return response({ error: 'The ledger changed in another session.' }, 409); }
       return response({ id: 'saved', version: 4 });
     }
-    if (path.startsWith('/api/schedules')) return response({version:3,page:1,pageSize:25,total:scheduledItems.length,items:scheduledItems});
+    if (path.startsWith('/api/schedules')) {const accountId=new URL(path,'http://localhost').searchParams.get('accountId');const items=scheduledItems.filter(item=>!accountId||item.transaction.accountId===accountId);return response({version:3,page:1,pageSize:25,total:items.length,items});}
     if (path === '/api/flags') return response({version:3,flags:defaultFlags});
     if (path.startsWith('/api/transactions')) return failRead ? response({ error: 'Database unavailable' }, 503) : response(register);
     if (path.startsWith('/api/budget/')) return response({ groups: [{ categories: [{ id: 'food', name: 'Food' }] }] });
@@ -53,6 +53,18 @@ beforeEach(() => {
 
 function show(selectedAccount = '') { const onChanged = vi.fn(); render(<AccountsPage selectedAccount={selectedAccount} onSelectAccount={vi.fn()} onChanged={onChanged} onMenu={vi.fn()} />); return onChanged; }
 async function ready() { await screen.findByRole('button', { name: 'Edit Shop 2026-10-21' }); }
+
+it('resizes every visible register column and persists the selected column width', async () => {
+  show('checking'); await ready();
+  const handle = screen.getByRole('separator', { name: 'Resize payee column' });
+  const payeeColumn = handle.closest('th')?.cellIndex;
+  expect(screen.getAllByRole('separator', { name: /^Resize .* column$/ })).toHaveLength(12);
+  fireEvent.pointerDown(handle, { pointerId: 1, clientX: 200 });
+  fireEvent.pointerMove(handle, { pointerId: 1, clientX: 260 });
+  fireEvent.pointerUp(handle, { pointerId: 1, clientX: 260 });
+  await waitFor(() => expect(views['/api/register-views/checking']?.columnWidths.payee).toBe(260));
+  expect(screen.getAllByRole('columnheader')[payeeColumn!].querySelector('.register-resize-handle')).toBeInTheDocument();
+});
 
 it('shows and selects a later projected occurrence opened from annual planning', async () => {
   const projected = { ...register.items[0], id: 'future-occurrence', date: '2027-06-01', amount: -25, payee: 'Rent', categoryId: 'food', needsAttention: false };
@@ -366,7 +378,14 @@ it('expands scheduled rows, posts Enter Now explicitly, and keeps forecast actio
  show('checking');await ready();await screen.findByRole('button',{name:'Edit Employer 2036-10-25'});
  await userEvent.click(screen.getByText('Next salary'));expect(screen.queryByText('1 selected')).not.toBeInTheDocument();await userEvent.click(screen.getByRole('button',{name:'More account actions'}));expect(screen.getByRole('button',{name:'Enter Now'})).toBeEnabled();
  await userEvent.click(screen.getByRole('button',{name:'Enter Now'}));await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0]).toMatchObject({path:'/api/schedules/rule/actions',body:{action:'post',occurrenceId:'occurrence'}});
- await ready();await userEvent.click(screen.getByRole('button',{name:/Scheduled Transactions/}));expect(screen.queryByText('Next salary')).not.toBeInTheDocument();
+ await ready();const scheduledToggle=screen.getByRole('button',{name:/Scheduled Transactions/});expect(scheduledToggle).toHaveAttribute('aria-expanded','true');await userEvent.click(scheduledToggle);expect(scheduledToggle).toHaveAttribute('aria-expanded','false');expect(screen.queryByText('Next salary')).not.toBeInTheDocument();
+});
+
+it('hides scheduled transactions for an account without any',async()=>{
+ scheduledItems=[{id:'rule',occurrenceId:'occurrence',repeat:'monthly',startDate:'2036-10-25',isPaused:false,endDate:null,count:null,toAccountId:null,transaction:{...register.items[0],id:'occurrence',accountId:'savings',date:'2036-10-25'}}];
+ show('checking');await ready();
+ await waitFor(()=>expect(vi.mocked(fetch).mock.calls.some(([path])=>String(path).startsWith('/api/schedules?')&&String(path).includes('accountId=checking'))).toBe(true));
+ expect(screen.queryByRole('button',{name:/Scheduled Transactions/})).not.toBeInTheDocument();
 });
 
 it('shows the approval banner and review i only for unapproved entries and sends explicit review/filter commands',async()=>{

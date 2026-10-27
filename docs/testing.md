@@ -32,7 +32,8 @@ UI tests use Vitest, jsdom and Testing Library with controlled API responses. Th
 | Rollback after intermediate saves, including future months | `Simulated_persistence_failure_rolls_back_both_transfer_legs_budget_and_receipt`; `Simulated_spending_failure_rolls_back_activity_income_and_future_carry_forward` |
 | Historical/date/account edits, future carry-forward and restart | `Historical_edits_propagate_into_existing_later_months_and_survive_restart`; `Moving_a_transaction_between_months_and_accounts_reverses_original_activity` |
 | Move a category between groups without losing assignment/activity or transaction labels | `Moving_a_category_between_groups_preserves_its_budget_state_and_transaction_identity` |
-| Plan category activity, account focus, upcoming shortfalls, drag ordering and progress display | `App.test.tsx`; `planHelpers.test.ts` |
+| Plan category activity, account focus, exclusive row-background and Assigned-input selection, checkbox multi-selection and Assigned focus, group and selected-subcategory rename popovers, selected-month upcoming activity in category details and its transaction popup, Available move/cover-overspending dialogs, zero Available disabled state, selected-month upcoming shortfall warning markers and projected progress bars (including collapsed groups, exact-zero and future-month boundaries), drag ordering and progress display | `App.test.tsx`; `planHelpers.test.ts` |
+| Auto-Assign current-month scheduled shortfalls, all-category vs selected-category scope, previous-month actuals, trailing 12-month averages, reset actions, Ready to Assign limits, and manual category assignment | `planAutoAssign.test.ts`; `App.test.tsx` |
 | Upgrade preserving legacy activity/balances | `Upgrade_preserves_legacy_activity_and_available_values` applies old migrations, seeds legacy rows, then upgrades |
 | Server-owned calculations and invalid/unknown/archived input | `Plan_cannot_fabricate_income_or_change_server_owned_activity`; `Invalid_requests_do_not_change_balance_budget_version_or_audit`; `Archived_categories_invalid_transfers_and_missing_commands_do_not_write` |
 | Money precision, exact splits, refund/transfer rules, cleared balances | `LedgerRulesTests` and money-input unit tests |
@@ -43,6 +44,7 @@ UI tests use Vitest, jsdom and Testing Library with controlled API responses. Th
 | Non-Development startup rejects missing bootstrap credentials without provisioning the Development-only `admin` account | `AuthenticationApiTests.Non_development_bootstrap_requires_configured_credentials_and_does_not_create_development_admin` |
 | Identity and budget-scope migrations preserve legacy assignments, account/transaction rows, and assign the default budget to the configured bootstrap administrator | `AuthenticationApiTests.Identity_and_budget_scope_migrations_preserve_legacy_financial_data_and_assign_it_to_development_admin` |
 | Owner-only budget/month reads and writes, including administrator denial of another user's private Plan data; legacy ledger isolation, unique month snapshots, budget switching, persisted selection, create/rename/archive/restore/delete UI and versioned deletion | `AuthenticationApiTests.Admin_user_lifecycle_is_role_protected_and_audited`; `BudgetOwnershipApiTests.Legacy_ledger_recalculation_and_planning_reads_do_not_cross_owned_budget_snapshots`; `BudgetOwnershipApiTests.Owner_can_permanently_delete_a_budget_and_its_plan_only_with_current_version`; `App.test.tsx` |
+| Budget Together invitations, existing and newly registered collaborator access, owner-only member management, cookie-scoped shared financial access, and actor-attributed Recent Moves | `BudgetOwnershipApiTests.Owner_can_invite_collaborators_and_recent_plan_actions_include_the_actor`; `PlanActionRulesTests`; `App.test.tsx` |
 | Membership downgrade retains existing budgets while blocking creation over the new limit | `AuthenticationApiTests.Admin_user_lifecycle_is_role_protected_and_audited` |
 
 ## Milestone 2a final verification (2026-10-23)
@@ -55,6 +57,7 @@ UI tests use Vitest, jsdom and Testing Library with controlled API responses. Th
 | Membership subscription metadata validates ordered dates and persists start, expiration, provider and external ID through the administrator API/UI | `AuthenticationApiTests.Admin_user_lifecycle_is_role_protected_and_audited`; `AdminPanel.test.tsx` |
 | Membership entitlements default to deny, tier settings and user allow/deny overrides drive authorization requirements, clearing an override restores the tier default, and admin changes are audited | `MembershipEntitlementApiTests.Plan_entitlements_and_user_overrides_drive_reusable_authorization_requirements`; `EntitlementKeyTests` |
 | Registration disabled by default, email verification, password recovery and single-use reset tokens | `AuthenticationApiTests.Registration_is_disabled_by_default_and_open_registration_requires_email_confirmation`; `AuthGate.test.tsx` |
+| Administrator-only encrypted SMTP configuration, safe status response, branded HTML/plain-text test email and delivery audit | `AuthenticationApiTests.Administrator_can_manage_encrypted_email_settings_and_send_a_branded_test_message`; `AdminPanel.test.tsx` |
 | New users receive membership but no budget until they explicitly create one | `AuthenticationApiTests.Registration_is_disabled_by_default_and_open_registration_requires_email_confirmation` |
 | Administrator role boundary, dashboard status/budget/tier counts, recent registrations and security events, user search/status filters, registration mode, approval, suspension/reactivation, bootstrap protection, unlock behavior and audit | `AuthenticationApiTests.Admin_user_lifecycle_is_role_protected_and_audited`; `AdminPanel.test.tsx` |
 | Administrator invitation creates an unverified account with the selected membership, sends an expiring verification link without exposing credentials, enforces the role boundary, audits the action and removes the account when email delivery fails | `AuthenticationApiTests.Administrator_invites_verified_email_user_without_exposing_a_password_or_token`; `AdminPanel.test.tsx` |
@@ -151,7 +154,8 @@ The live browser scenario used the isolated `openbudget-rollover-smoke` PostgreS
 
 | Behavior | Automated coverage |
 |---|---|
-| Plan-style month grid with planned/actual subrows and editable Assigned inputs | `LongTermPlanning.test.tsx` |
+| Plan-style month grid with planned/actual subrows and click-to-edit Assigned amounts | `LongTermPlanning.test.tsx` |
+| Planned/actual Available colors negative values red and zero-or-positive values green, including category and group totals | `LongTermPlanning.test.tsx` |
 | Current-year default, year navigation, past/current/future edit states | `LongTermPlanning.test.tsx` |
 | Effective month overrides, later-override protection and override removal | `LongTermPlanningTests` and `longTermPlanningMath.test.ts` |
 | Planned available carry across the year boundary with decimal cents | `LongTermPlanningTests`; `LongTermPlanningApiTests.Planned_available_and_actual_available_carry_across_year_boundary_without_creating_actual_months` |

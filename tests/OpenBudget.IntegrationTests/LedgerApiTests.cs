@@ -113,15 +113,16 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
         await using var app = await fixture.CreateAppAsync(); var client = app.CreateClient();
         var account = await AddAccount(client, 100);
         var spend = await AddTransaction(client, account, -10, "groceries");
-        var next = await client.GetFromJsonAsync<BudgetDto>("/api/budget/2027-01");
-        Assert.Equal(-10, Category(next!, "groceries").Available);
+        var next = (await client.GetFromJsonAsync<BudgetDto>("/api/budget/2027-01"))!;
+        Assert.Equal(0, Category(next, "groceries").Available);
+        Assert.Equal(90, next.ReadyToAssign);
         await Put<MutationDto>(client, $"/api/transactions/{spend.Id}", await Request(client, account, -25, "groceries"));
         await AddTransaction(client, account, 50);
         await using var restarted = new TestApp(app.ConnectionString);
         var read = restarted.CreateClient();
-        next = await read.GetFromJsonAsync<BudgetDto>("/api/budget/2027-01");
-        Assert.Equal(-25, Category(next!, "groceries").Available);
-        Assert.Equal(150, next!.ReadyToAssign);
+        next = (await read.GetFromJsonAsync<BudgetDto>("/api/budget/2027-01"))!;
+        Assert.Equal(0, Category(next, "groceries").Available);
+        Assert.Equal(125, next.ReadyToAssign);
         Assert.Equal(125, (await Accounts(read)).Accounts[0].Balance);
         // Replaying reads must not reapply carry-forward deltas.
         Assert.Equivalent(next, await Get<BudgetDto>(read, "/api/budget/2027-01"), strict: true);
@@ -315,7 +316,9 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
         Assert.Equivalent(future, await Get<BudgetDto>(client, "/api/budget/2027-01"), strict: true);
         Assert.Equal(100, (await Accounts(client)).Accounts[0].Balance);
         await Post<MutationDto>(client, "/api/transactions", request);
-        Assert.Equal(-25, Category(await Get<BudgetDto>(client, "/api/budget/2027-01"), "groceries").Available);
+        var next = await Get<BudgetDto>(client, "/api/budget/2027-01");
+        Assert.Equal(0, Category(next, "groceries").Available);
+        Assert.Equal(75, next.ReadyToAssign);
     }
 
     [Fact]
@@ -406,9 +409,9 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
         var one = await AddAccount(client, 123.45m); var two = await AddAccount(client, 5);
         var path = $"/api/register-views/{one}";
         var defaults = await Get<RegisterViewDto>(client, path);
-        Assert.Equal(new RegisterViewDto(0, "allDates", null, null, true, true, true, true), defaults);
+        Assert.Equal(new RegisterViewDto(0, "allDates", null, null, true, true, true, true, []), defaults);
         var before = await Accounts(client);
-        var selected = defaults with { DatePreset = "custom", FromMonth = "2024-02", ToMonth = "2036-10", ShowReconciled = false, ShowRunningBalance = false, ShowFlags = false, ShowImages = false };
+        var selected = defaults with { DatePreset = "custom", FromMonth = "2024-02", ToMonth = "2036-10", ShowReconciled = false, ShowRunningBalance = false, ShowFlags = false, ShowImages = false, ColumnWidths = new Dictionary<string, int> { ["date"] = 145, ["payee"] = 240 } };
         var saved = await Put<RegisterViewDto>(client, path, selected);
         Assert.Equal(selected with { Version = 1 }, saved);
         Assert.Equal(saved, await Put<RegisterViewDto>(client, path, selected)); // lost-response retry
@@ -429,6 +432,8 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
         var account = await AddAccount(client, 0); var path = $"/api/register-views/{account}";
         var original = await Get<RegisterViewDto>(client, path);
         Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync(path, original with { DatePreset = "custom", FromMonth = "2026-12", ToMonth = "2026-01" })).StatusCode);
+        Assert.Equal(original, await Get<RegisterViewDto>(client, path));
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync(path, original with { ColumnWidths = new Dictionary<string, int> { ["unknown"] = 160 } })).StatusCode);
         Assert.Equal(original, await Get<RegisterViewDto>(client, path));
         Assert.Equal(HttpStatusCode.NotFound, (await client.PutAsJsonAsync($"/api/register-views/{Guid.NewGuid()}", original)).StatusCode);
         var otherClient = app.CreateClient();

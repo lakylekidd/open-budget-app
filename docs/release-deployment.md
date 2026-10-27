@@ -19,6 +19,7 @@ In the Compose resource:
 
 1. Set `POSTGRES_PASSWORD` under **Environment Variables**.
 2. Set `BootstrapAdmin__Username`, `BootstrapAdmin__Email`, and `BootstrapAdmin__Password` under **Environment Variables**. Use a unique username, an administrator email address, and a strong password; store the password as a secret. The Compose file requires these values, and the API uses them to create the initial administrator after applying migrations on the first deployment. Keep the values configured for later starts; they do not overwrite a changed password.
+3. The Compose file creates a persistent `openbudget-data-protection` volume for Identity tokens and encrypted SMTP credentials. Do not delete this volume during a redeploy. Configure SMTP after deployment in **Administration → Email delivery**, then send a test email before enabling registration. Runtime `Smtp__*` variables remain available as a fallback when no in-app SMTP configuration is saved.
 3. Add the application domain to the `ui` service on port `80`.
 4. Keep the `openbudget-data` volume.
 5. Confirm the Compose file is saved and deploy once manually.

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 
 namespace OpenBudget.Api;
@@ -15,6 +16,8 @@ public sealed class RegisterViewService(BudgetDbContext db)
         if (value.DatePreset == "custom" && (value.FromMonth is null || value.ToMonth is null || string.CompareOrdinal(value.FromMonth, value.ToMonth) > 0))
             throw new LedgerException("Choose a From month on or before the To month.");
         if (value.Version < 0) throw new LedgerException("Invalid view version.");
+        if (value.ColumnWidths is { } widths && (widths.Count > 12 || widths.Any(pair => pair.Key is not ("check" or "info" or "flag" or "image" or "date" or "payee" or "category" or "memo" or "outflow" or "inflow" or "balance" or "status") || pair.Value is < 24 or > 1200)))
+            throw new LedgerException("Column widths must use known columns and be between 24 and 1200 pixels.");
     }
 
     private async Task CheckScope(string scope, CancellationToken ct)
@@ -28,7 +31,7 @@ public sealed class RegisterViewService(BudgetDbContext db)
     {
         await CheckScope(scope, ct);
         var row = await db.RegisterViews.FindAsync([db.ActiveBudgetId, scope.ToLowerInvariant()], ct);
-        return row is null ? new(0, "allDates", null, null, true, true, true, true) : ToDto(row);
+        return row is null ? new(0, "allDates", null, null, true, true, true, true, []) : ToDto(row);
     }
 
     public async Task<RegisterViewDto> SaveAsync(string scope, RegisterViewDto request, CancellationToken ct)
@@ -39,17 +42,23 @@ public sealed class RegisterViewService(BudgetDbContext db)
         var row = await db.RegisterViews.FindAsync([db.ActiveBudgetId, scope], ct);
         var current = row is null ? 0 : row.Version;
         // A replay after a lost response succeeds only if the saved selection is identical.
-        if (row is not null && request.Version == current - 1 && request with { Version = current } == ToDto(row)) return ToDto(row);
+        if (row is not null && request.Version == current - 1 && Equivalent(request with { Version = current }, ToDto(row))) return ToDto(row);
         if (request.Version != current) throw new LedgerException("View options changed in another session. Reload saved options and review before applying again.", 409);
         if (row is null) { row = new() { Scope = scope }; db.RegisterViews.Add(row); }
         row.Version = current + 1;
         row.DatePreset = request.DatePreset; row.FromMonth = request.FromMonth; row.ToMonth = request.ToMonth;
         row.ShowReconciled = request.ShowReconciled; row.ShowRunningBalance = request.ShowRunningBalance;
         row.ShowFlags = request.ShowFlags; row.ShowImages = request.ShowImages;
+        row.ColumnWidthsJson = JsonSerializer.Serialize(request.ColumnWidths ?? []);
         await db.SaveChangesAsync(ct);
         return ToDto(row);
     }
 
     private static RegisterViewDto ToDto(RegisterViewEntity row) => new(row.Version, row.DatePreset, row.FromMonth, row.ToMonth,
-        row.ShowReconciled, row.ShowRunningBalance, row.ShowFlags, row.ShowImages);
+        row.ShowReconciled, row.ShowRunningBalance, row.ShowFlags, row.ShowImages,
+        JsonSerializer.Deserialize<Dictionary<string, int>>(row.ColumnWidthsJson) ?? []);
+
+    private static bool Equivalent(RegisterViewDto left, RegisterViewDto right) =>
+        left with { ColumnWidths = null } == right with { ColumnWidths = null } &&
+        (left.ColumnWidths ?? []).OrderBy(x => x.Key).SequenceEqual((right.ColumnWidths ?? []).OrderBy(x => x.Key));
 }

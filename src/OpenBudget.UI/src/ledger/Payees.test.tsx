@@ -59,7 +59,7 @@ it('filters full transfer names and prevents keyboard selection of a previous ma
 });
 
 it('saves the name, category policy, and both rule operators in one versioned command',async()=>{
-  manage();await ready();const user=userEvent.setup();await user.clear(screen.getByRole('textbox',{name:'Payee Name'}));await user.type(screen.getByRole('textbox',{name:'Payee Name'}),'Local Market');await user.click(screen.getByLabelText('Always use my choice'));await user.selectOptions(screen.getByRole('combobox',{name:'Default category'}),'travel');
+  manage();await ready();const user=userEvent.setup();await user.clear(screen.getByRole('textbox',{name:'Payee Name'}));await user.type(screen.getByRole('textbox',{name:'Payee Name'}),'Local Market');await user.click(screen.getByLabelText('Always use my choice'));await user.click(screen.getByRole('combobox',{name:'Default category'}));await user.click(screen.getByRole('option',{name:/Travel/}));
   await user.click(screen.getByRole('button',{name:'Add renaming rule'}));await user.selectOptions(screen.getByRole('combobox',{name:'Rule 1 operator'}),'is');await user.type(screen.getByRole('textbox',{name:'Rule 1 text'}),'MARKET 001');
   await user.click(screen.getByRole('button',{name:'Add renaming rule'}));await user.type(screen.getByRole('textbox',{name:'Rule 2 text'}),'MARKET-');await user.click(screen.getByRole('button',{name:'Done'}));
   await waitFor(()=>expect(changed).toHaveBeenCalledOnce());expect(closed).toHaveBeenCalledOnce();expect(JSON.parse(writes[0])).toEqual({commandId:expect.any(String),version:7,payees:[expect.objectContaining({name:'Local Market',categoryMode:'always',defaultCategoryId:'travel',rules:[{operator:'is',value:'MARKET 001'},{operator:'contains',value:'MARKET-'}]})]});

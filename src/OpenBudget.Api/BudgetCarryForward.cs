@@ -3,6 +3,37 @@ namespace OpenBudget.Api;
 // Propagate changes, rather than copying assignments or overwriting preserved opening baselines.
 public static class BudgetCarryForward
 {
+    public sealed record Changes(decimal ReadyToAssignDelta, IReadOnlyDictionary<string, decimal> AvailableDeltas)
+    {
+        public bool HasChanges => ReadyToAssignDelta != 0 || AvailableDeltas.Values.Any(delta => delta != 0);
+    }
+
+    public static decimal OpeningAvailable(decimal available) => Math.Max(available, 0);
+
+    public static decimal OpeningReadyToAssign(BudgetEntity source) => decimal.Round(
+        BudgetService.CalculateReadyToAssign(source) + source.Groups.SelectMany(group => group.Categories).Sum(category => Math.Min(category.Available, 0)),
+        2,
+        MidpointRounding.ToEven);
+
+    public static Changes CalculateChanges(
+        decimal previousReadyToAssign,
+        decimal currentReadyToAssign,
+        IReadOnlyDictionary<string, decimal> previousAvailable,
+        IEnumerable<CategoryEntity> currentCategories)
+    {
+        var availableDeltas = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        var readyToAssignDelta = currentReadyToAssign - previousReadyToAssign;
+
+        foreach (var category in currentCategories)
+        {
+            var oldAvailable = previousAvailable.GetValueOrDefault(category.Id);
+            availableDeltas[category.Id] = OpeningAvailable(category.Available) - OpeningAvailable(oldAvailable);
+            readyToAssignDelta += Math.Min(category.Available, 0) - Math.Min(oldAvailable, 0);
+        }
+
+        return new Changes(decimal.Round(readyToAssignDelta, 2, MidpointRounding.ToEven), availableDeltas);
+    }
+
     public static bool Apply(BudgetEntity month, decimal readyDelta, IReadOnlyDictionary<string, decimal> availableDeltas, BudgetEntity source)
     {
         var changed = readyDelta != 0;

@@ -155,6 +155,7 @@ public sealed class RegisterViewEntity
     public bool ShowRunningBalance { get; set; } = true;
     public bool ShowFlags { get; set; } = true;
     public bool ShowImages { get; set; } = true;
+    public string ColumnWidthsJson { get; set; } = "{}";
 }
 
 

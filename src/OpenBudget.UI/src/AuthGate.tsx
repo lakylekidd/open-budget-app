@@ -2,6 +2,16 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 
 type Session = { id: string; userName: string; email: string | null; isAdministrator: boolean };
 
+function AuthBrand() {
+  return <header className="auth-brand">
+    <img className="auth-logo" src="/openbudget-logo.svg" alt="OpenBudget" />
+    <div>
+      <span>OPENBUDGET</span>
+      <p>Make every euro feel intentional.</p>
+    </div>
+  </header>;
+}
+
 export function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,6 +40,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => { void refreshSession(); }, []);
+  useEffect(() => {
+    const signOut = () => { void logout(); };
+    window.addEventListener('openbudget:signout', signOut);
+    return () => window.removeEventListener('openbudget:signout', signOut);
+  }, []);
 
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError('');
@@ -62,18 +77,18 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
 
   if (loading) return <main className="auth-screen" aria-busy="true"><p>Loading your session…</p></main>;
-  if (session && !session.isAdministrator && window.location.pathname !== '/admin') return <main className="auth-screen"><section className="auth-card"><span className="eyebrow">OPENBUDGET</span><h1>Budget access is being set up</h1><p>Your account is signed in, but no personal budget has been assigned yet. Contact an administrator to continue.</p><button className="button button-primary" onClick={() => void logout()}>Sign out</button></section></main>;
+  if (session && !session.isAdministrator && window.location.pathname !== '/admin') return <main className="auth-screen"><section className="auth-card"><AuthBrand /><h1>Budget access is being set up</h1><p>Your account is signed in, but no personal budget has been assigned yet. Contact an administrator to continue.</p><button className="button button-primary" onClick={() => void logout()}>Sign out</button></section></main>;
   if (!session && window.location.pathname === '/register' && registrationMode !== 'Disabled') return <main className="auth-screen"><form className="auth-card" onSubmit={event => { const form = new FormData(event.currentTarget); void submitPublicForm(event, '/api/auth/register', { userName: String(form.get('username')), email: String(form.get('email')), password: String(form.get('password')) }); }}>
-    <span className="eyebrow">OPENBUDGET</span><h1>Create account</h1><label>Username<input name="username" autoComplete="username" required /></label><label>Email<input name="email" type="email" autoComplete="email" required /></label><label>Password<input name="password" type="password" autoComplete="new-password" required /></label>{error && <p role="alert" className="auth-error">{error}</p>}{notice && <p role="status">{notice}</p>}<button className="button button-primary" disabled={busy}>Create account</button><a href="/login">Back to sign in</a>
+    <AuthBrand /><h1>Create account</h1><label>Username<input name="username" autoComplete="username" required /></label><label>Email<input name="email" type="email" autoComplete="email" required /></label><label>Password<input name="password" type="password" autoComplete="new-password" required /></label>{error && <p role="alert" className="auth-error">{error}</p>}{notice && <p role="status">{notice}</p>}<button className="button button-primary" disabled={busy}>Create account</button><a className="auth-secondary-link" href="/login">Back to sign in</a>
   </form></main>;
-  if (!session && window.location.pathname === '/forgot-password') return <main className="auth-screen"><form className="auth-card" onSubmit={event => { const form = new FormData(event.currentTarget); void submitPublicForm(event, '/api/auth/forgot-password', { email: String(form.get('email')) }); }}><span className="eyebrow">OPENBUDGET</span><h1>Reset password</h1><label>Email<input name="email" type="email" required /></label>{error && <p role="alert" className="auth-error">{error}</p>}{notice && <p role="status">{notice}</p>}<button className="button button-primary" disabled={busy}>Send reset link</button><a href="/login">Back to sign in</a></form></main>;
-  if (!session && window.location.pathname === '/reset-password') return <main className="auth-screen"><form className="auth-card" onSubmit={event => { const form = new FormData(event.currentTarget); const query = new URLSearchParams(window.location.search); void submitPublicForm(event, '/api/auth/reset-password', { userId: query.get('userId') ?? '', token: query.get('token') ?? '', newPassword: String(form.get('password')) }); }}><span className="eyebrow">OPENBUDGET</span><h1>Choose a new password</h1><label>New password<input name="password" type="password" autoComplete="new-password" required /></label>{error && <p role="alert" className="auth-error">{error}</p>}{notice && <p role="status">{notice}</p>}<button className="button button-primary" disabled={busy}>Update password</button><a href="/login">Back to sign in</a></form></main>;
+  if (!session && window.location.pathname === '/forgot-password') return <main className="auth-screen"><form className="auth-card" onSubmit={event => { const form = new FormData(event.currentTarget); void submitPublicForm(event, '/api/auth/forgot-password', { email: String(form.get('email')) }); }}><AuthBrand /><h1>Reset password</h1><label>Email<input name="email" type="email" required /></label>{error && <p role="alert" className="auth-error">{error}</p>}{notice && <p role="status">{notice}</p>}<button className="button button-primary" disabled={busy}>Send reset link</button><a className="auth-secondary-link" href="/login">Back to sign in</a></form></main>;
+  if (!session && window.location.pathname === '/reset-password') return <main className="auth-screen"><form className="auth-card" onSubmit={event => { const form = new FormData(event.currentTarget); const query = new URLSearchParams(window.location.search); void submitPublicForm(event, '/api/auth/reset-password', { userId: query.get('userId') ?? '', token: query.get('token') ?? '', newPassword: String(form.get('password')) }); }}><AuthBrand /><h1>Choose a new password</h1><label>New password<input name="password" type="password" autoComplete="new-password" required /></label>{error && <p role="alert" className="auth-error">{error}</p>}{notice && <p role="status">{notice}</p>}<button className="button button-primary" disabled={busy}>Update password</button><a className="auth-secondary-link" href="/login">Back to sign in</a></form></main>;
   if (!session) return <main className="auth-screen"><form className="auth-card" onSubmit={login}>
-    <span className="eyebrow">OPENBUDGET</span><h1>Sign in</h1><p>Enter your username or email and password.</p>
+    <AuthBrand /><div className="auth-introduction"><h1>Welcome back</h1><p>Sign in to give every euro a job.</p></div>
     <label>Username or email<input name="username" autoComplete="username" required /></label>
     <label>Password<input name="password" type="password" autoComplete="current-password" required /></label>
     {error && <p role="alert" className="auth-error">{error}</p>}
-    {notice && <p role="status">{notice}</p>}<button className="button button-primary" type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button><a href="/forgot-password">Forgot password?</a>{registrationMode !== 'Disabled' && <a href="/register">Create an account</a>}
+    {notice && <p role="status">{notice}</p>}<button className="button button-primary" type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button><div className="auth-links"><a className="auth-recovery-link" href="/forgot-password">Forgot password?</a>{registrationMode !== 'Disabled' && <a className="auth-secondary-link" href="/register">Create an account</a>}</div>
   </form></main>;
-  return <><div className="session-bar"><span>{session.userName}{session.isAdministrator ? ' · Administrator' : ''}</span>{session.isAdministrator && <a href="/admin">Admin</a>}<button onClick={() => void logout()}>Sign out</button></div>{children}</>;
+  return <>{children}</>;
 }

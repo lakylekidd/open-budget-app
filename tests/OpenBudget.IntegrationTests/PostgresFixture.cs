@@ -57,11 +57,12 @@ public sealed class TestAccountEmailSender : IAccountEmailSender
 {
     public bool IsConfigured { get; set; } = true;
     public bool FailSending { get; set; }
-    public List<(string To, string Subject, string Body)> Messages { get; } = [];
-    public Task SendAsync(string to, string subject, string body, CancellationToken cancellationToken)
+    public List<(string To, string Subject, AccountEmailContent Content)> Messages { get; } = [];
+    public Task<bool> IsConfiguredAsync(CancellationToken cancellationToken) => Task.FromResult(IsConfigured);
+    public Task SendAsync(string to, string subject, AccountEmailContent content, CancellationToken cancellationToken)
     {
         if (FailSending) throw new InvalidOperationException("Simulated email delivery failure.");
-        Messages.Add((to, subject, body));
+        Messages.Add((to, subject, content));
         return Task.CompletedTask;
     }
 }

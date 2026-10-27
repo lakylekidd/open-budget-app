@@ -19,6 +19,7 @@ type AdminUser = {
 type MembershipPlan = { id: string; name: string; maxActiveBudgets: number | null };
 type MembershipDraft = { membershipPlanId: string; budgetLimitOverride: string; startsOn: string; expiresOn: string; billingProvider: string; externalSubscriptionId: string };
 type AdminAudit = { id: string; actorUserId: string; targetUserId: string; action: string; createdAt: string };
+type EmailSettings = { host: string; port: number; from: string; username: string | null; enableSsl: boolean; hasPassword: boolean; isConfigured: boolean; source: 'admin' | 'environment' | 'none' };
 type AdminSummary = {
   totalUsers: number;
   activeUsers: number;
@@ -41,6 +42,9 @@ export function AdminPanel() {
   const [historyLoaded, setHistoryLoaded] = useState<Record<string, boolean>>({});
   const [historyLoading, setHistoryLoading] = useState('');
   const [mode, setMode] = useState('Disabled');
+  const [emailSettings, setEmailSettings] = useState<EmailSettings>({ host: '', port: 587, from: '', username: null, enableSsl: true, hasPassword: false, isConfigured: false, source: 'none' });
+  const [smtpPassword, setSmtpPassword] = useState('');
+  const [testEmail, setTestEmail] = useState('');
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('All');
   const [inviteUserName, setInviteUserName] = useState('');
@@ -61,20 +65,22 @@ export function AdminPanel() {
       if (filter !== 'All') params.set('status', filter);
       const queryString = params.toString();
       const suffix = queryString ? `?${queryString}` : '';
-      const [usersResponse, modeResponse, summaryResponse, plansResponse] = await Promise.all([
+      const [usersResponse, modeResponse, summaryResponse, plansResponse, emailResponse] = await Promise.all([
         fetch(`/api/admin/users${suffix}`),
         fetch('/api/auth/registration-mode'),
         fetch('/api/admin/dashboard'),
         fetch('/api/admin/membership-plans'),
+        fetch('/api/admin/settings/email'),
       ]);
       if (usersResponse.status === 403 || usersResponse.status === 401) { setForbidden(true); return; }
-      if (!usersResponse.ok || !modeResponse.ok || !summaryResponse.ok || !plansResponse.ok) throw new Error('Could not load administration data.');
+      if (!usersResponse.ok || !modeResponse.ok || !summaryResponse.ok || !plansResponse.ok || !emailResponse.ok) throw new Error('Could not load administration data.');
       const userRows = await usersResponse.json() as AdminUser[];
       const dashboard = await summaryResponse.json() as AdminSummary;
       setUsers(userRows);
       setMembershipDrafts(Object.fromEntries(userRows.map(user => [user.id, { membershipPlanId: user.membershipPlanId, budgetLimitOverride: user.budgetLimitOverride?.toString() ?? '', startsOn: user.membershipStartsOn ?? '', expiresOn: user.membershipExpiresOn ?? '', billingProvider: user.billingProvider ?? '', externalSubscriptionId: user.externalSubscriptionId ?? '' }])));
       setMembershipPlans(await plansResponse.json() as MembershipPlan[]);
       setMode((await modeResponse.json() as { mode: string }).mode);
+      setEmailSettings(await emailResponse.json() as EmailSettings);
       setSummary(dashboard);
       setForbidden(false);
     } catch { setError('Could not load administration data. Retry to reconnect.'); }
@@ -104,6 +110,33 @@ export function AdminPanel() {
       setMode(value);
       await load(query, status);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Registration setting could not be saved.'); }
+    finally { setBusy(''); }
+  }
+
+  async function saveEmailSettings(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const port = Number(emailSettings.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) { setError('SMTP port must be a whole number between 1 and 65535.'); return; }
+    setBusy('email-settings'); setError(''); setNotice('');
+    try {
+      const response = await fetch('/api/admin/settings/email', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ host: emailSettings.host, port, from: emailSettings.from, username: emailSettings.username, password: smtpPassword || null, enableSsl: emailSettings.enableSsl }) });
+      const result = await response.json().catch(() => null) as (EmailSettings & { error?: string }) | null;
+      if (!response.ok || !result) throw new Error(result?.error ?? 'Email settings could not be saved.');
+      setEmailSettings(result); setSmtpPassword(''); setNotice('Email delivery settings saved.');
+      await load(query, status);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Email settings could not be saved.'); }
+    finally { setBusy(''); }
+  }
+
+  async function sendTestEmail(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy('email-test'); setError(''); setNotice('');
+    try {
+      const response = await fetch('/api/admin/settings/email/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: testEmail.trim() }) });
+      const result = await response.json().catch(() => null) as { message?: string; error?: string } | null;
+      if (!response.ok) throw new Error(result?.error ?? 'Test email could not be sent.');
+      setNotice(result?.message ?? 'Test email sent.');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Test email could not be sent.'); }
     finally { setBusy(''); }
   }
 
@@ -162,6 +195,18 @@ export function AdminPanel() {
     {error && <p className="admin-error" role="alert">{error}<button onClick={() => void load(query, status)}>Retry</button></p>}
     {notice && <p className="admin-notice" role="status">{notice}</p>}
     <section className="admin-card"><div className="admin-section-head"><div><h2>Registration</h2><p>New users must verify their email before signing in.</p></div><label>Registration mode<select aria-label="Registration mode" value={mode} disabled={busy === 'settings'} onChange={event => void saveMode(event.target.value)}>{modes.map(item => <option key={item} value={item}>{item === 'ApprovalRequired' ? 'Approval required' : item}</option>)}</select></label></div></section>
+    <section className="admin-card"><div className="admin-section-head"><div><h2>Email delivery</h2><p>{emailSettings.source === 'environment' ? 'Using runtime SMTP configuration. Save a complete configuration here to manage it in OpenBudget.' : 'Configure the account verification, invitation, and password reset sender.'}</p></div><span className={`admin-status ${emailSettings.isConfigured ? 'status-active' : 'status-pending'}`}>{emailSettings.isConfigured ? 'Configured' : 'Not configured'}</span></div>
+      <form className="admin-email-settings" onSubmit={event => void saveEmailSettings(event)}>
+        <label>SMTP host<input aria-label="SMTP host" autoComplete="off" maxLength={255} required value={emailSettings.host} onChange={event => setEmailSettings(current => ({ ...current, host: event.target.value }))} placeholder="smtp.example.com" /></label>
+        <label>Port<input aria-label="SMTP port" type="number" min="1" max="65535" required value={emailSettings.port} onChange={event => setEmailSettings(current => ({ ...current, port: Number(event.target.value) }))} /></label>
+        <label>From email<input aria-label="SMTP from email" type="email" autoComplete="email" maxLength={256} required value={emailSettings.from} onChange={event => setEmailSettings(current => ({ ...current, from: event.target.value }))} placeholder="hello@example.com" /></label>
+        <label>Username <span>(optional)</span><input aria-label="SMTP username" autoComplete="username" maxLength={256} value={emailSettings.username ?? ''} onChange={event => setEmailSettings(current => ({ ...current, username: event.target.value || null }))} /></label>
+        <label>Password <span>{emailSettings.source === 'admin' && emailSettings.hasPassword ? '(leave blank to keep current)' : '(required with a username)'}</span><input aria-label="SMTP password" type="password" autoComplete="new-password" maxLength={512} value={smtpPassword} onChange={event => setSmtpPassword(event.target.value)} /></label>
+        <label className="admin-checkbox"><input aria-label="Enable SMTP TLS" type="checkbox" checked={emailSettings.enableSsl} onChange={event => setEmailSettings(current => ({ ...current, enableSsl: event.target.checked }))} />Use TLS</label>
+        <button type="submit" disabled={busy === 'email-settings' || loading}>{busy === 'email-settings' ? 'Saving…' : 'Save email settings'}</button>
+      </form>
+      <form className="admin-email-test" onSubmit={event => void sendTestEmail(event)}><label>Test recipient<input aria-label="Test email recipient" type="email" autoComplete="email" required value={testEmail} onChange={event => setTestEmail(event.target.value)} placeholder="you@example.com" /></label><button type="submit" disabled={!emailSettings.isConfigured || busy === 'email-test'}>{busy === 'email-test' ? 'Sending…' : 'Send test email'}</button></form>
+    </section>
     <section className="admin-card"><h2>Dashboard</h2>{loading || !summary ? <p>Loading statistics…</p> : <>
       <div className="admin-stats">{[['Registered users', summary.totalUsers], ['Active', summary.activeUsers], ['Pending', summary.pendingUsers], ['Locked', summary.lockedUsers], ['Suspended', summary.suspendedUsers], ['Total budgets', summary.totalBudgets], ['Active budgets', summary.activeBudgets]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}</div>
       <div className="admin-dashboard-details">

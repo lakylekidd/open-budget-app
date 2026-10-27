@@ -77,9 +77,12 @@ public sealed class BudgetService(BudgetDbContext db)
         }
     }
 
-    public Task<BudgetUpdateResult> UpdateMonthAsync(BudgetUpdateDto request, CancellationToken cancellationToken) => UpdateMonthAsync("default", request, cancellationToken);
+    public Task<BudgetUpdateResult> UpdateMonthAsync(BudgetUpdateDto request, CancellationToken cancellationToken) => UpdateMonthAsync("default", request, null, cancellationToken);
 
-    public async Task<BudgetUpdateResult> UpdateMonthAsync(string budgetId, BudgetUpdateDto request, CancellationToken cancellationToken)
+    public Task<BudgetUpdateResult> UpdateMonthAsync(string budgetId, BudgetUpdateDto request, CancellationToken cancellationToken) =>
+        UpdateMonthAsync(budgetId, request, null, cancellationToken);
+
+    public async Task<BudgetUpdateResult> UpdateMonthAsync(string budgetId, BudgetUpdateDto request, string? actorUserId, CancellationToken cancellationToken)
     {
         var validation = Validate(request);
         if (validation is not null) return BudgetUpdateResult.Invalid(validation);
@@ -102,6 +105,7 @@ public sealed class BudgetService(BudgetDbContext db)
 
         var previousReadyToAssign = CalculateReadyToAssign(budget);
         var previousAvailable = budget.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.Available);
+        var previousCategories = budget.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => (c.Name, c.Assigned));
 
         foreach (var groupRequest in request.Groups)
         {
@@ -151,16 +155,32 @@ public sealed class BudgetService(BudgetDbContext db)
         budget.FundsAdded = request.FundsAdded;
         budget.Version++;
 
-        var readyDelta = CalculateReadyToAssign(budget) - previousReadyToAssign;
-        var availableDeltas = budget.Groups.SelectMany(g => g.Categories)
-            .ToDictionary(c => c.Id, c => c.Available - previousAvailable.GetValueOrDefault(c.Id));
-        if (readyDelta != 0 || availableDeltas.Values.Any(delta => delta != 0))
+        var carryChanges = BudgetCarryForward.CalculateChanges(
+            previousReadyToAssign,
+            CalculateReadyToAssign(budget),
+            previousAvailable,
+            budget.Groups.SelectMany(g => g.Categories));
+        if (carryChanges.HasChanges)
         {
             var laterMonths = await db.Budgets.Where(b => b.BudgetId == budgetId && string.Compare(b.Month, budget.Month) > 0)
                 .Include(b => b.Groups).ThenInclude(g => g.Categories).OrderBy(b => b.Month).ToListAsync(cancellationToken);
+            var source = budget;
             foreach (var later in laterMonths)
-                if (BudgetCarryForward.Apply(later, readyDelta, availableDeltas, budget)) later.Version++;
+            {
+                var oldReadyToAssign = CalculateReadyToAssign(later);
+                var oldAvailable = later.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.Available);
+                if (BudgetCarryForward.Apply(later, carryChanges.ReadyToAssignDelta, carryChanges.AvailableDeltas, source)) later.Version++;
+                carryChanges = BudgetCarryForward.CalculateChanges(
+                    oldReadyToAssign,
+                    CalculateReadyToAssign(later),
+                    oldAvailable,
+                    later.Groups.SelectMany(g => g.Categories));
+                source = later;
+            }
         }
+
+        if (!string.IsNullOrWhiteSpace(actorUserId))
+            RecordPlanActions(budget, actorUserId, previousCategories);
 
         try
         {
@@ -178,6 +198,19 @@ public sealed class BudgetService(BudgetDbContext db)
     public static decimal CalculateReadyToAssign(BudgetEntity budget) =>
         decimal.Round(budget.OpeningReadyToAssign + budget.FundsAdded + budget.LedgerIncome - budget.Groups.SelectMany(x => x.Categories).Sum(x => x.Assigned), 2, MidpointRounding.ToEven);
 
+    private void RecordPlanActions(BudgetEntity budget, string actorUserId, IReadOnlyDictionary<string, (string Name, decimal Assigned)> previousCategories)
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var action in PlanActionRules.Describe(previousCategories, budget.Groups.SelectMany(group => group.Categories)))
+        {
+            db.PlanActions.Add(new PlanActionEntity
+            {
+                BudgetId = budget.BudgetId, Month = budget.Month, ActorUserId = actorUserId, Kind = action.Kind,
+                Amount = action.Amount, FromCategoryName = action.FromCategoryName, ToCategoryName = action.ToCategoryName, CreatedAt = now
+            });
+        }
+    }
+
     private IQueryable<BudgetEntity> QueryMonth(string budgetId, string month) => db.Budgets
         .Include(x => x.Plan)
         .Include(x => x.Groups).ThenInclude(x => x.Categories)
@@ -189,7 +222,7 @@ public sealed class BudgetService(BudgetDbContext db)
         BudgetId = previous.BudgetId,
         Plan = previous.Plan,
         Note = "",
-        OpeningReadyToAssign = CalculateReadyToAssign(previous),
+        OpeningReadyToAssign = BudgetCarryForward.OpeningReadyToAssign(previous),
         FundsAdded = 0,
         Version = 1,
         Groups = previous.Groups.OrderBy(x => x.SortOrder).Select(group => new CategoryGroupEntity
@@ -207,7 +240,7 @@ public sealed class BudgetService(BudgetDbContext db)
                 GroupId = group.Id,
                 Id = category.Id,
                 Name = category.Name,
-                OpeningAvailable = category.Available,
+                OpeningAvailable = BudgetCarryForward.OpeningAvailable(category.Available),
                 Assigned = 0,
                 Activity = 0,
                 Target = category.Target,

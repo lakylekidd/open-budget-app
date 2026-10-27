@@ -9,7 +9,7 @@ Selection actions extension: the floating bottom bar and upward More menu suppor
 - Cash account creation, rename, close/reopen, real sidebar balances and historical closed-account registers.
 - Opening entries, signed transactions, payee suggestions, categorized spending/refunds, uncategorized spending attention, exact splits, editing and soft deletion.
 - Atomic paired transfers with linked editing/deletion, excluded from budget income/spending.
-- Combined server-side search/account/date/category/status filters and stable pagination. View Options persists presets, month ranges and visibility switches per account across clients of the same server; Apply/Cancel and stale-edit recovery are covered by tests.
+- Combined server-side search/account/date/category/status filters and stable pagination. View Options persists presets, month ranges and visibility switches per account across clients of the same server; column widths are saved with those options. Apply/Cancel and stale-edit recovery are covered by tests.
 - Cleared controls, zero-difference reconciliation snapshots, confirmed reconciled edits with retained/invalidated snapshots and a retained before/after audit.
 - Global ledger revision and command receipts: exact replay is safe, stale edits require reload/review, and lost-response retries reuse their original command.
 - Ledger-backed balances and monthly activity/income. Historical edits propagate deltas into already initialized later months, preserving assignments and explicit legacy baselines. The migration invents no sample accounts/history.
