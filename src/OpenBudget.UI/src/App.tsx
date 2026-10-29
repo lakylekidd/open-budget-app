@@ -51,6 +51,8 @@ const filters: Filter[] = ['All', 'Overspent', 'Underfunded', 'Overfunded', 'Mon
 const currency = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR' });
 const money = (value: number) => currency.format(value);
 const shortMonthText = (value: string) => new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric' }).format(new Date(`${value}-01T12:00:00`));
+const currentMonthKey = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`; };
+const previousMonthKey = (value: string) => { const [year, month] = value.split('-').map(Number); const date = new Date(year, month - 2, 1); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`; };
 const monthBounds = (month: string) => {
   const [year, monthNumber] = month.split('-').map(Number);
   const format = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -183,6 +185,15 @@ function BudgetApplication() {
   const [moveAmount, setMoveAmount] = useState('25');
   const [moveCovering, setMoveCovering] = useState(false);
   const [progressOn, setProgressOn] = useState(true);
+  const [unassignOpen, setUnassignOpen] = useState(false);
+  const [unassignMonth, setUnassignMonth] = useState(data.month);
+  const [unassignMonthDraft, setUnassignMonthDraft] = useState(data.month);
+  const [unassignMonthMenuOpen, setUnassignMonthMenuOpen] = useState(false);
+  const [unassignData, setUnassignData] = useState<BudgetState | null>(null);
+  const [unassignLoading, setUnassignLoading] = useState(false);
+  const [unassignSaving, setUnassignSaving] = useState(false);
+  const [unassignError, setUnassignError] = useState('');
+  const [unassignSelectedId, setUnassignSelectedId] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [history, setHistory] = useState<BudgetState[]>([]);
   const [future, setFuture] = useState<BudgetState[]>([]);
@@ -276,6 +287,28 @@ function BudgetApplication() {
       });
     return () => controller.abort();
   }, [data.month, budgetRefresh, budgetsLoaded, selectedBudgetId]);
+
+  useEffect(() => {
+    if (!unassignOpen || !selectedBudgetId) return;
+    if (unassignMonth > currentMonthKey()) {
+      setUnassignData(null);
+      setUnassignLoading(false);
+      return;
+    }
+    if (unassignMonth === data.month) {
+      setUnassignData(data);
+      setUnassignLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setUnassignLoading(true); setUnassignError(''); setUnassignData(null);
+    fetch(`/api/budgets/${selectedBudgetId}/months/${unassignMonth}`, { signal: controller.signal })
+      .then(async response => { if (!response.ok) throw new Error(`Month load failed (${response.status})`); return await response.json() as BudgetState; })
+      .then(snapshot => setUnassignData(snapshot))
+      .catch(error => { if (error.name !== 'AbortError') setUnassignError('Could not load categories for this month.'); })
+      .finally(() => { if (!controller.signal.aborted) setUnassignLoading(false); });
+    return () => controller.abort();
+  }, [data, selectedBudgetId, unassignMonth, unassignOpen]);
 
   useEffect(() => {
     if (!budgetsLoaded || !selectedBudgetId) return;
@@ -411,6 +444,7 @@ function BudgetApplication() {
   const selectedCategory = visibleCategories.find(category => category.id === selectedCategoryId);
   const selectedUpcoming = selectedCategory ? currentMonthUpcomingItems.flatMap(item => { const amount = categoryTransactionAmount(item.transaction, selectedCategory.id); return amount < 0 ? [{ item, amount }] : []; }) : [];
   const selectedUpcomingTotal = selectedUpcoming.reduce((sum, item) => sum + item.amount, 0);
+  const unassignCategories = unassignData?.groups.filter(group => !group.isArchived).flatMap(group => group.categories.filter(category => !category.isArchived && category.available > 0).map(category => ({ ...category, groupName: group.name }))) ?? [];
 
   function updateCategory(id: string, updater: (category: Category) => Category) {
     setData(current => { setHistory(stack => [...stack.slice(-49), current]); setFuture([]); return { ...current, groups: current.groups.map(group => ({ ...group, categories: group.categories.map(category => category.id === id ? updater(category) : category) })) }; });
@@ -723,6 +757,61 @@ function BudgetApplication() {
     setToast('Record income as a positive cash account transaction without a category.');
   }
 
+  function openUnassign() {
+    setUnassignMonth(data.month); setUnassignMonthDraft(data.month); setUnassignMonthMenuOpen(false); setUnassignData(data); setUnassignSelectedId(''); setUnassignError(''); setUnassignOpen(true);
+  }
+
+  function openUnassignMonthMenu() {
+    setUnassignMonthDraft(unassignMonth);
+    setUnassignMonthMenuOpen(true);
+  }
+
+  function cancelUnassignMonthChange() {
+    setUnassignMonthDraft(unassignMonth);
+    setUnassignMonthMenuOpen(false);
+  }
+
+  function applyUnassignMonthChange() {
+    setUnassignMonth(unassignMonthDraft);
+    setUnassignSelectedId('');
+    setUnassignError('');
+    setUnassignMonthMenuOpen(false);
+  }
+
+  async function unassignCategory(categoryId: string) {
+    if (!unassignData || unassignMonth > currentMonthKey() || unassignSaving) return;
+    const category = unassignCategories.find(item => item.id === categoryId);
+    const needed = Math.max(0, -data.readyToAssign);
+    if (!category || needed <= 0) return;
+    const amount = Math.min(category.available, needed);
+    const next = {
+      ...unassignData,
+      readyToAssign: unassignData.readyToAssign + amount,
+      groups: unassignData.groups.map(group => ({ ...group, categories: group.categories.map(item => item.id === categoryId ? { ...item, assigned: item.assigned - amount, available: item.available - amount } : item) })),
+    };
+    setUnassignSelectedId('');
+    if (unassignMonth === data.month) {
+      setData(next); setUnassignData(next);
+      setToast(`${money(amount)} unassigned from ${category.name}`);
+      window.setTimeout(() => setToast(''), 2400);
+      return;
+    }
+    setUnassignSaving(true); setUnassignError('');
+    try {
+      const request = {
+        month: next.month, note: next.note ?? '', version: next.version, fundsAdded: next.fundsAdded,
+        groups: next.groups.map((group, groupOrder) => ({ id: group.id, name: group.name, sortOrder: groupOrder, isArchived: Boolean(group.isArchived), categories: group.categories.map((item, categoryOrder) => ({ id: item.id, name: item.name, assigned: item.assigned, target: item.target, icon: item.icon ?? null, snoozed: Boolean(item.snoozed), sortOrder: categoryOrder, isArchived: Boolean(item.isArchived) })) })),
+      };
+      const response = await fetch(`/api/budgets/${selectedBudgetId}/months/${unassignMonth}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) });
+      if (!response.ok) throw new Error(`Month save failed (${response.status})`);
+      setUnassignData(await response.json() as BudgetState);
+      setBudgetRefresh(value => value + 1);
+      setToast(`${money(amount)} unassigned from ${category.name}`);
+      window.setTimeout(() => setToast(''), 2400);
+    } catch { setUnassignError('Could not unassign money. Try again.'); }
+    finally { setUnassignSaving(false); }
+  }
+
   function selectBudget(id: string) {
     if (id === selectedBudgetId) return;
     if (ledgerPending || planningPending || editingId || saveState === 'saving' || conflictBudget || (loadedMonth.current === data.month && lastSaved.current !== JSON.stringify(data))) {
@@ -801,13 +890,13 @@ function BudgetApplication() {
   <section className={`ready-card ${data.readyToAssign === 0 ? 'all-money-assigned' : data.readyToAssign < 0 ? 'assigned-over' : 'funds-ready'} ${assignMenuOpen ? 'assign-menu-open' : ''}`} aria-label="Ready to assign">
         <div className="ready-copy">
           <strong>{money(data.readyToAssign)}</strong>
-          <span className="ready-hint">{data.readyToAssign < 0 ? 'Assigned more than available' : data.readyToAssign > 0 ? 'Ready to assign' : 'All Money Assigned'}</span>
+          <span className="ready-hint">{data.readyToAssign < 0 ? 'You assigned more than you have' : data.readyToAssign > 0 ? 'Ready to assign' : 'All Money Assigned'}</span>
         </div>
         {data.readyToAssign === 0
           ? <span className="all-assigned-check" aria-hidden="true"><Icon name="check" size={26}/></span>
           : data.readyToAssign > 0
             ? <button className="ready-link assign-ready-button" aria-expanded={assignMenuOpen} aria-haspopup="dialog" onClick={openAssignMenu}>Assign <Icon name="chevron" size={13} /></button>
-            : <button className="ready-link" onClick={addFunds}>Record income</button>}
+            : <button className="ready-link" onClick={data.readyToAssign < 0 ? openUnassign : addFunds}>{data.readyToAssign < 0 ? 'Fix This' : 'Record income'}</button>}
         {assignMenuOpen && data.readyToAssign > 0 && <section className="assign-menu-popover" role="dialog" aria-label="Assign money">
           <div className="assign-tabs" role="tablist" aria-label="Assignment method">
             <button type="button" role="tab" aria-selected={assignTab === 'auto'} className={assignTab === 'auto' ? 'active' : ''} onClick={() => setAssignTab('auto')}>Auto</button>
@@ -825,6 +914,13 @@ function BudgetApplication() {
             {manualAssignError && <span role="alert" className="manual-assign-error">{manualAssignError}</span>}
             <footer><button type="button" onClick={() => setAssignMenuOpen(false)}>Cancel</button><button type="submit" className="button-primary" disabled={saveState !== 'saved'}>Assign</button></footer>
           </form>}
+        </section>}
+        {unassignOpen && <section className="unassign-popover" role="dialog" aria-label="Un-assign money from">
+          <header><strong>Un-assign money from</strong><label><button type="button" className="unassign-month-trigger" aria-label="Month to unassign from" aria-expanded={unassignMonthMenuOpen} onClick={openUnassignMonthMenu}>{shortMonthText(unassignMonth)} <Icon name="chevron" size={13} /></button></label><button type="button" aria-label="Close un-assign money" onClick={() => setUnassignOpen(false)}>×</button>
+            {unassignMonthMenuOpen && <div className="unassign-month-menu" role="group" aria-label="Select unassign month"><button type="button" className={unassignMonthDraft === data.month ? 'selected' : ''} aria-pressed={unassignMonthDraft === data.month} onClick={() => setUnassignMonthDraft(data.month)}>{shortMonthText(data.month)}{unassignMonthDraft === data.month && <Icon name="check" size={17} />}</button><button type="button" className={unassignMonthDraft === previousMonthKey(data.month) ? 'selected' : ''} aria-pressed={unassignMonthDraft === previousMonthKey(data.month)} onClick={() => setUnassignMonthDraft(previousMonthKey(data.month))}>{shortMonthText(previousMonthKey(data.month))}{unassignMonthDraft === previousMonthKey(data.month) && <Icon name="check" size={17} />}</button><footer><button type="button" onClick={cancelUnassignMonthChange}>Cancel</button><button type="button" className="button-primary" disabled={unassignMonthDraft === unassignMonth} onClick={applyUnassignMonthChange}>OK</button></footer></div>}
+          </header>
+          <select className="unassign-category-select" value={unassignSelectedId} onChange={event => { setUnassignSelectedId(event.target.value); if (event.target.value) void unassignCategory(event.target.value); }} disabled={unassignLoading || unassignSaving || unassignCategories.length === 0} aria-label="Category to unassign"><option value=""> </option>{unassignCategories.map(category => <option key={category.id} value={category.id}>{category.name} · {money(category.available)}</option>)}</select>
+          {unassignLoading ? <p role="status">Loading categories…</p> : unassignError ? <p role="alert">{unassignError}</p> : <div className="unassign-category-list"><strong>Plan Categories</strong>{unassignCategories.length === 0 ? <p>No categories found.</p> : unassignData?.groups.filter(group => !group.isArchived).map(group => { const categories = group.categories.filter(category => !category.isArchived && category.available > 0); if (!categories.length) return null; return <div className="unassign-group" key={group.id}><strong>{group.name}</strong>{categories.map(category => <button type="button" key={category.id} disabled={unassignSaving} onClick={() => void unassignCategory(category.id)}><span>{category.name}</span><span>{money(category.available)}</span></button>)}</div>; })}</div>}
         </section>}
       </section>
 

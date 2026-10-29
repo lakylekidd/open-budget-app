@@ -110,6 +110,49 @@ public sealed class BudgetCarryForwardApiTests(PostgresFixture fixture) : IClass
     }
 
     [Fact]
+    public async Task Reordering_groups_and_categories_is_shared_across_initialized_months()
+    {
+        await using var app=await fixture.CreateAppAsync();var c=app.CreateClient();
+        foreach(var month in new[]{"2026-07",August,September,October})await Month(c,month);
+
+        var august=await Month(c,August);var first=Editable(august);
+        var groupOrder=new[]{"daily","home","life","future","savings"};
+        first=first with
+        {
+            Groups=groupOrder.Select((id,index)=>first.Groups.Single(group=>group.Id==id) with
+            {
+                SortOrder=index,
+                Categories=id=="home"
+                    ? first.Groups.Single(group=>group.Id==id).Categories.OrderBy(category=>Array.IndexOf(new[]{"internet","rent","utilities"},category.Id)).Select((category,categoryIndex)=>category with{SortOrder=categoryIndex}).ToList()
+                    : first.Groups.Single(group=>group.Id==id).Categories
+            }).ToList()
+        };
+
+        await Put<BudgetDto>(c,"/api/budget/"+August,first);
+        foreach(var month in new[]{"2026-07",September,October})
+        {
+            var snapshot=await Month(c,month);
+            Assert.Equal(groupOrder,snapshot.Groups.Select(group=>group.Id));
+            Assert.Equal(new[]{"internet","rent","utilities"},snapshot.Groups.Single(group=>group.Id=="home").Categories.Select(category=>category.Id));
+        }
+
+        var september=await Month(c,September);var second=Editable(september);
+        second=second with
+        {
+            Groups=second.Groups.Select(group=>group.Id=="home"
+                ? group with{Categories=group.Categories.OrderBy(category=>Array.IndexOf(new[]{"utilities","internet","rent"},category.Id)).Select((category,index)=>category with{SortOrder=index}).ToList()}
+                : group).OrderBy(group=>group.Id=="home"?0:group.SortOrder+1).Select((group,index)=>group with{SortOrder=index}).ToList()
+        };
+
+        await Put<BudgetDto>(c,"/api/budget/"+September,second);
+        foreach(var month in new[]{"2026-07",August,October})
+        {
+            var snapshot=await Month(c,month);
+            Assert.Equal(new[]{"utilities","internet","rent"},snapshot.Groups.Single(group=>group.Id=="home").Categories.Select(category=>category.Id));
+        }
+    }
+
+    [Fact]
     public async Task Invalid_and_failed_assignment_saves_rollback_source_future_and_implicit_month_initialization()
     {
         await using var app=await fixture.CreateAppAsync();var c=app.CreateClient();await Account(c);await Month(c,September);await Assign(c,August,50);

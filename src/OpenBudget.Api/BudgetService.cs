@@ -106,6 +106,7 @@ public sealed class BudgetService(BudgetDbContext db)
         var previousReadyToAssign = CalculateReadyToAssign(budget);
         var previousAvailable = budget.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.Available);
         var previousCategories = budget.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => (c.Name, c.Assigned));
+        var orderingChanged = false;
 
         foreach (var groupRequest in request.Groups)
         {
@@ -114,6 +115,11 @@ public sealed class BudgetService(BudgetDbContext db)
                 group = new CategoryGroupEntity { BudgetId = budgetId, BudgetMonth = request.Month, Id = groupRequest.Id };
                 budget.Groups.Add(group);
                 currentGroups.Add(group.Id, group);
+                orderingChanged = true;
+            }
+            else if (group.SortOrder != groupRequest.SortOrder)
+            {
+                orderingChanged = true;
             }
             group.Name = groupRequest.Name.Trim();
             group.SortOrder = groupRequest.SortOrder;
@@ -128,6 +134,7 @@ public sealed class BudgetService(BudgetDbContext db)
                     category = new CategoryEntity { BudgetId = budgetId, BudgetMonth = request.Month, GroupId = groupRequest.Id, Id = categoryRequest.Id };
                     group.Categories.Add(category);
                     currentCategories.Add(category.Id, category);
+                    orderingChanged = true;
                 }
                 else if (category.GroupId != groupRequest.Id)
                 {
@@ -135,11 +142,15 @@ public sealed class BudgetService(BudgetDbContext db)
                     if (previousGroup.IsArchived || group.IsArchived || category.IsArchived)
                         return BudgetUpdateResult.Invalid("An archived category cannot be moved until it is restored.");
                     category.GroupId = groupRequest.Id;
+                    orderingChanged = true;
                 }
                 else if ((group.IsArchived || category.IsArchived) && categoryRequest.Assigned != category.Assigned)
                 {
                     return BudgetUpdateResult.Invalid("An archived category cannot be assigned until it is restored.");
                 }
+
+                if (category.SortOrder != categoryRequest.SortOrder)
+                    orderingChanged = true;
 
                 category.Name = categoryRequest.Name.Trim();
                 category.Assigned = categoryRequest.Assigned;
@@ -148,6 +159,19 @@ public sealed class BudgetService(BudgetDbContext db)
                 category.Snoozed = categoryRequest.Snoozed;
                 category.SortOrder = categoryRequest.SortOrder;
                 category.IsArchived = categoryRequest.IsArchived;
+            }
+        }
+
+        if (orderingChanged)
+        {
+            var otherMonths = await db.Budgets
+                .Where(b => b.BudgetId == budgetId && b.Month != budget.Month)
+                .Include(b => b.Groups).ThenInclude(g => g.Categories)
+                .ToListAsync(cancellationToken);
+            foreach (var otherMonth in otherMonths)
+            {
+                if (ApplySharedOrdering(otherMonth, request.Groups))
+                    otherMonth.Version++;
             }
         }
 
@@ -197,6 +221,60 @@ public sealed class BudgetService(BudgetDbContext db)
 
     public static decimal CalculateReadyToAssign(BudgetEntity budget) =>
         decimal.Round(budget.OpeningReadyToAssign + budget.FundsAdded + budget.LedgerIncome - budget.Groups.SelectMany(x => x.Categories).Sum(x => x.Assigned), 2, MidpointRounding.ToEven);
+
+    private static bool ApplySharedOrdering(BudgetEntity target, IReadOnlyList<CategoryGroupUpdateDto> sourceGroups)
+    {
+        var targetGroups = target.Groups.ToDictionary(group => group.Id, StringComparer.Ordinal);
+        var targetCategories = target.Groups.SelectMany(group => group.Categories).ToDictionary(category => category.Id, StringComparer.Ordinal);
+        var changed = false;
+
+        var orderedGroups = sourceGroups.OrderBy(group => group.SortOrder)
+            .Where(group => targetGroups.ContainsKey(group.Id))
+            .Select(group => targetGroups[group.Id])
+            .Concat(target.Groups.OrderBy(group => group.SortOrder).Where(group => !sourceGroups.Any(source => source.Id == group.Id)))
+            .ToList();
+        for (var index = 0; index < orderedGroups.Count; index++)
+        {
+            if (orderedGroups[index].SortOrder != index) changed = true;
+            orderedGroups[index].SortOrder = index;
+        }
+
+        foreach (var sourceGroup in sourceGroups)
+        {
+            if (!targetGroups.ContainsKey(sourceGroup.Id)) continue;
+            foreach (var sourceCategory in sourceGroup.Categories)
+            {
+                if (targetCategories.TryGetValue(sourceCategory.Id, out var targetCategory) && targetCategory.GroupId != sourceGroup.Id)
+                {
+                    targetCategory.GroupId = sourceGroup.Id;
+                    changed = true;
+                }
+            }
+        }
+
+        foreach (var targetGroup in target.Groups)
+        {
+            var categoriesInGroup = targetCategories.Values.Where(category => category.GroupId == targetGroup.Id).ToList();
+            var sourceCategoryIds = sourceGroups.Where(group => group.Id == targetGroup.Id)
+                .SelectMany(group => group.Categories.OrderBy(category => category.SortOrder).Select(category => category.Id))
+                .Where(targetCategories.ContainsKey)
+                .ToHashSet(StringComparer.Ordinal);
+            var orderedCategories = sourceGroups.Where(group => group.Id == targetGroup.Id)
+                .SelectMany(group => group.Categories.OrderBy(category => category.SortOrder))
+                .Where(category => targetCategories.ContainsKey(category.Id) && targetCategories[category.Id].GroupId == targetGroup.Id)
+                .Select(category => targetCategories[category.Id])
+                .Concat(categoriesInGroup.Where(category => !sourceCategoryIds.Contains(category.Id)).OrderBy(category => category.SortOrder))
+                .ToList();
+
+            for (var index = 0; index < orderedCategories.Count; index++)
+            {
+                if (orderedCategories[index].SortOrder != index) changed = true;
+                orderedCategories[index].SortOrder = index;
+            }
+        }
+
+        return changed;
+    }
 
     private void RecordPlanActions(BudgetEntity budget, string actorUserId, IReadOnlyDictionary<string, (string Name, decimal Assigned)> previousCategories)
     {

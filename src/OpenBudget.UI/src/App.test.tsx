@@ -270,13 +270,40 @@ it('shows actual ledger income in the monthly summary instead of a fixed estimat
   expect(incomeSummary).not.toHaveTextContent('€12,500.00');
 });
 
-it.each([{amount:0.01,label:'Ready to assign'},{amount:-0.01,label:'Assigned more than available'}])('retains the nonzero summary for $amount euros',async({amount,label})=>{
+it.each([{amount:0.01,label:'Ready to assign',button:/Assign/},{amount:-0.01,label:'You assigned more than you have',button:/Fix This/}])('retains the nonzero summary for $amount euros',async({amount,label,button})=>{
   months['2026-10'].readyToAssign=amount;
   render(<App/>);await saved();
   const summary=within(screen.getByRole('region',{name:'Ready to assign'}));
   expect(summary.getByText(label)).toBeInTheDocument();
   expect(summary.queryByText('All Money Assigned')).not.toBeInTheDocument();
-  expect(summary.getByRole('button',{name:amount>0?/Assign/:/Record income/})).toBeEnabled();
+  expect(summary.getByRole('button',{name:button})).toBeEnabled();
+});
+
+it('opens Fix This with positive categories and unassigns the selected amount',async()=>{
+  months['2026-10'].readyToAssign=-100;
+  months['2026-10'].groups[0].categories.push({id:'food',name:'Food',assigned:400,activity:0,available:400,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false});
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Fix This'}));
+  const dialog=screen.getByRole('dialog',{name:'Un-assign money from'});
+  expect(within(dialog).getByRole('button',{name:'Month to unassign from'})).toHaveTextContent('Oct 2026');
+  expect(within(dialog).getByRole('button',{name:/Food/})).toHaveTextContent('€400.00');
+  await userEvent.click(within(dialog).getByRole('button',{name:/Food/}));
+  await waitFor(()=>expect(writes.at(-1)?.groups).toEqual(expect.arrayContaining([expect.objectContaining({categories:expect.arrayContaining([expect.objectContaining({id:'food',assigned:300})])})])));
+});
+
+it('keeps the future Fix This category picker empty and can switch back one month',async()=>{
+  months['2026-11'].readyToAssign=-100;
+  months['2026-10'].groups[0].categories.push({id:'food',name:'Food',assigned:400,activity:0,available:400,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false});
+  render(<App/>);await saved();
+  await next('Next','Nov 2026');
+  await userEvent.click(screen.getByRole('button',{name:'Fix This'}));
+  const dialog=screen.getByRole('dialog',{name:'Un-assign money from'});
+  expect(within(dialog).getByText('No categories found.')).toBeInTheDocument();
+  expect(within(dialog).getByRole('combobox',{name:'Category to unassign'})).toBeDisabled();
+  await userEvent.click(within(dialog).getByRole('button',{name:'Month to unassign from'}));
+  await userEvent.click(within(dialog).getByRole('button',{name:'Oct 2026'}));
+  await userEvent.click(within(dialog).getByRole('button',{name:'OK'}));
+  await waitFor(()=>expect(within(dialog).getByRole('button',{name:/Food/})).toHaveTextContent('€400.00'));
 });
 
 it('opens the category group rename popover and persists the new name',async()=>{
