@@ -37,11 +37,14 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
     public DbSet<UserMembershipEntity> UserMemberships => Set<UserMembershipEntity>();
     public DbSet<MembershipPlanEntitlementEntity> MembershipPlanEntitlements => Set<MembershipPlanEntitlementEntity>();
     public DbSet<UserEntitlementOverrideEntity> UserEntitlementOverrides => Set<UserEntitlementOverrideEntity>();
+    public DbSet<TransactionImageEntity> TransactionImages => Set<TransactionImageEntity>();
+    public DbSet<TransactionImageBlobEntity> TransactionImageBlobs => Set<TransactionImageBlobEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
         LedgerModel.Configure(modelBuilder);
+        TransactionImageModel.Configure(modelBuilder);
         modelBuilder.Entity<ApplicationSettingEntity>(e => { e.HasKey(x => x.Key); e.Property(x => x.Key).HasMaxLength(100); e.Property(x => x.Value).HasMaxLength(500); });
         modelBuilder.Entity<SmtpSettingsEntity>(e => { e.HasKey(x => x.Id); e.Property(x => x.Host).HasMaxLength(255); e.Property(x => x.From).HasMaxLength(256); e.Property(x => x.Username).HasMaxLength(256); e.Property(x => x.EncryptedPassword).HasMaxLength(2000); });
         modelBuilder.Entity<AdminAuditLogEntity>(e => { e.HasKey(x => x.Id); e.Property(x => x.ActorUserId).HasMaxLength(450); e.Property(x => x.TargetUserId).HasMaxLength(450); e.Property(x => x.Action).HasMaxLength(80); e.HasIndex(x => x.CreatedAt); });
@@ -199,6 +202,8 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
         modelBuilder.Entity<LongTermPlanningStateEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
         modelBuilder.Entity<LongTermPlanningIncomeEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
         modelBuilder.Entity<LongTermPlanningCategoryEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
+        modelBuilder.Entity<TransactionImageEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
+        modelBuilder.Entity<TransactionImageBlobEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
@@ -234,6 +239,8 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
                 case LongTermPlanningStateEntity row: row.BudgetId = budgetContext.BudgetId; break;
                 case LongTermPlanningIncomeEntity row: row.BudgetId = budgetContext.BudgetId; break;
                 case LongTermPlanningCategoryEntity row: row.BudgetId = budgetContext.BudgetId; break;
+                case TransactionImageEntity row: row.BudgetId = budgetContext.BudgetId; break;
+                case TransactionImageBlobEntity row: row.BudgetId = budgetContext.BudgetId; break;
             }
         }
     }

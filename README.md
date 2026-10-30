@@ -24,6 +24,7 @@ OpenBudget is a budgeting app with a React UI, .NET API, and PostgreSQL database
 - Credit Card and Line of Credit accounts with automatic Credit Card Payments categories and debt payoff targets (pay off by date or a fixed monthly amount)
 - Category targets (weekly, monthly, yearly or custom with repeat) with server-calculated "more needed this month" progress in Plan
 - Scheduled transactions, payee management, and audit history
+- Receipt images on transactions: drag and drop, paste, upload or import from a link, with a full-screen viewer; files are type-checked by content and stripped of location metadata
 - Long-Term Planning with annual forecasts and monthly actuals
 - Identity sign-in, verified registration and branded recovery email, plus audited administrator account controls and SMTP settings
 

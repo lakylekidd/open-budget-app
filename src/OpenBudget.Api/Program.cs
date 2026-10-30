@@ -41,6 +41,7 @@ builder.Services.AddScoped<SchedulePostingService>();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<SchedulePostingWorker>();
 builder.Services.AddScoped<RegisterViewService>();
+builder.Services.AddTransactionImages();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
     .WithOrigins("http://127.0.0.1:5173", "http://localhost:5173")
     .AllowAnyHeader().AllowAnyMethod()));
@@ -166,6 +167,7 @@ EntitlementService.MapEndpoints(app);
 BudgetOwnershipService.MapEndpoints(app);
 CategoryTargetService.MapEndpoints(app);
 BudgetSharingService.MapEndpoints(app);
+app.MapTransactionImageEndpoints();
 
 app.MapGet("/api/budget/{month}", async (string month, BudgetService budgets, LedgerGate gate, CancellationToken cancellationToken) =>
 {
