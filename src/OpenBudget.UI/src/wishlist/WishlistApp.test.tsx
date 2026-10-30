@@ -2,7 +2,6 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import App from '../App';
-import { budgetKeyFor } from '../routing/routes';
 
 // App-level Wishlist wiring: sidebar placement/visibility by entitlement, ready badge, Plan row status and guards.
 type Access = 'forbidden' | 'disabled' | 'ready' | 'saving';
@@ -152,7 +151,7 @@ it('View transaction in the Purchased history opens the account register at that
   await userEvent.click(await screen.findByText('Purchased (1)'));
   await userEvent.click(screen.getByRole('button', { name: 'View transaction for Old console' }));
 
-  await waitFor(() => expect(window.location.pathname).toBe(`/${budgetKeyFor('budget-1')}/account/checking`));
+  await waitFor(() => expect(window.location.pathname).toBe('/home-budget/account/checking'));
   expect(await screen.findByText(/Showing the transaction selected from the Wishlist screen/)).toBeInTheDocument();
   await waitFor(() => expect(document.querySelector('[data-transaction-id="tx-racing"]')).toHaveAttribute('aria-selected', 'true'));
   // The register is narrowed to the transaction's date so the row is on the first page.
