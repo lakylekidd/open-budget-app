@@ -3,7 +3,7 @@ import { MoneyInput } from '../MoneyInput';
 import { createPortal } from 'react-dom';
 import { type Account, type CategoryOption, type Entry, type Split, loadCategoryBudget, parseMoney, today, isCreditAccount, isLoanAccount } from './api';
 import { type ViewOptions } from './ViewOptions';
-import { RegisterIcon } from './AccountRegister';
+import { ClearedSymbol, RegisterIcon } from './AccountRegister';
 import { TransactionDatePicker } from './TransactionDatePicker';
 import { PayeePicker, type SavedPayee } from './Payees';
 import { CategoryPicker, inflowCategoryId } from './CategoryPicker';
@@ -63,7 +63,7 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
     <td>{wishlistMode?<WishlistLockedCategory choice={choice}/>:<CategoryPicker {...categoryProps} form={formId} value={splits.length?'__split':categoryId} notNeeded={!!transfer||entry?.isOpening} disabled={busy} onChange={id=>{setSplits([]);setCategory(id);}} onSplit={split} onTransfer={()=>setPaymentsRequest(n=>n+1)} onNewCategory={()=>setNewCategoryTarget('main')}/>}</td>
     <td><input form={formId} aria-label="Memo" disabled={busy} value={memo} maxLength={1000} placeholder="memo" onChange={e=>setMemo(e.target.value)}/></td>
     <td><MoneyInput form={formId} aria-label="Outflow" disabled={busy} value={outflow} placeholder="outflow" onChange={raw => setOutflow(raw)}/></td><td><MoneyInput form={formId} aria-label="Inflow" disabled={busy||wishlistMode} value={inflow} placeholder="inflow" onChange={raw => setInflow(raw)}/></td>
-    {view.showRunningBalance&&<td/>}<td className="register-status-cell"><button type="button" className={'transaction-status status-'+status} disabled={busy||scheduled||requiresConfirmation} aria-label={status==='cleared'?'Cleared: mark uncleared':'Uncleared: mark cleared'} onClick={()=>setStatus(status==='cleared'?'uncleared':'cleared')}><span className={status==='cleared'?'cleared-symbol':'uncleared-symbol'}>c</span></button></td>
+    {view.showRunningBalance&&<td/>}<td className="register-status-cell"><button type="button" className={'transaction-status status-'+status} disabled={busy||scheduled||requiresConfirmation} aria-label={status==='cleared'?'Cleared: mark uncleared':'Uncleared: mark cleared'} onClick={()=>setStatus(status==='cleared'?'uncleared':'cleared')}><ClearedSymbol cleared={status==='cleared'} /></button></td>
   </tr>{splits.map((s,i)=><tr className="register-inline-split-row" key={i} aria-label={`Split ${i+1}`}>
     <td className="register-check-cell"/><td/>{view.showFlags&&<td/>}{view.showImages&&<td/>}
     <td className="inline-split-remove"><button type="button" form={formId} aria-label={`Remove split ${i+1}`} disabled={busy} onClick={()=>setSplits(items=>items.filter((_,index)=>index!==i))}>−</button></td>

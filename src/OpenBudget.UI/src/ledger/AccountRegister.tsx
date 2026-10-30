@@ -5,6 +5,16 @@ import { TransactionImagesButton } from './TransactionImages';
 import { defaultView, type ViewOptions } from './ViewOptions';
 import { type Account, type CategoryOption, type Entry, accountTypeLabel, formatMoney } from './api';
 
+/** Circled "c" drawn as SVG so the letter stays centred in the circle whatever the font metrics. */
+export function ClearedSymbol({ cleared, small = false, title }: { cleared: boolean; small?: boolean; title?: string }) {
+  const size = small ? 11 : 13;
+  return <svg className={`${cleared ? 'cleared-symbol' : 'uncleared-symbol'}${small ? ' small-symbol' : ''}`} viewBox="0 0 16 16" width={size} height={size} aria-hidden="true">
+    {title && <title>{title}</title>}
+    {cleared ? <circle cx="8" cy="8" r="8" fill="currentColor" /> : <circle cx="8" cy="8" r="7.25" fill="none" stroke="currentColor" strokeWidth="1.5" />}
+    <path d="M10.6 5.9A3.1 3.1 0 1 0 10.6 10.1" fill="none" stroke={cleared ? '#0b0c20' : 'currentColor'} strokeWidth="2" strokeLinecap="round" />
+  </svg>;
+}
+
 export function RegisterIcon({ name, size = 16 }: { name: string; size?: number }) {
   const paths: Record<string, React.ReactNode> = {
     lock: <><rect x="6" y="10" width="12" height="11" rx="1.5" fill="currentColor" stroke="none" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
@@ -53,8 +63,8 @@ export function AccountHeader({ current, accounts, disabled, loading = false, on
       </div>
     </header>
     <section className="account-balance-equation" aria-label="Account balance summary">
-      <div className="balance-term" data-testid="cleared-balance"><strong className={totals.cleared < 0 ? 'negative-balance' : 'cleared-total'}>{loading ? '—' : formatMoney(totals.cleared)}</strong><span><span aria-hidden="true" className="cleared-symbol small-symbol">c</span> Cleared Balance</span></div><b className="balance-operator">+</b>
-      <div className="balance-term" data-testid="uncleared-balance"><strong className={totals.uncleared < 0 ? 'negative-balance' : ''}>{loading ? '—' : formatMoney(totals.uncleared)}</strong><span><span aria-hidden="true" className="uncleared-symbol small-symbol">c</span> Uncleared Balance</span></div><b className="balance-operator">=</b>
+      <div className="balance-term" data-testid="cleared-balance"><strong className={totals.cleared < 0 ? 'negative-balance' : 'cleared-total'}>{loading ? '—' : formatMoney(totals.cleared)}</strong><span><ClearedSymbol cleared small /> Cleared Balance</span></div><b className="balance-operator">+</b>
+      <div className="balance-term" data-testid="uncleared-balance"><strong className={totals.uncleared < 0 ? 'negative-balance' : ''}>{loading ? '—' : formatMoney(totals.uncleared)}</strong><span><ClearedSymbol cleared={false} small /> Uncleared Balance</span></div><b className="balance-operator">=</b>
       <div className="balance-term" data-testid="working-balance"><strong className={totals.working < 0 ? 'negative-balance' : ''}>{loading ? '—' : formatMoney(totals.working)}</strong><span>Working Balance</span></div>
     </section>
   </>;
@@ -63,7 +73,7 @@ export function AccountHeader({ current, accounts, disabled, loading = false, on
 export function ClearedIndicator({ entry, disabled, onToggle }: { entry: Entry; disabled: boolean; onToggle: () => void }) {
   const label = entry.status === 'reconciled' ? 'Reconciled transaction (locked)' : entry.status === 'cleared' ? 'Cleared transaction: mark uncleared' : 'Uncleared transaction: mark cleared';
   return <button className={`transaction-status status-${entry.status}`} aria-label={label} title={label} disabled={disabled || entry.status === 'reconciled'} onClick={onToggle}>
-    {entry.status === 'reconciled' ? <RegisterIcon name="lock" size={13}/> : <span aria-hidden="true" className={entry.status === 'cleared' ? 'cleared-symbol' : 'uncleared-symbol'}>c</span>}
+    {entry.status === 'reconciled' ? <RegisterIcon name="lock" size={13}/> : <ClearedSymbol cleared={entry.status === 'cleared'} />}
   </button>;
 }
 

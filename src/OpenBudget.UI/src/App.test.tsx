@@ -343,6 +343,24 @@ it('groups loan accounts under a collapsible LOANS section after CREDIT',async()
   expect(list).not.toBeVisible();
 });
 
+it('moves closed accounts into a CLOSED section that is always last',async()=>{
+  const account={unclearedBalance:0,isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0};
+  focusAccounts=[{...account,id:'cash-1',name:'Salary',isClosed:false,balance:100,clearedBalance:100,accountType:'checking'},{...account,id:'cash-2',name:'Old Savings',isClosed:true,balance:0,clearedBalance:0,accountType:'savings'},
+    {...account,id:'card-1',name:'Old Visa',isClosed:true,balance:0,clearedBalance:0,accountType:'creditCard'},{...account,id:'loan-1',name:'Mortgage',isClosed:false,balance:-500,clearedBalance:-500,accountType:'mortgage'}];
+  render(<App/>);await saved();
+  const headings=Array.from(document.querySelectorAll('.account-type')).map(button=>button.textContent?.replace(/[-€\d.,]/g,''));
+  expect(headings).toEqual(['CASH','LOANS','CLOSED']);
+  const closed=document.getElementById('closed-account-list')!;
+  expect(closed).toContainElement(screen.getByRole('button',{name:/Old Savings \(Closed\)/}));
+  expect(closed).toContainElement(screen.getByRole('button',{name:/Old Visa \(Closed\)/}));
+  expect(document.getElementById('cash-account-list')).not.toContainElement(screen.getByRole('button',{name:/Old Savings \(Closed\)/}));
+});
+
+it('hides the CLOSED section when no account is closed',async()=>{
+  render(<App/>);await saved();
+  expect(screen.queryByRole('button',{name:/^CLOSED/})).not.toBeInTheDocument();
+});
+
 it('hides the LOANS section when there are no loan accounts',async()=>{
   const account={isClosed:false,unclearedBalance:0,isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0};
   focusAccounts=[{...account,id:'cash-1',name:'Salary',balance:10,clearedBalance:10,accountType:'checking'}];
@@ -386,6 +404,20 @@ it('opens the account creation form from beneath CASH',async()=>{
   expect(await screen.findByRole('dialog',{name:'Select Account Type'})).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button',{name:'Checking'}));
   expect(screen.getByLabelText('Account name')).toBeInTheDocument();
+});
+
+it('opens Edit Account only once, not again when the account is revisited',async()=>{
+  const account={isClosed:false,unclearedBalance:0,isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0};
+  focusAccounts=[{...account,id:'cash-1',name:'Salary',balance:100,clearedBalance:100,accountType:'checking'},{...account,id:'cash-2',name:'Savings',balance:50,clearedBalance:50,accountType:'savings'}];
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Edit Salary account'}));
+  const dialog=await screen.findByRole('dialog',{name:/Edit Account/i});
+  await userEvent.click(within(dialog).getByRole('button',{name:'Cancel'}));
+  await userEvent.click(screen.getByRole('button',{name:'Plan'}));
+  await userEvent.click(screen.getByRole('button',{name:/Salary €100.00/}));
+  await screen.findByRole('button',{name:/Salary €100.00/});
+  await new Promise(resolve=>setTimeout(resolve,50));
+  expect(screen.queryByRole('dialog',{name:/Edit Account/i})).not.toBeInTheDocument();
 });
 
 it('creates a budget and selects it as the active plan',async()=>{
