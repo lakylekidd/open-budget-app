@@ -24,10 +24,10 @@
 .loan-progress-links button:disabled,.loan-link:disabled{opacity:.5;cursor:default}.loan-link:hover:not(:disabled){text-decoration:underline}
 .loan-summary-banner{margin:0;padding:16px;border-radius:8px;background:#25255a;text-align:center;font-size:14px}.loan-summary-banner b{background:#3a3a8c;border-radius:4px;padding:2px 5px}
 .loan-chart{position:relative;margin:0}.loan-chart svg{width:100%;height:auto;display:block}
-.loan-chart-legend{display:flex;justify-content:flex-end;gap:16px;font-size:12px;color:#c4c5dd}.loan-chart-legend span{display:inline-flex;gap:6px;align-items:center}
-.loan-chart-legend i{display:inline-block;width:18px;border-top:2px solid #7583ff}.loan-chart-legend i.dashed{border-top-style:dashed}
-.loan-chart-grid{stroke:#2c2e43;stroke-dasharray:2 4}.loan-chart-axis{fill:#c4c5dd;font-size:11px}
-.loan-chart-past{fill:none;stroke:#7583ff;stroke-width:2}.loan-chart-track{fill:none;stroke:#7583ff;stroke-width:2;stroke-dasharray:7 5}
+.loan-chart-legend{display:flex;justify-content:center;flex-wrap:wrap;gap:16px;font-size:12px;color:#c4c5dd}.loan-chart-legend span{display:inline-flex;gap:6px;align-items:center}
+.loan-chart-legend i{display:inline-block;width:18px;border-top:2px solid #7583ff}.loan-chart-legend i.dashed{border-top-style:dashed}.loan-chart-legend i.sim{border-top-color:#7bc142}.loan-info{font-weight:400;color:#a9abc0;cursor:help}
+.loan-chart-grid{stroke:#3a3c56;stroke-dasharray:2 4}.loan-chart-axis{fill:#c4c5dd;font-size:11px}
+.loan-chart-past{fill:none;stroke:#6a6cff;stroke-width:2}.loan-chart-sim{fill:none;stroke:#7bc142;stroke-width:2;stroke-dasharray:7 5}.loan-chart-track{fill:none;stroke:#6a6cff;stroke-width:2;stroke-dasharray:7 5}
 .loan-chart-area{fill:#5b54ff;opacity:.35}.loan-chart-now{fill:#15172d;stroke:#7583ff;stroke-width:2}
 .loan-chart-hover line{stroke:#c4c5dd;stroke-dasharray:3 3}.loan-chart-hover circle{fill:#7583ff;stroke:#15172d;stroke-width:2}.loan-chart-hit{fill:transparent;cursor:crosshair}
 .loan-chart-tooltip{position:absolute;top:24px;transform:translateX(-50%);background:#23223c;border:1px solid #555670;border-radius:6px;padding:6px 10px;font-size:12px;display:grid;gap:2px;pointer-events:none;white-space:nowrap}
@@ -98,3 +98,20 @@
   .loan-category{grid-template-columns:1fr}.loan-simulator{grid-template-columns:1fr}.loan-simulator-inputs{border-right:0;padding-right:0}
   .loan-banner{flex-wrap:wrap}
 }
+
+/* Simulator inputs: dark, rounded, accent focus ring (no white backgrounds). */
+.loan-simulator{color-scheme:dark}
+.loan-simulator .loan-sim-money{display:block}
+.loan-simulator input.loan-sim-input,.loan-simulator .money-input-shell>input.money-input{background:#3a3c52;color:#fff;border:1px solid #55576f;border-radius:4px;min-height:32px;padding-top:5px;padding-bottom:5px;font:inherit;font-size:14px;font-weight:400}
+.loan-simulator input.loan-sim-input:focus,.loan-simulator .money-input-shell>input.money-input:focus{outline:0;border-color:#6a6cff;box-shadow:0 0 0 1px #6a6cff}
+.loan-simulator input::placeholder{color:#a9abc0}
+.loan-sim-copy,.loan-sim-reset{justify-self:start;font-size:12px;padding:0;background:none;border:0;color:#8f9bff;cursor:pointer}
+.loan-sim-copy:hover,.loan-sim-reset:hover{text-decoration:underline}.loan-sim-reset{margin-top:10px}
+/* Payoff Date control and popover mirror the category target date field. */
+.month-year-trigger.target-input{height:auto;min-height:32px;display:block;width:100%;padding:5px 28px 5px 10px;border-radius:4px;font-weight:400}
+.month-year-popover{background:#23223c;border:0;border-radius:8px;box-shadow:0 12px 28px #0009;color:#f3f2fa;width:240px;left:50%;transform:translateX(-50%);top:calc(100% + 10px)}
+.month-year-head{border-bottom:0;padding:4px 6px 10px}.month-year-head strong{font-size:16px}
+.month-year-head button{width:auto;height:auto;border:0;border-radius:0;color:#aaa6ff;font-size:26px;line-height:18px;padding:0 4px;cursor:pointer}.month-year-head button:disabled{opacity:.3;cursor:default}
+.month-year-grid button{height:32px;border-radius:16px;font-weight:600;color:#f4f3fa;cursor:pointer}.month-year-grid button:hover:not(:disabled){background:#44405d}
+.month-year-grid button.selected{background:#6054ff;color:#fff}.month-year-grid button:disabled{color:#77758e;cursor:default}
+.loan-simulator-summary.saving{background:#1f3a2a;border-color:#3f7a45}.loan-simulator-summary.saving h3{border-bottom-color:#3f7a45;color:#c9f0b0}.loan-simulator-summary.saving strong{color:#9be16a}

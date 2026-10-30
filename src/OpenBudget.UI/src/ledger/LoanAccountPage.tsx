@@ -80,7 +80,7 @@ export function LoanAccountPage({ account, refresh, disabled, onMenu, onEdit, on
       </section>
       <ActivityList months={details.activity} contract={Boolean(contract)} />
     </div>
-    {simulatorOpen && <PayoffSimulator accountId={account.id} details={details} onClose={() => setSimulatorOpen(false)} />}
+    {simulatorOpen && <PayoffSimulator accountId={account.id} details={details} onClose={() => setSimulatorOpen(false)} onCreateTarget={onCreateTarget} />}
     {updateOpen && <UpdateBalanceDialog balance={details.balance} disabled={disabled} onClose={() => setUpdateOpen(false)}
       onSubmit={async fields => { if (await onMutate(`/api/accounts/${account.id}/loan/balance`, 'POST', fields)) { setUpdateOpen(false); setReload(n => n + 1); } }} />}
   </section>;
@@ -171,7 +171,7 @@ export function MonthYearPicker({ value, minimum, onChange, label }: { value: st
     return () => document.removeEventListener('mousedown', close);
   }, [open]);
   return <div className="month-year-picker" ref={ref} onKeyDown={event => { if (event.key === 'Escape' && open) { event.stopPropagation(); setOpen(false); } }}>
-    <button type="button" className="month-year-trigger" aria-label={label} aria-expanded={open} onClick={() => { setYear(Number(value.slice(0, 4))); setOpen(o => !o); }}>{shortMonthLabel(value)}<span aria-hidden="true">▾</span></button>
+    <button type="button" className="month-year-trigger target-input target-select" aria-label={label} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setYear(Number(value.slice(0, 4))); setOpen(o => !o); }}>{shortMonthLabel(value)}</button>
     {open && <div className="month-year-popover" role="dialog" aria-label={`${label} picker`}>
       <div className="month-year-head"><button type="button" aria-label="Previous year" disabled={year <= Number(minimum.slice(0, 4))} onClick={() => setYear(y => y - 1)}>‹</button><strong>{year}</strong><button type="button" aria-label="Next year" disabled={year >= Number(minimum.slice(0, 4)) + 100} onClick={() => setYear(y => y + 1)}>›</button></div>
       <div className="month-year-grid">{Array.from({ length: 12 }, (_, index) => {
@@ -183,7 +183,7 @@ export function MonthYearPicker({ value, minimum, onChange, label }: { value: st
 }
 
 // Read-only payoff simulator. Editing the payment recomputes the payoff date; choosing a date solves the payment.
-export function PayoffSimulator({ accountId, details, onClose }: { accountId: string; details: LoanDetails; onClose: () => void }) {
+export function PayoffSimulator({ accountId, details, onClose, onCreateTarget }: { accountId: string; details: LoanDetails; onClose: () => void; onCreateTarget?: (categoryId: string) => void }) {
   const minimumMonth = addMonths(details.currentMonth, 1);
   const [payment, setPayment] = useState(details.minimumPayment.toFixed(2));
   const [extra, setExtra] = useState('');
@@ -213,25 +213,48 @@ export function PayoffSimulator({ accountId, details, onClose }: { accountId: st
     setQuery(current => ({ ...current, extra: parsed }));
   }
   const projection = result?.projection;
-  const atMinimum = projection && Math.abs(projection.monthlyPayment - details.minimumPayment) < 0.005 && !query.extra;
+  const baseline = details.projection;
+  const atMinimum = !!projection && Math.abs(projection.monthlyPayment - details.minimumPayment) < 0.005 && !query.extra && !query.payoffMonth;
+  const changed = !!projection && !atMinimum;
+  const extraPerMonth = projection ? Math.max(0, projection.monthlyPayment - details.minimumPayment) : 0;
+  const currentMonthName = monthShortName(Number(details.currentMonth.slice(5, 7)) - 1);
+  const interestSaved = projection && !projection.neverPaidOff && !baseline.neverPaidOff ? baseline.interestRemaining - projection.interestRemaining : null;
+  const monthsSaved = projection && projection.paymentsRemaining !== null && baseline.paymentsRemaining !== null ? baseline.paymentsRemaining - projection.paymentsRemaining : null;
+  const savingsTitle = !projection ? '' : extraPerMonth > 0.005 && query.extra ? `Paying +${formatMoney(extraPerMonth)} every month and ${formatMoney(query.extra)} extra in ${currentMonthName}`
+    : extraPerMonth > 0.005 ? `Paying +${formatMoney(extraPerMonth)} extra every month` : query.extra ? `Paying ${formatMoney(query.extra)} extra in ${currentMonthName}` : `Paying ${formatMoney(projection.monthlyPayment)} every month`;
+  function reset() {
+    setPayment(details.minimumPayment.toFixed(2)); setExtra(''); setError('');
+    setQuery({ payment: details.minimumPayment, extra: 0 });
+  }
+  function copyToPlan() {
+    const id = details.pairedCategory?.id;
+    if (!id || !onCreateTarget) return;
+    onClose(); onCreateTarget(id);
+  }
   return <LedgerDialog title="Loan Payoff Simulator" onClose={onClose}><div className="loan-simulator">
     <div className="loan-simulator-inputs">
       <div className="loan-simulator-minimum"><strong>{formatMoney(details.minimumPayment)}</strong><span>Required Minimum Payment</span></div>
-      <label>Monthly Payment<MoneyInput value={payment} onChange={changePayment} aria-label="Monthly Payment" /></label>
-      <p className="loan-help">{formatMoney(details.minimumPayment)} is your minimum monthly payment.</p>
+      <label>Monthly Payment<MoneyInput value={payment} onChange={changePayment} aria-label="Monthly Payment" shellClassName="loan-sim-money" className="loan-sim-input" /></label>
+      {details.pairedCategory && onCreateTarget && <button type="button" className="loan-link loan-sim-copy" onClick={copyToPlan}>Copy and go to my plan</button>}
       <div className="loan-simulator-field"><span>Payoff Date</span>
         <MonthYearPicker label="Payoff Date" minimum={minimumMonth} value={projection?.payoffMonth ?? query.payoffMonth ?? minimumMonth}
           onChange={month => setQuery(current => ({ payoffMonth: month, extra: current.extra }))} /></div>
-      <p className="loan-help">{projection?.neverPaidOff ? 'This payment never pays off the loan.' : projection ? `You have ${projection.paymentsRemaining} payments remaining on your loan.` : ''}</p>
-      <label>One time extra in {monthShortName(Number(details.currentMonth.slice(5, 7)) - 1)}<MoneyInput value={extra} placeholder="0.00" onChange={changeExtra} aria-label="One time extra payment" /></label>
+      <p className="loan-help">{projection?.neverPaidOff ? 'This payment never pays off the loan.' : !projection ? '' : changed && baseline.payoffMonth ? `Your original payoff date is ${shortMonthLabel(baseline.payoffMonth)}` : `You have ${projection.paymentsRemaining} payments remaining on your loan.`}</p>
+      <label>One time extra in {currentMonthName}<MoneyInput value={extra} placeholder="0.00" onChange={changeExtra} aria-label="One time extra payment" shellClassName="loan-sim-money" className="loan-sim-input" /></label>
       <p className="loan-help">Extra one-off payments can have a large impact on your loan.</p>
+      {changed && <button type="button" className="loan-link loan-sim-reset" onClick={reset}><span aria-hidden="true">✕</span> Reset all changes</button>}
     </div>
     <div className="loan-simulator-results">
       {error && <p role="alert" className="loan-error">{error}</p>}
       {!projection ? <p role="status">Calculating…</p> : <>
-        <LoanChart past={details.history} track={projection.track} label="Simulated loan balance" />
-        <div className="loan-simulator-summary"><h3>{atMinimum ? 'Paying the minimum every month' : `Paying ${formatMoney(projection.monthlyPayment)} every month`}</h3>
-          <div><span><strong>{projection.neverPaidOff ? '—' : formatMoney(projection.interestRemaining)}</strong>Interest Remaining</span><span><strong>{projection.neverPaidOff ? 'Never' : durationLabel(projection.paymentsRemaining)}</strong>Time Remaining</span></div></div>
+        <LoanChart past={details.history} track={baseline.track} simulation={changed ? projection.track : null} label="Simulated loan balance" />
+        <div className={`loan-simulator-summary${changed ? ' saving' : ''}`}>
+          {changed ? <>
+            <h3>{savingsTitle}</h3>
+            <div><span><strong>{interestSaved === null ? '—' : formatMoney(interestSaved)}</strong>Interest Savings</span><span><strong>{monthsSaved === null ? '—' : durationLabel(Math.max(monthsSaved, 0))}</strong>Time Savings</span></div></> : <>
+            <h3>Paying the minimum every month</h3>
+            <div><span><strong>{projection.neverPaidOff ? '—' : formatMoney(projection.interestRemaining)}</strong>Interest Remaining</span><span><strong>{projection.neverPaidOff ? 'Never' : durationLabel(projection.paymentsRemaining)}</strong>Time Remaining</span></div></>}
+        </div>
         <dl className="loan-simulator-totals"><div className="total"><dt>Remaining to Pay</dt><dd>{projection.neverPaidOff ? '—' : formatMoney(projection.remainingToPay)}</dd></div>
           <div><dt>Principal</dt><dd>{formatMoney(projection.principalRemaining)}</dd></div><div><dt>Interest</dt><dd>{projection.neverPaidOff ? '—' : formatMoney(projection.interestRemaining)}</dd></div></dl>
         <p className="loan-help">Estimates use the current balance and rate, monthly interest rounded to the cent, and escrow/fees excluded from principal. Nothing is saved.</p>

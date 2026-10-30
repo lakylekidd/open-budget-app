@@ -180,13 +180,48 @@ it('runs the payoff simulator read-only: payment, payoff date, extra and never-p
   await user.click(within(picker).getByRole('button', { name: 'Oct' }));
   await waitFor(() => expect(within(dialog).getByLabelText('Monthly Payment')).toHaveValue('2253.83'));
   expect(simulations.some(path => path.includes('payoffMonth=2046-10'))).toBe(true);
-  expect(dialog).toHaveTextContent('Paying €2,253.83 every month');
+  expect(dialog).toHaveTextContent('Paying +€464.34 extra every month');
   await user.clear(within(dialog).getByLabelText('Monthly Payment')); await user.type(within(dialog).getByLabelText('Monthly Payment'), '1000');
   expect(await within(dialog).findByText('This payment never pays off the loan.')).toBeInTheDocument();
   await user.type(within(dialog).getByLabelText('One time extra payment'), '500');
   await waitFor(() => expect(simulations.some(path => path.includes('extra=500'))).toBe(true));
   await user.click(within(dialog).getByRole('button', { name: 'Done' }));
   expect(mutations).toHaveLength(0);
+});
+
+it('styles the simulator chart and inputs like the reference: smooth curves, dotted grid, dark inputs, savings and reset', async () => {
+  const user = userEvent.setup();
+  const onOpenCategory = show();
+  await user.click(await screen.findByRole('button', { name: 'Try It Now' }));
+  const dialog = screen.getByRole('dialog', { name: 'Loan Payoff Simulator' });
+  await within(dialog).findByText('Paying the minimum every month');
+  const chart = dialog.querySelector('.loan-chart') as HTMLElement;
+  expect(chart.querySelector('.loan-chart-past')?.getAttribute('d')).toContain('C');
+  expect(chart.querySelector('.loan-chart-track')?.getAttribute('d')).toContain('C');
+  const grid = chart.querySelectorAll('line.loan-chart-grid');
+  expect(grid.length).toBeGreaterThan(2);
+  grid.forEach(line => expect(line.getAttribute('class')).toContain('loan-chart-grid'));
+  expect(chart.querySelectorAll('.loan-chart-axis').length).toBeGreaterThan(grid.length);
+  expect(chart.querySelector('.loan-chart-sim')).toBeNull();
+  expect(within(dialog).queryByRole('button', { name: /Reset all changes/ })).not.toBeInTheDocument();
+  const payment = within(dialog).getByLabelText('Monthly Payment');
+  expect(payment).toHaveClass('loan-sim-input');
+  expect(within(dialog).getByLabelText('One time extra payment')).toHaveClass('loan-sim-input');
+  expect(within(dialog).getByRole('button', { name: 'Payoff Date' })).toHaveClass('month-year-trigger');
+  await user.type(within(dialog).getByLabelText('One time extra payment'), '500');
+  await waitFor(() => expect(dialog.querySelector('.loan-chart-sim')).not.toBeNull());
+  expect(dialog.querySelector('.loan-chart-sim')?.getAttribute('d')).toContain('C');
+  expect(dialog.querySelector('.loan-chart-legend')).toHaveTextContent('Simulation');
+  expect(dialog).toHaveTextContent('Paying €500.00 extra in Oct');
+  expect(dialog).toHaveTextContent('Interest Savings');
+  expect(dialog).toHaveTextContent('Time Savings');
+  expect(dialog).toHaveTextContent('Your original payoff date is Jun 2055');
+  await user.click(within(dialog).getByRole('button', { name: /Reset all changes/ }));
+  await waitFor(() => expect(within(dialog).getByLabelText('Monthly Payment')).toHaveValue('1789.49'));
+  expect(await within(dialog).findByText('Paying the minimum every month')).toBeInTheDocument();
+  expect(dialog.querySelector('.loan-chart-sim')).toBeNull();
+  await user.click(within(dialog).getByRole('button', { name: 'Copy and go to my plan' }));
+  expect(onOpenCategory).toHaveBeenCalledWith('loan-mortgage', true);
 });
 
 it('confirms the lender balance or records a correction', async () => {
