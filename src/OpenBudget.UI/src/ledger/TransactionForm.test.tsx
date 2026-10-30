@@ -64,3 +64,17 @@ it('requires a category for credit account transactions and hides card payment c
   await user.click(screen.getByRole('button', { name: 'Save transaction' }));
   await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({ accountId: 'card', amount: -20, categoryId: 'food' })));
 });
+
+it('calculates arithmetic typed into an amount field', async () => {
+  const submit = vi.fn(async () => {}); const user = userEvent.setup();
+  render(<TransactionForm accounts={accounts} selectedAccount="cash" busy={false} onSubmit={submit} />);
+  await screen.findByRole('combobox', { name: 'Category' });
+  const amount = screen.getByLabelText('Amount');
+  expect(amount.closest('.money-input-shell')?.querySelector('.money-input-icon svg')).not.toBeNull();
+  await user.type(amount, '-12.50-7.25');
+  await user.tab();
+  expect(amount).toHaveValue('-19.75');
+  await user.click(screen.getByRole('combobox', { name: 'Category' })); await user.click(screen.getByRole('option', { name: /^Food/ }));
+  await user.click(screen.getByRole('button', { name: 'Save transaction' }));
+  expect(submit).toHaveBeenCalledWith(expect.objectContaining({ amount: -19.75, categoryId: 'food' }));
+});

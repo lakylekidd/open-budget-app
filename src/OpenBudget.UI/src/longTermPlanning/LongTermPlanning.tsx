@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { parseAssignment } from '../budgetMoney';
+import { MoneyInput } from '../MoneyInput';
 import { formatMoney, requestJson, type Entry, type Register } from '../ledger/api';
 import { expandActivityEntries, PlanTransactionList, type PlanTransactionItem } from '../PlanTransactionList';
 import {
@@ -215,16 +216,15 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
       const isEditing = editing?.month === month.month && editing.categoryId === category.id && editing.field === field;
       const display = value.plannedBudget;
       return <div className="lt-value-line" key={metric}>
-        {isEditing ? <input
+        {isEditing ? <MoneyInput
           aria-label={`${category.name} Assigned ${monthName(month.month)} ${year}`}
           className="lt-money-input"
-          inputMode="decimal"
           autoFocus
           value={editing.raw}
           disabled={locked}
           aria-invalid={Boolean(editing.amount === null)}
           onFocus={event => selectInputContents(event.currentTarget)}
-          onChange={event => updateDraft(event.target.value)}
+          onChange={updateDraft}
           onBlur={commitDraft}
           onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); commitDraft(); event.currentTarget.blur(); } if (event.key === 'Escape') { cancelEditRef.current = true; setEditing(null); setMessage(''); onPendingChange?.(false); event.currentTarget.blur(); } }}
         /> : <button

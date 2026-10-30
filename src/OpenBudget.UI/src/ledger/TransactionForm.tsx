@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { MoneyInput } from '../MoneyInput';
 import { type Account, type CategoryOption, type Entry, type Split, isCreditAccount, loadCategoryBudget, parseMoney, requestJson, today } from './api';
 import { CategoryPicker, inflowCategoryId } from './CategoryPicker';
 
@@ -46,7 +47,7 @@ export function TransactionForm({ accounts, entry, selectedAccount, busy, onSubm
     <p>Use a negative amount for spending and a positive amount for income or refunds.</p>
     <label>Account<select value={accountId} disabled={busy || entry?.isOpening} onChange={e => setAccountId(e.target.value)} required>{accounts.filter(a => !a.isClosed).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
     <label>Date<input type="date" min="1900-01-01" max="9998-12-31" required value={date} onChange={e => setDate(e.target.value)} /></label>
-    <label>Amount<input inputMode="decimal" required value={amount} onChange={e => setAmount(e.target.value)} placeholder="-25.00" /></label>
+    <label>Amount<MoneyInput required value={amount} onChange={raw => setAmount(raw)} placeholder="-25.00" /></label>
     <label>Payee<input list="ledger-payees" value={payee} maxLength={160} onChange={e => setPayee(e.target.value)} /><datalist id="ledger-payees">{payees.map(p => <option key={p} value={p} />)}</datalist></label>
     {!entry?.isOpening && <>
       {categoryState === 'loading' && <p role="status">Loading categories…</p>}
@@ -55,7 +56,7 @@ export function TransactionForm({ accounts, entry, selectedAccount, busy, onSubm
       <p className="ledger-hint">{credit ? 'Credit spending moves money from the category to this card’s payment category.' : 'Uncategorized income adds to Ready to Assign. Uncategorized spending reduces it until you choose a category.'}</p>
       {splits.map((split, index) => <div className="split-row" key={index}>
         <label>Split {index + 1} category<CategoryPicker {...categoryProps} includeInflow={false} label={`Split ${index + 1} category`} value={split.categoryId} onChange={id => setSplits(items => items.map((item, i) => i === index ? { ...item, categoryId: id } : item))} /></label>
-        <label>Split {index + 1} amount<input inputMode="decimal" required value={split.amount} onChange={e => setSplits(items => items.map((item, i) => i === index ? { ...item, amount: e.target.value } : item))} /></label>
+        <label>Split {index + 1} amount<MoneyInput required value={split.amount} onChange={raw => setSplits(items => items.map((item, i) => i === index ? { ...item, amount: raw } : item))} /></label>
         <button type="button" aria-label={`Remove split ${index + 1}`} onClick={() => setSplits(items => items.filter((_, i) => i !== index))}>×</button>
       </div>)}
       <button type="button" disabled={splits.length >= 50} onClick={() => { setCategoryId(''); setSplits(items => [...items, { categoryId: '', amount: '' }]); }}>+ Add split</button>

@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react';
+import { MoneyInput } from '../MoneyInput';
 import { createPortal } from 'react-dom';
 import { type Account, type CategoryOption, type Entry, type Split, loadCategoryBudget, parseMoney, today, isCreditAccount } from './api';
 import { type ViewOptions } from './ViewOptions';
@@ -8,7 +9,7 @@ import { PayeePicker, type SavedPayee } from './Payees';
 import { CategoryPicker, inflowCategoryId } from './CategoryPicker';
 import { NewCategoryDialog } from './NewCategoryDialog';
 export type InlineFields = { accountId:string;date:string;amount:number;payee:string;memo:string;categoryId:string|null;splits:Split[];status:string;repeat:string;toAccountId:string|null;confirmReconciledEdit:boolean;onlyOnce:boolean };
-export function parseRegisterMoney(value:string) { return parseMoney(/^\d{1,3}(,\d{3})+(\.\d{1,2})?$/.test(value.trim()) ? value.replaceAll(',','') : value); }
+export function parseRegisterMoney(value:string) { return parseMoney(value); }
 type DraftSplit = { categoryId:string; payee:string; memo:string; outflow:string; inflow:string };
 export function InlineTransactionEditor({ entry, selectedAccount, accounts, view, busy, onSave, onCancel, repeat:initialRepeat='never', transferAccountId, scheduled=false, requiresConfirmation=false, postingError, onPayeesChanged=()=>{}, onCategoriesChanged=()=>{}, onPayeesPending,onShowPayeeTransactions }: {
   entry?:Entry;selectedAccount:string;accounts:Account[];view:ViewOptions;busy:boolean;onSave:(fields:InlineFields,another:boolean)=>Promise<boolean>;onCancel:()=>void;repeat?:string;transferAccountId?:string;scheduled?:boolean;requiresConfirmation?:boolean; postingError?:string|null;onPayeesChanged?:()=>void;onCategoriesChanged?:()=>void;onPayeesPending?:(pending:boolean)=>void;onShowPayeeTransactions?:(payee:SavedPayee)=>void;
@@ -47,7 +48,7 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
     <td><PayeePicker paymentsRequest={paymentsRequest} form={formId} value={payee} disabled={busy||entry?.isOpening} accountId={accountId} accounts={accounts} categories={categories} onShowTransactions={onShowPayeeTransactions} onChanged={onPayeesChanged} onPendingChange={onPayeesPending} onChange={(name,id,suggested)=>{setPayee(name);setChosenTransfer(id);if(!categoryId&&!splits.length&&suggested&&categories.some(c=>c.id===suggested&&!c.isArchived))setCategory(suggested);}}/></td>
     <td><CategoryPicker {...categoryProps} form={formId} value={splits.length?'__split':categoryId} notNeeded={!!transfer||entry?.isOpening} disabled={busy} onChange={id=>{setSplits([]);setCategory(id);}} onSplit={split} onTransfer={()=>setPaymentsRequest(n=>n+1)} onNewCategory={()=>setNewCategoryTarget('main')}/></td>
     <td><input form={formId} aria-label="Memo" disabled={busy} value={memo} maxLength={1000} placeholder="memo" onChange={e=>setMemo(e.target.value)}/></td>
-    <td><input form={formId} aria-label="Outflow" disabled={busy} inputMode="decimal" value={outflow} placeholder="outflow" onChange={e=>setOutflow(e.target.value)}/></td><td><input form={formId} aria-label="Inflow" disabled={busy} inputMode="decimal" value={inflow} placeholder="inflow" onChange={e=>setInflow(e.target.value)}/></td>
+    <td><MoneyInput form={formId} aria-label="Outflow" disabled={busy} value={outflow} placeholder="outflow" onChange={raw => setOutflow(raw)}/></td><td><MoneyInput form={formId} aria-label="Inflow" disabled={busy} value={inflow} placeholder="inflow" onChange={raw => setInflow(raw)}/></td>
     {view.showRunningBalance&&<td/>}<td className="register-status-cell"><button type="button" className={'transaction-status status-'+status} disabled={busy||scheduled||requiresConfirmation} aria-label={status==='cleared'?'Cleared: mark uncleared':'Uncleared: mark cleared'} onClick={()=>setStatus(status==='cleared'?'uncleared':'cleared')}><span className={status==='cleared'?'cleared-symbol':'uncleared-symbol'}>c</span></button></td>
   </tr>{splits.map((s,i)=><tr className="register-inline-split-row" key={i} aria-label={`Split ${i+1}`}>
     <td className="register-check-cell"/><td/>{view.showFlags&&<td/>}{view.showImages&&<td/>}
@@ -55,8 +56,8 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
     <td><PayeePicker form={formId} label={`Split ${i+1} payee`} allowTransfers={false} value={s.payee} disabled={busy} accountId={accountId} accounts={accounts} categories={categories} onChanged={onPayeesChanged} onPendingChange={onPayeesPending} onShowTransactions={onShowPayeeTransactions} onChange={name=>setSplits(items=>items.map((item,index)=>index===i?{...item,payee:name}:item))}/></td>
     <td><CategoryPicker {...categoryProps} includeInflow={false} form={formId} label={`Split ${i+1} category`} value={s.categoryId} disabled={busy} onChange={id=>setSplits(items=>items.map((item,index)=>index===i?{...item,categoryId:id}:item))} onNewCategory={()=>setNewCategoryTarget(i)}/></td>
     <td><input form={formId} aria-label={`Split ${i+1} memo`} disabled={busy} value={s.memo} placeholder="memo" maxLength={1000} onChange={e=>setSplits(items=>items.map((item,index)=>index===i?{...item,memo:e.target.value}:item))}/></td>
-    <td><input form={formId} aria-label={`Split ${i+1} outflow`} disabled={busy} inputMode="decimal" value={s.outflow} placeholder="outflow" onChange={e=>setSplits(items=>items.map((item,index)=>index===i?{...item,outflow:e.target.value,inflow:''}:item))}/></td>
-    <td><input form={formId} aria-label={`Split ${i+1} inflow`} disabled={busy} inputMode="decimal" value={s.inflow} placeholder="inflow" onChange={e=>setSplits(items=>items.map((item,index)=>index===i?{...item,inflow:e.target.value,outflow:''}:item))}/></td>
+    <td><MoneyInput form={formId} aria-label={`Split ${i+1} outflow`} disabled={busy} value={s.outflow} placeholder="outflow" onChange={raw => setSplits(items=>items.map((item,index)=>index===i?{...item,outflow:raw,inflow:''}:item))}/></td>
+    <td><MoneyInput form={formId} aria-label={`Split ${i+1} inflow`} disabled={busy} value={s.inflow} placeholder="inflow" onChange={raw => setSplits(items=>items.map((item,index)=>index===i?{...item,inflow:raw,outflow:''}:item))}/></td>
     {view.showRunningBalance&&<td/>}<td/>
   </tr>)}<tr className="register-inline-footer"><td colSpan={columns}>
     <form id={formId} onSubmit={e=>{e.preventDefault();void save(false);}}>

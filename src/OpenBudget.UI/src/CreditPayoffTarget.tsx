@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { MoneyInput } from './MoneyInput';
 import { parseMoney } from './ledger/api';
 
 export type PayoffKind = 'payByDate' | 'monthlyAmount';
@@ -79,7 +80,7 @@ export function PayoffTargetEditor({ target, busy, onSave, onCancel, onDelete }:
             {years.map(value => <option key={value} value={value}>{value}</option>)}
           </select>
         </div>
-        : <label className="credit-target-amount">Amount per month<input inputMode="decimal" value={amount} disabled={busy} placeholder="0.00" onChange={event => { setAmount(event.target.value); setError(''); }} /></label>}
+        : <label className="credit-target-amount">Amount per month<MoneyInput value={amount} disabled={busy} placeholder="0.00" onChange={raw => { setAmount(raw); setError(''); }} /></label>}
       {error && <p role="alert" className="credit-target-error">{error}</p>}
     </div>
     <div className="credit-target-actions">

@@ -1,4 +1,5 @@
 import { Fragment as ReactFragment, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
+import { MoneyInput } from '../MoneyInput';
 import { type Account, type Accounts, type Audit, type CategoryOption, type Entry, type Register, type Schedules, type ScheduledItem, ApiError, formatMoney, loadCategories, parseMoney, requestJson, today, type AccountType, accountTypeLabel, accountTypeSections, isCreditAccount } from './api';
 import { LedgerDialog } from './LedgerDialog';
 import { TransactionForm } from './TransactionForm';
@@ -348,7 +349,7 @@ function AccountForm({ accountType, busy, onSubmit }: { accountType: AccountType
   return <form className="ledger-form" onSubmit={async e => { e.preventDefault(); const parsed = parseMoney(amount); if (parsed === null || credit && parsed < 0) { setError(credit ? 'Enter the amount you owe as a positive balance with at most two decimal places.' : 'Enter a balance with at most two decimal places.'); return; } await onSubmit({ name, accountType, date, openingBalance: credit && parsed !== 0 ? -parsed : parsed }); }}>
     <label>Account name<input required maxLength={120} value={name} onChange={e => setName(e.target.value)} /></label>
     <label>Opening date<input required min="1900-01-01" max="9998-12-31" type="date" value={date} onChange={e => setDate(e.target.value)} /></label>
-    <label>{credit ? 'Current balance owed' : 'Opening balance'}<input required inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} /></label>
+    <label>{credit ? 'Current balance owed' : 'Opening balance'}<MoneyInput required value={amount} onChange={raw => setAmount(raw)} /></label>
     <p>{credit ? 'The balance owed is recorded once as existing debt. It does not change Ready to Assign; assign money to this account’s payment category to pay it off.' : 'The opening balance is recorded once as a cleared ledger entry and contributes to Ready to Assign.'}</p>
     {error && <p role="alert">{error}</p>}<button className="button-primary" disabled={busy}>Save account</button>
   </form>;
@@ -363,7 +364,7 @@ function TransferForm({ accounts, selectedAccount, dialog, busy, onSubmit }: { a
     <p>Both account entries are saved together. Transfers do not change budget income or spending.</p>
     <label>From account<select required value={from} onChange={e => setFrom(e.target.value)}>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
     <label>To account<select required value={to} onChange={e => setTo(e.target.value)}>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
-    <label>Date<input type="date" required min="1900-01-01" max="9998-12-31" value={date} onChange={e => setDate(e.target.value)} /></label><label>Amount<input inputMode="decimal" required value={amount} onChange={e => setAmount(e.target.value)} /></label>
+    <label>Date<input type="date" required min="1900-01-01" max="9998-12-31" value={date} onChange={e => setDate(e.target.value)} /></label><label>Amount<MoneyInput required value={amount} onChange={raw => setAmount(raw)} /></label>
     <label>Memo<input maxLength={1000} value={memo} onChange={e => setMemo(e.target.value)} /></label>{error && <p role="alert">{error}</p>}<button disabled={busy} className="button-primary">Save transfer</button>
   </form>;
 }
@@ -373,7 +374,7 @@ function ReconcileForm({ account, busy, onSubmit }: { account: Account; busy: bo
   const difference = amount === null ? null : Math.round((amount - account.clearedBalance) * 100) / 100;
   return <form className="ledger-form" onSubmit={async e => { e.preventDefault(); if (amount !== null && difference === 0) await onSubmit({ statementBalance: amount }); }}>
     <p>{account.name} · Cleared balance: {formatMoney(account.clearedBalance)}</p>
-    <label>Statement balance<input required inputMode="decimal" value={statement} onChange={e => setStatement(e.target.value)} /></label>
+    <label>Statement balance<MoneyInput required value={statement} onChange={raw => setStatement(raw)} /></label>
     <p role="status">Difference: {difference === null ? 'Enter your statement balance' : formatMoney(difference)}</p>
     <p>Clear or correct entries until the difference is zero. Confirming records a snapshot and locks cleared entries; use a new correcting entry for later corrections.</p>
     <button disabled={busy || difference !== 0} className="button-primary">Confirm reconciliation</button>

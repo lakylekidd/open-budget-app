@@ -1,3 +1,4 @@
+import { evaluateMoneyExpression } from '../moneyExpression';
 export type Account = { unapprovedCount?:number; attentionCount?:number; notes?:string; id: string; name: string; isClosed: boolean; balance: number; clearedBalance: number; unclearedBalance: number;
   accountType: AccountType; isFavorite: boolean; connectionStatus: 'unlinked' | 'connected'; lastReconciledAt: string | null; needsCategoryCount: number };
 export type AccountType = 'checking' | 'savings' | 'cash' | 'creditCard' | 'lineOfCredit';
@@ -34,11 +35,10 @@ export async function requestJson<T>(path: string, options?: RequestInit): Promi
   return response.json() as Promise<T>;
 }
 
+// Accepts plain amounts and arithmetic such as "12.50+7.25" or "100/3" (rounded to cents).
 export function parseMoney(value: string): number | null {
-  const normalized = value.trim().replace(',', '.');
-  if (!/^-?\d+(\.\d{1,2})?$/.test(normalized)) return null;
-  const amount = Number(normalized);
-  return Number.isFinite(amount) && Math.abs(amount) <= 999999999.99 ? amount : null;
+  const amount = evaluateMoneyExpression(value);
+  return amount !== null && Math.abs(amount) <= 999999999.99 ? amount : null;
 }
 
 export async function loadCategories(date: string, signal?: AbortSignal): Promise<CategoryOption[]> {
