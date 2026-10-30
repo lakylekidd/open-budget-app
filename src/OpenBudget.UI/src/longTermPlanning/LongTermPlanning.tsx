@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { longTermYearStore, useRoutedLongTermYear } from '../routing/longTermYear';
 import { parseAssignment } from '../budgetMoney';
 import { MoneyInput } from '../MoneyInput';
+import { DisclosureChevron } from '../DisclosureChevron';
 import { formatMoney, requestJson, type Entry, type Register } from '../ledger/api';
 import { expandActivityEntries, PlanTransactionList, type PlanTransactionItem } from '../PlanTransactionList';
 import {
@@ -57,6 +58,26 @@ function availableTone(metric: Metric, value: number | null | undefined) {
   return value < 0 ? 'lt-available-negative' : 'lt-available-positive';
 }
 
+function plannedExpenseTone(metric: Metric, value: number | null | undefined) {
+  return metric === 'plannedExpenses' && (value ?? 0) > 0 ? 'lt-planned-expense-positive' : '';
+}
+
+const ROW_ANIMATION_MS = 180;
+const ROW_STAGGER_MS = 25;
+const MAX_STAGGERED_ROWS = 8;
+
+function rowDelayMs(position: number) {
+  return Math.min(position, MAX_STAGGERED_ROWS) * ROW_STAGGER_MS;
+}
+
+function rowAnimationMs(rowCount: number) {
+  return ROW_ANIMATION_MS + rowDelayMs(Math.max(rowCount - 1, 0));
+}
+
+function prefersReducedMotion() {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 function selectInputContents(input: HTMLInputElement) {
   window.requestAnimationFrame(() => {
     if (document.activeElement === input) input.select();
@@ -74,6 +95,8 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
   const [loadError, setLoadError] = useState('');
   const [reloadToken, setReloadToken] = useState(0);
   const [collapsed, setCollapsed] = useState<string[]>([]);
+  const [rowMotion, setRowMotion] = useState<Record<string, 'enter' | 'exit'>>({});
+  const rowMotionTimers = useRef(new Map<string, number>());
   const [editing, setEditing] = useState<EditingValue | null>(null);
   const [pendingChange, setPendingChange] = useState<PlanningChange | null>(null);
   const [conflict, setConflict] = useState<ConflictState | null>(null);
@@ -86,6 +109,29 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
   const [activityDialog, setActivityDialog] = useState<ActivityDialog | null>(null);
 
   useEffect(() => () => onPendingChange?.(false), [onPendingChange]);
+  useEffect(() => () => rowMotionTimers.current.forEach(timer => window.clearTimeout(timer)), []);
+
+  function toggleGroup(groupId: string, rowCount: number) {
+    const collapsing = !collapsed.includes(groupId) && rowMotion[groupId] !== 'exit';
+    const clearMotion = () => setRowMotion(current => { const next = { ...current }; delete next[groupId]; return next; });
+    window.clearTimeout(rowMotionTimers.current.get(groupId));
+    if (prefersReducedMotion()) {
+      clearMotion();
+      setCollapsed(values => collapsing ? [...values, groupId] : values.filter(id => id !== groupId));
+      return;
+    }
+    if (collapsing) {
+      setRowMotion(current => ({ ...current, [groupId]: 'exit' }));
+      rowMotionTimers.current.set(groupId, window.setTimeout(() => {
+        setCollapsed(values => [...values, groupId]);
+        clearMotion();
+      }, rowAnimationMs(rowCount)));
+    } else {
+      setCollapsed(values => values.filter(id => id !== groupId));
+      setRowMotion(current => ({ ...current, [groupId]: 'enter' }));
+      rowMotionTimers.current.set(groupId, window.setTimeout(clearMotion, rowAnimationMs(rowCount)));
+    }
+  }
 
   const now = new Date();
   const currentMonth = monthText(now.getFullYear(), now.getMonth() + 1);
@@ -245,7 +291,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
     if (metric === 'plannedExpenses' || metric === 'actualExpenses') {
       const kind = metric === 'plannedExpenses' ? 'plannedExpenses' : 'actualExpenses';
       const label = kind === 'plannedExpenses' ? 'planned' : 'actual';
-      return <div className={`lt-value-line ${kind === 'actualExpenses' ? 'lt-actual-value' : ''}`} key={metric}>
+      return <div className={`lt-value-line ${kind === 'actualExpenses' ? 'lt-actual-value' : ''} ${plannedExpenseTone(metric, value?.[metric])}`} key={metric}>
         <button type="button" className="lt-activity-value" aria-label={`View ${category.name} ${label} expenses in ${monthName(month.month)} ${year}`}
           onClick={() => void openActivity({ month: month.month, kind, title: `Activity · ${category.name} · ${label} expenses · ${monthName(month.month)} ${year}`, categoryIds: [category.id] })}>
           {metricValue(category, monthIndex, metric)}
@@ -260,7 +306,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
   function renderGroupMetric(group: PlanningGroup, monthIndex: number, metric: Metric) {
     if (metric === 'plannedExpenses') {
       const month = displayedPlan!.months[monthIndex].month;
-      return <div className="lt-value-line" key={metric}><button type="button" className="lt-activity-value"
+      return <div className={`lt-value-line ${plannedExpenseTone(metric, total(group, monthIndex, metric))}`} key={metric}><button type="button" className="lt-activity-value"
         aria-label={`View ${group.name} planned expenses in ${monthName(month)} ${year}`}
         onClick={() => void openActivity({ month, kind: 'plannedExpenses', title: `Activity · ${group.name} · planned expenses · ${monthName(month)} ${year}`, categoryIds: group.categories.map(category => category.id) })}>
         {groupValues(group, monthIndex, metric)}
@@ -347,19 +393,23 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
             </div>
 
             {displayedPlan.groups.map(group => {
-              const isCollapsed = collapsed.includes(group.id);
+              const motion = rowMotion[group.id];
+              const isCollapsed = collapsed.includes(group.id) || motion === 'exit';
+              const rowCount = group.categories.length;
               return <div className="lt-group-block" role="rowgroup" key={group.id}>
                 <div className="lt-grid-row lt-group-row" role="row">
                   <div className="lt-label-cell lt-sticky-label lt-group-label" role="rowheader">
-                    <button type="button" aria-expanded={!isCollapsed} aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${group.name}`} onClick={() => setCollapsed(values => isCollapsed ? values.filter(id => id !== group.id) : [...values, group.id])}>
-                      <span className={`lt-disclosure ${isCollapsed ? 'closed' : ''}`}>⌄</span><strong>{group.name}</strong>
+                    <button type="button" aria-expanded={!isCollapsed} aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${group.name}`} onClick={() => toggleGroup(group.id, rowCount)}>
+                      <DisclosureChevron open={!isCollapsed} className="lt-disclosure" /><strong>{group.name}</strong>
                     </button>
                   </div>
                   {displayedPlan.months.map((month, monthIndex) => <div className={`lt-month-values ${month.month < currentMonth ? 'past' : month.month === currentMonth ? 'current' : 'future'}`} role="cell" key={month.month}>
                     <div className="lt-subrow lt-planned-subrow" data-subrow="planned">{plannedMetrics.map(metric => renderGroupMetric(group, monthIndex, metric))}</div>
                   </div>)}
                 </div>
-                {!isCollapsed && group.categories.map(category => <div className="lt-grid-row lt-category-row" role="row" key={category.id}>
+                {(!collapsed.includes(group.id) || motion === 'exit') && group.categories.map((category, index) => <div
+                  className={`lt-grid-row lt-category-row${motion ? ` lt-row-${motion}` : ''}`} role="row" key={category.id}
+                  style={motion ? { '--row-delay': `${rowDelayMs(motion === 'exit' ? rowCount - 1 - index : index)}ms` } as CSSProperties : undefined}>
                   <div className="lt-label-cell lt-sticky-label" role="rowheader">
                     <strong title={category.name}>{category.name}</strong>
                     <div className="lt-pair-labels"><span>Planned</span><span>Actual</span></div>
@@ -374,7 +424,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
           </div>
         </div>}
 
-        <div className={`lt-save-state ${status}`} role="status">
+        <div className={`lt-save-state ${status}${status === 'saved' || status === 'saving' ? ' sr-only' : ''}`} role="status">
           <span>{message || (status === 'saved' ? 'Planning changes saved.' : status === 'saving' ? 'Saving planning changes…' : '')}</span>
           {status === 'error' && pendingChange && <><button type="button" onClick={() => void saveChange(pendingChange)}>Retry save</button><button type="button" onClick={() => setReloadToken(value => value + 1)}>Reload saved plan</button></>}
           {status === 'conflict' && conflict && <><button type="button" onClick={() => { setPlan(conflict.current); setPendingChange(null); setEditing(null); setConflict(null); setStatus('saved'); setMessage('Loaded the latest saved plan.'); onPendingChange?.(false); }}>Load latest</button><button type="button" onClick={() => { const current = conflict.current; const change = conflict.change; setPlan(current); setConflict(null); onPendingChange?.(true); void saveChange(change, current.version); }}>Reapply my value</button></>}

@@ -54,8 +54,7 @@
 .lt-label-cell{min-height:62px;display:flex;flex-direction:column;justify-content:center;padding:5px 12px}
 .lt-label-cell>button{display:flex;align-items:center;gap:8px;width:100%;min-height:25px;padding:0;text-align:left;color:inherit}
 .lt-label-cell>button strong,.lt-label-cell>strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;line-height:21px}
-.lt-disclosure{width:16px;flex:0 0 16px;color:#b9b9d0;font-size:16px;transition:transform .12s}
-.lt-disclosure.closed{transform:rotate(-90deg)}
+
 .lt-pair-labels{display:grid;grid-template-rows:30px 30px;margin-top:1px;color:#aeadc1;font-size:11px;line-height:30px}
 .lt-pair-labels span{overflow:hidden;white-space:nowrap}
 .lt-pair-labels span+span{position:relative;top:4px;border-top:0}
@@ -97,3 +96,9 @@
 .lt-category-row .lt-month-values{justify-content:flex-start;padding-top:27px;padding-bottom:6px}
 .lt-category-row .lt-subrow{box-sizing:border-box;min-height:30px;height:30px}
 .lt-category-row .lt-actual-subrow{height:31px}
+.lt-planned-expense-positive .lt-activity-value{color:#f0a331}
+@keyframes lt-row-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@keyframes lt-row-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(-6px)}}
+.lt-row-enter{animation:lt-row-in .18s ease both;animation-delay:var(--row-delay,0ms)}
+.lt-row-exit{animation:lt-row-out .18s ease both;animation-delay:var(--row-delay,0ms);pointer-events:none}
+@media (prefers-reduced-motion:reduce){.lt-row-enter,.lt-row-exit{animation:none}}

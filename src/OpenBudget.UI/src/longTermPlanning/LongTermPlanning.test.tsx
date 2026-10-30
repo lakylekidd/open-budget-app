@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { LongTermPlanning } from './LongTermPlanning';
@@ -193,6 +193,25 @@ it('colors negative Available red and zero-or-positive Available green for plann
   expect(availableLine(container.querySelector('.lt-group-row')!, 'planned')).toHaveClass('lt-available-negative');
 });
 
+it('colors planned expenses orange only when they are above zero', async () => {
+  const year = new Date().getFullYear();
+  const plan = planFor(year);
+  plan.groups[0].categories[0].months[0].plannedExpenses = 80;
+  plans[year] = plan;
+  const { container } = render(<LongTermPlanning />);
+  await annualGrid(year);
+
+  const categoryRows = Array.from(container.querySelectorAll('.lt-category-row'));
+  const groceries = categoryRows.find(row => row.textContent?.includes('Groceries'))!;
+  const transport = categoryRows.find(row => row.textContent?.includes('Transport'))!;
+  const expenseLine = (cell: Element) => cell.querySelector('[data-subrow="planned"] .lt-value-line:nth-child(2)');
+
+  expect(expenseLine(groceries.querySelector('.lt-month-values')!)).toHaveClass('lt-planned-expense-positive');
+  expect(expenseLine(groceries.querySelectorAll('.lt-month-values')[1])).not.toHaveClass('lt-planned-expense-positive');
+  expect(expenseLine(transport.querySelector('.lt-month-values')!)).not.toHaveClass('lt-planned-expense-positive');
+  expect(expenseLine(container.querySelector('.lt-group-row .lt-month-values')!)).toHaveClass('lt-planned-expense-positive');
+});
+
 it('navigates years, previews remaining to be assigned, and preserves later overrides', async () => {
   const user = userEvent.setup();
   render(<LongTermPlanning />);
@@ -212,7 +231,8 @@ it('navigates years, previews remaining to be assigned, and preserves later over
   expect(juneHeader).toHaveTextContent('Remaining to Be Assigned');
   expect(juneHeader).toHaveTextContent('€1,250.00');
   await user.keyboard('{Enter}');
-  await screen.findByText('Planning changes saved.');
+  expect(await screen.findByText('Planning changes saved.')).toBeInTheDocument();
+  expect(screen.getByText('Planning changes saved.').closest('.lt-save-state')).toHaveClass('sr-only');
   expect(screen.getByRole('button', { name: `Groceries Assigned August ${year}` })).toHaveTextContent('€650.00');
   expect(screen.getByRole('button', { name: `Groceries Assigned September ${year}` })).toHaveTextContent('€700.00');
   expect(juneHeader).toHaveTextContent('€1,250.00');
@@ -234,9 +254,18 @@ it('keeps group totals for collapsed categories and aggregates every subcategory
   const groupRow = container.querySelector('.lt-group-row')!;
   const januaryGroupCell = groupRow.querySelectorAll('.lt-month-values')[0];
   expect(januaryGroupCell).toHaveTextContent('€600.00');
+  expect(groupRow.querySelector('svg.disclosure-chevron')).toHaveClass('open');
   await user.click(screen.getByRole('button', { name: 'Collapse Everyday' }));
-  expect(screen.queryByRole('textbox', { name: `Groceries Assigned January ${year}` })).not.toBeInTheDocument();
+  expect(groupRow.querySelector('svg.disclosure-chevron')).not.toHaveClass('open');
+  expect(container.querySelector('.lt-category-row')).toHaveClass('lt-row-exit');
+  await waitFor(() => expect(container.querySelector('.lt-category-row')).not.toBeInTheDocument());
   expect(groupRow.querySelectorAll('.lt-month-values')[0]).toHaveTextContent('€600.00');
+
+  await user.click(screen.getByRole('button', { name: 'Expand Everyday' }));
+  const expandedRows = container.querySelectorAll('.lt-category-row');
+  expect(expandedRows[0]).toHaveClass('lt-row-enter');
+  expect((expandedRows[1] as HTMLElement).style.getPropertyValue('--row-delay')).toBe('25ms');
+  await waitFor(() => expect(container.querySelector('.lt-category-row')).not.toHaveClass('lt-row-enter'));
 });
 
 it('shows loading failures and offers a retry instead of showing sample forecasts', async () => {
