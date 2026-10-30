@@ -24,7 +24,7 @@ function rememberActiveBudget(id: string | null) {
   }
 }
 import { categoryProgress, categoryTransactionAmount, moveItem } from './planHelpers';
-import { expandActivityEntries, PlanTransactionList, type PlanTransactionItem } from './PlanTransactionList';
+import { type CreditActivitySummary, expandActivityEntries, PlanTransactionList, type PlanTransactionItem } from './PlanTransactionList';
 import { LongTermPlanning } from './longTermPlanning/LongTermPlanning';
 import { AuthGate } from './AuthGate';
 import { AdminPanel } from './admin/AdminPanel';
@@ -83,7 +83,7 @@ const monthBounds = (month: string) => {
 };
 
 type PlanFocus = { id: string; accountId: string; date: string; scheduled: boolean; projected?: Entry; splitIndex?: number; source?: 'Plan' | 'Long-Term Planning' | 'Wishlist' };
-type CategoryTransactionDialog = { title: string; categoryId: string; kind: 'activity' | 'upcoming'; items: PlanTransactionItem[]; loading: boolean; error: string; requestId: number };
+type CategoryTransactionDialog = { title: string; subtitle: string; categoryId: string; kind: 'activity' | 'upcoming'; variant: 'standard' | 'credit'; summary: CreditActivitySummary | null; anchor: HTMLElement | null; items: PlanTransactionItem[]; loading: boolean; error: string; requestId: number };
 
 function Icon({ name, size = 18 }: { name: string; size?: number }) {
   if (['plan', 'bank', 'chart'].includes(name)) return <img src={`/icon-${name}.svg`} width={size} height={size} alt="" aria-hidden="true" />;
@@ -813,30 +813,38 @@ function BudgetApplication() {
     dragSourceRef.current = null; setDragSource(null); setDropTarget(null);
   }
 
-  async function openActivity(category: Category) {
+  async function openActivity(category: Category, anchor: HTMLElement | null = null) {
     const requestId = ++dialogRequestId.current;
-    setCategoryDialog({ title: `Activity · ${category.name}`, categoryId: category.id, kind: 'activity', items: [], loading: true, error: '', requestId });
+    const card = paymentAccountFor(category.id);
+    setCategoryDialog({ title: 'Activity', subtitle: card?.name ?? category.name, categoryId: category.id, kind: 'activity', variant: card ? 'credit' : 'standard', summary: null, anchor, items: [], loading: true, error: '', requestId });
     const { from, to } = monthBounds(data.month);
     try {
       const loadPage = (page: number) => {
-        const query = new URLSearchParams({ categoryId: category.id, from, to, page: String(page), pageSize: '100', includeReconciled: 'true' });
+        const query = new URLSearchParams(card ? { accountId: card.id, from, to, page: String(page), pageSize: '100', includeReconciled: 'true' } : { categoryId: category.id, from, to, page: String(page), pageSize: '100', includeReconciled: 'true' });
         return requestJson<Register>(`/api/transactions?${query}`);
       };
-      const first = await loadPage(1);
+      const [first, summary] = await Promise.all([loadPage(1), card ? requestJson<CreditActivitySummary>(`/api/accounts/${card.id}/credit-activity/${data.month}`) : Promise.resolve(null)]);
       const entries = [...first.items];
       for (let page = 2; (page - 1) * first.pageSize < first.total; page++) entries.push(...(await loadPage(page)).items);
-      setCategoryDialog(current => current?.requestId === requestId ? { ...current, items: expandActivityEntries(entries, false, [category.id], { [category.id]: category.name }), loading: false } : current);
+      const items = card ? cardActivityItems(entries) : expandActivityEntries(entries, false, [category.id], { [category.id]: category.name });
+      setCategoryDialog(current => current?.requestId === requestId ? { ...current, items, summary, loading: false } : current);
     } catch (error) {
       setCategoryDialog(current => current?.requestId === requestId ? { ...current, loading: false, error: error instanceof Error ? error.message : 'Could not load transactions.' } : current);
     }
   }
 
-  function openUpcoming(category: Category) {
+  // Card rows show "Group: Category"; payments and transfers fall under the card's payment category.
+  function cardActivityItems(entries: Entry[]) {
+    const labels = Object.fromEntries(data.groups.flatMap(group => group.categories.map(category => [category.id, `${group.name}: ${category.name}`])));
+    return expandActivityEntries(entries, false, undefined, labels).map(item => item.split ? item : { ...item, splitCategoryName: item.entry.categoryId ? labels[item.entry.categoryId] ?? item.entry.categoryName ?? undefined : item.entry.transferId ? labels[creditPaymentCategoryId(item.entry.accountId)] : undefined });
+  }
+
+  function openUpcoming(category: Category, anchor: HTMLElement | null = null) {
     const categoryNames = Object.fromEntries(visibleCategories.map(item => [item.id, item.name]));
     const items = expandActivityEntries(currentMonthUpcomingItems.map(item => item.transaction), true, [category.id], categoryNames)
       .filter(item => (item.categoryAmount ?? item.entry.amount) < 0);
     const requestId = ++dialogRequestId.current;
-    setCategoryDialog({ title: `Upcoming activity · ${category.name}`, categoryId: category.id, kind: 'upcoming', items, loading: false, error: upcomingError, requestId });
+    setCategoryDialog({ title: 'Upcoming activity', subtitle: category.name, categoryId: category.id, kind: 'upcoming', variant: 'standard', summary: null, anchor, items, loading: false, error: upcomingError, requestId });
   }
 
   function closeCategoryDialog() { dialogRequestId.current++; setCategoryDialog(null); }
@@ -1132,7 +1140,7 @@ function BudgetApplication() {
                       {typeof category.planned === 'number' && editingId !== category.id && <PlannedAmount amount={category.planned} money={money} />}
 
                     </div>
-                    <div className={`activity-cell ${category.activity < 0 ? 'negative' : ''}`}><button className="activity-button" disabled={category.activity === 0} aria-label={`View transactions for ${category.name} activity`} onClick={() => void openActivity(category)}>{money(category.activity)}</button></div>
+                    <div className={`activity-cell ${category.activity < 0 ? 'negative' : ''}`}><button className="activity-button" disabled={category.activity === 0} aria-label={`View transactions for ${category.name} activity`} onClick={event => void openActivity(category, event.currentTarget)}>{money(category.activity)}</button></div>
                     <div className={`available-cell ${category.available < 0 ? 'negative' : underfundedUpcoming || paymentUnderfunded || targetUnderfunded ? 'underfunded' : category.available > 0 || targetProgress ? 'positive' : ''}`}>{category.available !== 0 ? <button className="available-button" aria-label={category.available < 0 ? `Cover overspending for ${category.name}` : `Move available money from ${category.name}`} onClick={() => openMoveFrom(category)}><span>{targetUnderfunded && targetProgress && <TargetRingIcon fraction={targetProgress.fundedFraction} />}{money(category.available)}</span></button> : <span>{targetUnderfunded && targetProgress && <TargetRingIcon fraction={targetProgress.fundedFraction} />}{money(category.available)}</span>}</div>
                   </div>;
                 })}
@@ -1152,7 +1160,7 @@ function BudgetApplication() {
             onPointerCancel={() => { resizingSummary.current = false; }}
             onDoubleClick={() => { setSummaryWidth(null); try { window.localStorage.removeItem('openbudget.summaryWidth'); } catch { /* storage unavailable */ } }}
             onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); const current = summaryWidth ?? (event.currentTarget.parentElement?.getBoundingClientRect().width || 300); changeSummaryWidth(current + (event.key === 'ArrowLeft' ? 10 : -10)); } }} />
-          {selectedCategory && selectedPaymentAccount ? <CreditPaymentDetails account={selectedPaymentAccount} month={data.month} available={selectedCategory.available} money={money} onClose={() => setSelectedCategoryId(null)} onChanged={() => setLedgerRefresh(value => value + 1)} /> : selectedCategory && <section className="category-detail-card"><header><strong>{selectedCategory.name}</strong><button type="button" aria-label="Close category details" onClick={() => setSelectedCategoryId(null)}>×</button></header><div className="summary-body"><div className="summary-line"><span>Available Balance</span><strong>{money(selectedCategory.available)}</strong></div><div className="summary-line"><span>Assigned This Month</span><strong>{money(selectedCategory.assigned)}</strong></div><div className="summary-line"><span>Activity</span><strong>{money(selectedCategory.activity)}</strong></div>{upcomingLoading ? <p role="status">Loading upcoming transactions…</p> : upcomingError ? <div role="alert">{upcomingError} <button onClick={() => setBudgetRefresh(value => value + 1)}>Retry</button></div> : selectedUpcoming.length > 0 && <><button className="category-upcoming-detail" onClick={() => openUpcoming(selectedCategory)}><span>{selectedUpcoming.length} Upcoming {selectedUpcoming.length === 1 ? 'Transaction' : 'Transactions'}</span><strong>{money(selectedUpcomingTotal)}</strong><span>Available After Upcoming</span><strong>{money(selectedCategory.available + selectedUpcomingTotal)}</strong></button>{selectedCategory.available + selectedUpcomingTotal < 0 && <span className="category-underfunded-hint">This category does not have enough available to cover these transactions.</span>}</>}</div></section>}
+          {selectedCategory && selectedPaymentAccount ? <CreditPaymentDetails account={selectedPaymentAccount} month={data.month} available={selectedCategory.available} money={money} onClose={() => setSelectedCategoryId(null)} onChanged={() => setLedgerRefresh(value => value + 1)} /> : selectedCategory && <section className="category-detail-card"><header><strong>{selectedCategory.name}</strong><button type="button" aria-label="Close category details" onClick={() => setSelectedCategoryId(null)}>×</button></header><div className="summary-body"><div className="summary-line"><span>Available Balance</span><strong>{money(selectedCategory.available)}</strong></div><div className="summary-line"><span>Assigned This Month</span><strong>{money(selectedCategory.assigned)}</strong></div><div className="summary-line"><span>Activity</span><strong>{money(selectedCategory.activity)}</strong></div>{upcomingLoading ? <p role="status">Loading upcoming transactions…</p> : upcomingError ? <div role="alert">{upcomingError} <button onClick={() => setBudgetRefresh(value => value + 1)}>Retry</button></div> : selectedUpcoming.length > 0 && <><button className="category-upcoming-detail" onClick={event => openUpcoming(selectedCategory, event.currentTarget)}><span>{selectedUpcoming.length} Upcoming {selectedUpcoming.length === 1 ? 'Transaction' : 'Transactions'}</span><strong>{money(selectedUpcomingTotal)}</strong><span>Available After Upcoming</span><strong>{money(selectedCategory.available + selectedUpcomingTotal)}</strong></button>{selectedCategory.available + selectedUpcomingTotal < 0 && <span className="category-underfunded-hint">This category does not have enough available to cover these transactions.</span>}</>}</div></section>}
           {selectedCategory?.wishlistProgress && <WishlistCategoryCard progress={liveWishlistProgress(selectedCategory.wishlistProgress, selectedCategory.available)} money={money} onOpen={() => navigate('Wishlist')} />}
           {selectedCategory && !selectedPaymentAccount && !selectedCategory.id.startsWith('ccp-') && !selectedCategory.isArchived && <CategoryTargetCard key={`${selectedCategory.id}-${data.month}`} startEditing={targetEditRequest === selectedCategory.id} budgetId={selectedBudgetId} month={data.month} category={selectedCategory} money={money} onChanged={applyTargetResult} />}
           <section className="summary-card"><button className="summary-title" onClick={() => setToast('Monthly summary')}><span>{new Date(data.month+'-01T12:00:00').toLocaleDateString('en-GB',{month:'long'})}'s Summary</span><Icon name="chevron" size={15} /></button><div className="summary-body">
@@ -1243,7 +1251,7 @@ function BudgetApplication() {
     {liveUpdates.notice && <div className="live-update-notice" aria-live="polite"><span>Updated elsewhere — reload to see the latest plan.</span><button type="button" onClick={() => void reviewRemotePlanChange()}>Reload</button><button type="button" className="secondary" onClick={liveUpdates.dismissNotice}>Dismiss</button></div>}
     {conflictBudget && <div className="modal-backdrop" role="presentation"><section className="move-modal conflict-modal" role="dialog" aria-modal="true" aria-labelledby="conflict-title"><span className="eyebrow">BUDGET UPDATED ELSEWHERE</span><h2 id="conflict-title">Choose which plan to keep</h2><p className="modal-copy">Another session saved this month while you were editing. Load that version or reapply your edits over it.</p><div className="conflict-actions"><button className="button" onClick={() => resolveConflict(false)}>Load latest</button><button className="button button-primary" onClick={() => resolveConflict(true)}>Reapply my changes</button></div></section></div>}
     {moveOpen && <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMoveOpen(false); }}><section className="move-modal move-available-modal" role="dialog" aria-modal="true" aria-labelledby="move-title"><h2 id="move-title">{moveCovering ? 'Cover overspending' : 'Move'}</h2><form onSubmit={applyMove}>{moveCovering && <CategoryPicker label="Move from" categories={moveCategoryOptions.filter(category => category.available > 0 && category.id !== moveTo)} value={moveFrom} onChange={setMoveFrom} includeInflow={false} /> }<label>Amount<MoneyInput autoFocus value={moveAmount} onChange={raw => setMoveAmount(raw)} aria-label="Amount to move" /></label><CategoryPicker label="Move to" categories={moveCategoryOptions.filter(category => category.id !== moveFrom)} value={moveTo} onChange={setMoveTo} includeInflow={false} disabled={moveCovering} /><div className="move-available-actions"><button type="button" onClick={() => setMoveOpen(false)}>Cancel</button><button className="button-primary" type="submit" disabled={!moveFrom || !moveTo || moveTo === moveFrom}>OK</button></div></form></section></div>}
-    {categoryDialog && <PlanTransactionList title={categoryDialog.title} items={categoryDialog.items} accounts={accounts.accounts} loading={categoryDialog.loading} error={categoryDialog.error} onClose={closeCategoryDialog} onRetry={categoryDialog.kind === 'activity' ? () => { const category = visibleCategories.find(item => item.id === categoryDialog.categoryId); if (category) void openActivity(category); } : undefined} onSelect={(entry, scheduled, splitIndex) => showTransactionInAccount(entry, scheduled, 'Plan', splitIndex)} />}
+    {categoryDialog && <PlanTransactionList title={categoryDialog.title} subtitle={categoryDialog.subtitle} variant={categoryDialog.variant} summary={categoryDialog.summary} anchor={categoryDialog.anchor} items={categoryDialog.items} accounts={accounts.accounts} loading={categoryDialog.loading} error={categoryDialog.error} onClose={closeCategoryDialog} onRetry={categoryDialog.kind === 'activity' ? () => { const category = visibleCategories.find(item => item.id === categoryDialog.categoryId); if (category) void openActivity(category, categoryDialog.anchor); } : undefined} onSelect={(entry, scheduled, splitIndex) => showTransactionInAccount(entry, scheduled, 'Plan', splitIndex)} />}
     {toast && <div className="toast" role="status"><span className="toast-check"><Icon name="check" size={14} /></span>{toast}<button aria-label="Dismiss notification" onClick={() => setToast('')}><Icon name="close" size={14} /></button></div>}
   </div>;
 }

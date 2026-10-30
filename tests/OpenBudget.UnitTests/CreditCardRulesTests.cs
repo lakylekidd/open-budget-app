@@ -49,6 +49,30 @@ public sealed class CreditCardRulesTests
     }
 
     [Fact]
+    public void Card_breakdown_reconciles_with_payment_category_activity()
+    {
+        var transfer = Guid.NewGuid();
+        var flows = Project(100, Entry(Card, -60, "groceries"), Entry(Card, -20, "groceries"), Entry(Card, 15, "groceries"), Entry(Cash, -30, null, transfer), Entry(Card, 30, null, transfer));
+        var card = flows.Cards![Card];
+        Assert.Equal(-80, card.Spending); Assert.Equal(15, card.Returns);
+        Assert.Equal(80, card.FundedSpending); Assert.Equal(-30, card.Payments); Assert.Equal(-45, card.PaymentsAndReturns);
+        Assert.Equal(flows.PaymentActivity[Payment], card.TotalActivity);
+        Assert.Equal(35, card.TotalActivity);
+    }
+
+    [Fact]
+    public void Card_breakdown_counts_only_funded_spending_and_nets_same_category_returns()
+    {
+        var unfunded = Project(25, Entry(Card, -40, "groceries")).Cards![Card];
+        Assert.Equal(25, unfunded.FundedSpending); Assert.Equal(25, unfunded.TotalActivity);
+        var refundOnly = Project(0, Entry(Card, 10, "groceries"));
+        Assert.Equal(-10, refundOnly.Cards![Card].TotalActivity); Assert.Equal(refundOnly.PaymentActivity[Payment], refundOnly.Cards[Card].TotalActivity);
+        var partial = Project(0, Entry(Card, -100, "groceries"), Entry(Card, 30, "groceries"));
+        Assert.Equal(partial.PaymentActivity[Payment], partial.Cards![Card].TotalActivity);
+        Assert.Equal(30, partial.Cards[Card].FundedSpending);
+    }
+
+    [Fact]
     public void Credit_overspending_does_not_reduce_next_months_ready_to_assign()
     {
         Assert.Equal(0, BudgetCarryForward.UncoveredOverspending(-15, 15));

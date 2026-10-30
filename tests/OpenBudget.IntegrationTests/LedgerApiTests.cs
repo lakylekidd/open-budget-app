@@ -132,6 +132,32 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
     }
 
     [Fact]
+    public async Task Credit_activity_breakdown_reconciles_with_the_payment_category_activity()
+    {
+        await using var app = await fixture.CreateAppAsync(); var client = app.CreateClient();
+        var cash = await AddAccount(client, 1000);
+        var card = (await Post<MutationDto>(client, "/api/accounts", new CreateAccountRequest(Guid.NewGuid(), (await Accounts(client)).Version, "ICS Mastercard", Date, 0, "creditCard"))).Id;
+        var payment = CreditCardRules.PaymentCategoryId(card);
+        var editable = Editable(await Budget(client));
+        await Put<BudgetDto>(client, "/api/budget/2026-10", editable with { Groups = editable.Groups.Select(g => g with { Categories = g.Categories.Select(c => c.Id == "groceries" ? c with { Assigned = 100 } : c).ToList() }).ToList() });
+        await AddTransaction(client, card, -120, "groceries");
+        await AddTransaction(client, card, 20, "groceries");
+        await Post<MutationDto>(client, "/api/transfers", new TransferRequest(Guid.NewGuid(), (await Accounts(client)).Version, cash, card, Date, 40, "Card payment"));
+
+        var activity = await Get<CreditActivityDto>(client, $"/api/accounts/{card}/credit-activity/2026-10");
+        Assert.Equal(-120, activity.Spending); Assert.Equal(20, activity.Returns); Assert.Equal(-100, activity.TotalSpending);
+        Assert.Equal(120, activity.FundedSpending); Assert.Equal(-60, activity.PaymentsAndReturns); Assert.Equal(60, activity.TotalActivity);
+        Assert.Equal(Category(await Budget(client), payment).Activity, activity.TotalActivity);
+
+        var empty = await Get<CreditActivityDto>(client, $"/api/accounts/{card}/credit-activity/2026-11");
+        Assert.Equal(0, empty.TotalActivity); Assert.Equal(0, empty.Spending);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync($"/api/accounts/{card}/credit-activity/2026-13")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync($"/api/accounts/{card}/credit-activity/not-a-month")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync($"/api/accounts/{cash}/credit-activity/2026-10")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/accounts/{Guid.NewGuid()}/credit-activity/2026-10")).StatusCode);
+    }
+
+    [Fact]
     public async Task Credit_payoff_target_is_versioned_replay_safe_and_reports_monthly_progress()
     {
         await using var app = await fixture.CreateAppAsync(); var client = app.CreateClient();

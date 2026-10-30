@@ -19,6 +19,7 @@ beforeEach(()=>{
     if(path==='/api/accounts')return response({version:1,accounts:focusAccounts});
     if(path.startsWith('/api/accounts/card-1/payoff-target/'))return response({accountId:'card-1',month:path.slice(-7),version:1,target:null,progress:null});
     if(path==='/api/accounts/card-1/payoff-target'&&init?.method==='PUT'){writes.push({path,...JSON.parse(String(init.body))});return response({id:'card-1',version:2});}
+    if(path.startsWith('/api/accounts/card-1/credit-activity/'))return response({accountId:'card-1',month:path.slice(-7),spending:-1577.5,returns:0,totalSpending:-1577.5,fundedSpending:1577.5,paymentsAndReturns:-1525.52,totalActivity:51.98});
     if(path.startsWith('/api/accounts/card-1/credit-summary/'))return response({accountId:'card-1',month:path.slice(-7),priorBalance:-2674.07,spendingAndOutflows:-134.40,interestCharges:0,paymentsAndInflows:134,currentBalance:-2674.47});
     if(path==='/api/budgets'&&init?.method==='POST')return response({id:'new-budget',name:JSON.parse(String(init.body)).name,currency:'EUR',version:1,isArchived:false,createdAt:'2026-10-01T00:00:00Z'});
     if(path.startsWith('/api/budgets/')&&init?.method==='DELETE'){const id=path.split('/')[3];ownedBudgets=ownedBudgets.filter(item=>item.id!==id);archivedBudgets=archivedBudgets.filter(item=>item.id!==id);return new Response(null,{status:204});}
@@ -630,12 +631,44 @@ it('opens category activity and takes a reconciled transaction to its account de
 
   await userEvent.click(screen.getByRole('button',{name:'View transactions for Electricity activity'}));
   await screen.findByText('Health insurer');
+  expect(screen.getByRole('dialog',{name:'Activity'})).toHaveTextContent('Electricity');
+  for(const column of ['ACCOUNT','DATE','PAYEE','MEMO','AMOUNT'])expect(screen.getByText(column)).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button',{name:'Open Health insurer in Household account'}));
 
   await screen.findByText(/Showing the transaction selected from the Plan screen/);
   expect(await screen.findByRole('checkbox',{name:`Select transaction ${transactionId}`})).toBeChecked();
   const requests=vi.mocked(fetch).mock.calls.map(([path])=>String(path)).filter(path=>path.startsWith('/api/transactions?'));
   expect(requests.some(path=>{const query=new URL(path,'http://localhost').searchParams;return query.get('accountId')===accountId&&query.get('includeReconciled')==='true'&&query.get('from')==='2026-10-27'&&query.get('to')==='2026-10-27'&&!query.has('categoryId')&&!query.has('status');})).toBe(true);
+});
+
+it('opens the credit payment category Activity as the shared popup with the card summary and Group: Category rows',async()=>{
+  const account={isClosed:false,unclearedBalance:0,isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0};
+  focusAccounts=[{...account,id:'cash-1',name:'Salary',balance:4325.87,clearedBalance:4325.87,accountType:'checking'},{...account,id:'card-1',name:'ICS Mastercard',balance:-51.98,clearedBalance:-51.98,accountType:'creditCard'}];
+  const base={accountId:'card-1',status:'cleared',isOpening:false,splits:[],needsAttention:false,runningBalance:null,isLocked:false};
+  focusRows=[
+    {...base,id:'t1',date:'2026-10-27',amount:-1577.5,payee:'Energy Co',memo:'Bill',categoryId:'utilities',transferId:null,transferAccountName:null,categoryName:'Electricity'},
+    {...base,id:'t2',date:'2026-10-28',amount:1525.52,payee:'',memo:'',categoryId:null,transferId:'x1',transferAccountName:'Salary',categoryName:null}];
+  const october=budget('2026-10',0,0,15);
+  october.groups.unshift({id:'credit-card-payments',name:'Credit Card Payments',sortOrder:0,isArchived:false,categories:[{id:'ccp-card-1',name:'ICS Mastercard',assigned:0,activity:51.98,available:51.98,target:0,icon:'',snoozed:false,sortOrder:0,isArchived:false}]});
+  months['2026-10']=october;
+  render(<App/>);await saved();
+  const anchor=screen.getByRole('button',{name:'View transactions for ICS Mastercard activity'});
+  expect(anchor).toHaveTextContent('€51.98');
+  await userEvent.click(anchor);
+  const dialog=await screen.findByRole('dialog',{name:'Activity'});
+  expect(within(dialog).getByText('ICS Mastercard')).toBeInTheDocument();
+  expect(await within(dialog).findByText('Funded Spending')).toBeInTheDocument();
+  const summary=within(dialog).getByRole('group',{name:'Card activity summary'});
+  expect(summary).toHaveTextContent('Total Spending-€1,577.50');expect(summary).toHaveTextContent('Funded Spending+€1,577.50');
+  expect(summary).toHaveTextContent('Payments & Returns-€1,525.52');expect(summary).toHaveTextContent('Total Activity+€51.98');
+  expect(within(dialog).queryByText('ACCOUNT')).not.toBeInTheDocument();
+  expect(within(dialog).getByText('Home: Electricity')).toBeInTheDocument();
+  expect(within(dialog).getByText('Transfer : Salary')).toBeInTheDocument();
+  expect(within(dialog).getByText('Credit Card Payments: ICS Mastercard')).toBeInTheDocument();
+  const requests=vi.mocked(fetch).mock.calls.map(([path])=>String(path)).filter(path=>path.startsWith('/api/transactions?'));
+  expect(requests.some(path=>{const query=new URL(path,'http://localhost').searchParams;return query.get('accountId')==='card-1'&&!query.has('categoryId');})).toBe(true);
+  await userEvent.keyboard('{Escape}');
+  expect(screen.queryByRole('dialog',{name:'Activity'})).not.toBeInTheDocument();
 });
 
 it('opens the matching split detail from category activity and focuses that subtransaction in the register',async()=>{
@@ -723,7 +756,7 @@ it('shows selected-month upcoming activity in category details and opens its tra
   expect(upcoming).toHaveTextContent('-€67.99');
   await userEvent.click(upcoming);
 
-  expect(await screen.findByRole('heading',{name:'Upcoming activity · Electricity'})).toBeInTheDocument();
+  expect(await screen.findByRole('heading',{name:'Upcoming activity'})).toBeInTheDocument();
   expect(screen.getByText('Landlord')).toBeInTheDocument();
   expect(screen.getByText('Monthly rent')).toBeInTheDocument();
 });
@@ -746,7 +779,7 @@ it('shows projected shortfall in category details and lists the scheduled transa
   expect(screen.getByText('Available After Upcoming')).toBeInTheDocument();
   expect(screen.getByText(/-€29\.30/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button',{name:/1 Upcoming Transaction/}));
-  expect(await screen.findByRole('heading',{name:'Upcoming activity · Electricity'})).toBeInTheDocument();
+  expect(await screen.findByRole('heading',{name:'Upcoming activity'})).toBeInTheDocument();
   expect(screen.getByText('Gym')).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button',{name:'Open Gym in Household account'}));
   await screen.findByText(/Showing the transaction selected from the Plan screen/);

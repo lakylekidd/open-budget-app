@@ -19,7 +19,7 @@ type EditingValue = PlanningChange & { raw: string; initialRaw: string; amount: 
 type ConflictState = { current: LongTermPlanningData; change: PlanningChange };
 type Metric = 'plannedBudget' | 'plannedExpenses' | 'plannedAvailable' | 'actualAssigned' | 'actualExpenses' | 'actualAvailable';
 type ActivityKind = 'income' | 'expenses' | 'plannedExpenses' | 'actualExpenses';
-type ActivitySelection = { month: string; kind: ActivityKind; title: string; categoryIds?: string[] };
+type ActivitySelection = { month: string; kind: ActivityKind; subtitle: string; categoryIds?: string[]; anchor?: HTMLElement | null };
 type ActivityDialog = ActivitySelection & { items: PlanTransactionItem[]; loading: boolean; error: string; requestId: number };
 type LongTermPlanningProps = { onPendingChange?: (pending: boolean) => void; accounts?: { id: string; name: string }[]; onSelectTransaction?: (entry: Entry, scheduled: boolean, splitIndex?: number) => void };
 
@@ -328,7 +328,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
       const label = kind === 'plannedExpenses' ? 'planned' : 'actual';
       return <div className={`lt-value-line ${kind === 'actualExpenses' ? 'lt-actual-value' : ''} ${plannedExpenseTone(metric, value?.[metric])}`} key={metric}>
         <button type="button" className="lt-activity-value" aria-label={`View ${category.name} ${label} expenses in ${monthName(month.month)} ${year}`}
-          onClick={() => void openActivity({ month: month.month, kind, title: `Activity · ${category.name} · ${label} expenses · ${monthName(month.month)} ${year}`, categoryIds: [category.id] })}>
+          onClick={event => void openActivity({ month: month.month, kind, subtitle: `${category.name} · ${label} expenses · ${monthName(month.month)} ${year}`, categoryIds: [category.id], anchor: event.currentTarget })}>
           {metricValue(category, monthIndex, metric)}
         </button>
       </div>;
@@ -343,7 +343,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
       const month = displayedPlan!.months[monthIndex].month;
       return <div className={`lt-value-line ${plannedExpenseTone(metric, total(group, monthIndex, metric))}`} key={metric}><button type="button" className="lt-activity-value"
         aria-label={`View ${group.name} planned expenses in ${monthName(month)} ${year}`}
-        onClick={() => void openActivity({ month, kind: 'plannedExpenses', title: `Activity · ${group.name} · planned expenses · ${monthName(month)} ${year}`, categoryIds: group.categories.map(category => category.id) })}>
+        onClick={event => void openActivity({ month, kind: 'plannedExpenses', subtitle: `Combination (${group.categories.map(category => category.name).join(', ')}) · planned expenses · ${monthName(month)} ${year}`, categoryIds: group.categories.map(category => category.id), anchor: event.currentTarget })}>
         {groupValues(group, monthIndex, metric)}
       </button></div>;
     }
@@ -422,9 +422,9 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
                 return <div className={`lt-month-header ${state}`} role="columnheader" data-month={month.month} key={month.month}>
                   <h2>{monthName(month.month)}</h2>
                   <button type="button" className="lt-summary-line lt-summary-action" aria-label={`View expected income in ${monthName(month.month)} ${year}`}
-                    onClick={() => void openActivity({ month: month.month, kind: 'income', title: `Activity · Expected Income · ${monthName(month.month)} ${year}` })}><span>Expected Income</span><strong>{formatMoney(month.expectedIncome)}</strong></button>
+                    onClick={event => void openActivity({ month: month.month, kind: 'income', subtitle: `Expected Income · ${monthName(month.month)} ${year}`, anchor: event.currentTarget })}><span>Expected Income</span><strong>{formatMoney(month.expectedIncome)}</strong></button>
                   <button type="button" className="lt-summary-line lt-summary-action" aria-label={`View expected expenses in ${monthName(month.month)} ${year}`}
-                    onClick={() => void openActivity({ month: month.month, kind: 'expenses', title: `Activity · Expected Expenses · ${monthName(month.month)} ${year}` })}><span>Expected Expenses</span><strong>{formatMoney(displayedPlan.months[monthIndex].expectedExpenses)}</strong></button>
+                    onClick={event => void openActivity({ month: month.month, kind: 'expenses', subtitle: `Expected Expenses · ${monthName(month.month)} ${year}`, anchor: event.currentTarget })}><span>Expected Expenses</span><strong>{formatMoney(displayedPlan.months[monthIndex].expectedExpenses)}</strong></button>
                   <div className="lt-summary-line"><span>Remaining to Be Assigned</span><strong>{formatMoney(displayedPlan.months[monthIndex].remainingToBeAssigned)}</strong></div>
                   <div className="lt-summary-line lt-summary-remaining"><span>Remaining</span><strong>{formatMoney(displayedPlan.months[monthIndex].remaining)}</strong></div>
                   <div className="lt-measure-head"><span>Assigned</span><span>Expenses</span><span>Available</span></div>
@@ -468,7 +468,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
           {status === 'error' && pendingChange && <><button type="button" onClick={() => void saveChange(pendingChange)}>Retry save</button><button type="button" onClick={() => setReloadToken(value => value + 1)}>Reload saved plan</button></>}
           {status === 'conflict' && conflict && <><button type="button" onClick={() => { setPlan(conflict.current); setPendingChange(null); setEditing(null); setConflict(null); setStatus('saved'); setMessage('Loaded the latest saved plan.'); onPendingChange?.(false); }}>Load latest</button><button type="button" onClick={() => { const current = conflict.current; const change = conflict.change; setPlan(current); setConflict(null); onPendingChange?.(true); void saveChange(change, current.version); }}>Reapply my value</button></>}
         </div>
-        {activityDialog && <PlanTransactionList title={activityDialog.title} items={activityDialog.items} accounts={accounts}
+        {activityDialog && <PlanTransactionList subtitle={activityDialog.subtitle} anchor={activityDialog.anchor} items={activityDialog.items} accounts={accounts}
           loading={activityDialog.loading} error={activityDialog.error} emptyMessage="No transactions for this month."
           onClose={closeActivity} onRetry={() => void openActivity(activityDialog)}
           onSelect={(entry, scheduled, splitIndex) => { closeActivity(); onSelectTransaction?.(entry, scheduled, splitIndex); }} />}

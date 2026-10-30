@@ -111,15 +111,16 @@ it('opens forecast and actual expense activity and passes selected transactions 
   await user.click(screen.getByRole('button', { name: `View expected income in June ${year}` }));
   expect(await screen.findByRole('button', { name: 'Open Salary in Main account' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Open Grocer in Main account' })).not.toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Close transactions' }));
+  await user.click(screen.getByRole('button', { name: 'Close' }));
 
   await user.click(screen.getByRole('button', { name: `View expected expenses in June ${year}` }));
   expect(await screen.findByRole('button', { name: 'Open Grocer in Main account' })).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Close transactions' }));
+  await user.click(screen.getByRole('button', { name: 'Close' }));
 
   await user.click(screen.getByRole('button', { name: `View Everyday planned expenses in June ${year}` }));
+  expect(await screen.findByRole('dialog', { name: 'Activity' })).toHaveTextContent(/Combination \(.+\) · planned expenses · June/);
   expect(await screen.findByRole('button', { name: 'Open Grocer in Main account' })).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Close transactions' }));
+  await user.click(screen.getByRole('button', { name: 'Close' }));
 
   await user.click(screen.getByRole('button', { name: `View Groceries planned expenses in June ${year}` }));
   await user.click(await screen.findByRole('button', { name: 'Open Grocer in Main account' }));
