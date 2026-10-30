@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { type Account, type CategoryOption, ApiError, requestJson } from './api';
+import { focusNextField } from './focusNext';
 import { LedgerDialog } from './LedgerDialog';
 import { CategoryPicker } from './CategoryPicker';
 
@@ -22,9 +23,11 @@ export function PayeePicker({ value, onChange, accountId, disabled, form, catego
 }) {
   const [open, setOpen] = useState(false); const [manage, setManage] = useState(false);
   const [paymentsOnly,setPaymentsOnly]=useState(false);
-  useEffect(()=>{if(paymentsRequest){setPaymentsOnly(true);setOpen(true);input.current?.focus();}},[paymentsRequest]);
+  useEffect(()=>{if(paymentsRequest){setPaymentsOnly(true);setOpen(true);refocus();}},[paymentsRequest]);
   const [data, setData] = useState<PayeeList | null>(null); const [error, setError] = useState(''); const [refresh, setRefresh] = useState(0);
-  const input = useRef<HTMLInputElement>(null); const popup = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  // Programmatic refocus (after choosing, Escape or the toggle) must not reopen the list.
+  const skipFocusOpen=useRef(false);const refocus=()=>{skipFocusOpen.current=true;input.current?.focus();skipFocusOpen.current=false;}; const popup = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: 0, top: 0 }); const [active, setActive] = useState(-1);
   useEffect(() => {
     const controller = new AbortController(); setError('');
@@ -53,7 +56,7 @@ export function PayeePicker({ value, onChange, accountId, disabled, form, catego
     ...saved.filter(p => p.id !== selected?.id).map(p => ({ key: p.id, label: p.name, choose: () => onChange(p.name, undefined, p.effectiveCategoryId), disabled: false }))
   ];
   const selectedCount = selected ? 1 : 0;
-  function choose(index: number) { if (options[index] && !options[index].disabled) { options[index].choose(); setOpen(false); input.current?.focus(); } }
+  function choose(index: number) { if (options[index] && !options[index].disabled) { options[index].choose(); setOpen(false); refocus(); focusNextField(input.current); } }
   function keyboard(direction: number) {
     setOpen(true); setActive(previous => {
       let next = previous < 0 && direction < 0 ? 0 : previous;
@@ -66,15 +69,15 @@ export function PayeePicker({ value, onChange, accountId, disabled, form, catego
   }
   const option = (index: number) => <button type="button" role="option" id={form + '-payee-' + index} aria-selected={active === index} key={options[index].key} disabled={options[index].disabled} onClick={() => choose(index)}>{options[index].label}{options[index].disabled ? transfers.find(a => a.id === options[index].key)?.isClosed ? ' (closed)' : ' (this account)' : ''}</button>;
   return <>
-    <span className="payee-input-wrap"><input ref={input} form={form} role="combobox" aria-label={label} aria-expanded={open} aria-controls={form + '-payee-list'} aria-activedescendant={open && active >= 0 ? form + '-payee-' + active : undefined} aria-autocomplete="list" autoComplete="off" value={value} disabled={disabled} maxLength={160} placeholder="payee"
+    <span className="payee-input-wrap"><input ref={input} form={form} role="combobox" onFocus={()=>{if(skipFocusOpen.current||disabled)return;setActive(-1);setOpen(true);}} aria-label={label} aria-expanded={open} aria-controls={form + '-payee-list'} aria-activedescendant={open && active >= 0 ? form + '-payee-' + active : undefined} aria-autocomplete="list" autoComplete="off" value={value} disabled={disabled} maxLength={160} placeholder="payee"
       onClick={() => { setPaymentsOnly(false);setActive(-1); setOpen(true); }} onChange={e => {setPaymentsOnly(false); onChange(e.target.value); setActive(-1); setOpen(true); }}
       onKeyDown={e => {
         if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false); }
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); keyboard(e.key === 'ArrowDown' ? 1 : -1); }
         if (e.key === 'Enter' && open && active >= 0) { e.preventDefault(); choose(active); }
         if (e.key === 'Tab') setOpen(false);
-      }} /><button type="button" className="payee-open" aria-label="Choose payee" tabIndex={-1} disabled={disabled} onClick={() => { setOpen(v => !v); input.current?.focus(); }}>▾</button></span>
-    {open && createPortal(<div ref={popup} className="payee-picker" style={position} onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); input.current?.focus(); } }}>
+      }} /><button type="button" className="payee-open" aria-label="Choose payee" tabIndex={-1} disabled={disabled} onClick={() => { setOpen(v => !v); refocus(); }}>▾</button></span>
+    {open && createPortal(<div ref={popup} className="payee-picker" style={position} onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); refocus(); } }}>
       <div id={form + '-payee-list'} role="listbox" aria-label="Payees" className="payee-options">
         {!data && !error && <p role="status">Loading payees…</p>}{error && <p role="alert">Could not load saved payees. <button type="button" onClick={() => setRefresh(n => n + 1)}>Retry</button></p>}
         {selected && <><h4>Selected</h4>{option(0)}</>}

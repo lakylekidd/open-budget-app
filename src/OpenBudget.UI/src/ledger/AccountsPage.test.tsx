@@ -395,6 +395,33 @@ it('requires confirmation when editing a reconciled row and sends the explicit a
  await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0].body).toMatchObject({confirmReconciledEdit:true,status:'cleared'});
 });
 
+it('tabs from date to payee to category and opens each dropdown on focus',async()=>{
+ show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));
+ await userEvent.click(screen.getByRole('textbox',{name:'Date'}));
+ expect(screen.getByLabelText('Transaction calendar')).toBeInTheDocument();
+ await userEvent.tab();
+ expect(screen.getByRole('combobox',{name:'Payee'})).toHaveFocus();
+ expect(screen.queryByLabelText('Transaction calendar')).not.toBeInTheDocument();
+ expect(screen.getByRole('combobox',{name:'Payee'})).toHaveAttribute('aria-expanded','true');
+ await userEvent.tab();
+ const category=screen.getByRole('combobox',{name:'Category'});
+ expect(category).toHaveFocus();expect(category).toHaveAttribute('aria-expanded','true');
+ expect(screen.getByRole('combobox',{name:'Payee'})).toHaveAttribute('aria-expanded','false');
+ await userEvent.keyboard('{Escape}');
+ expect(category).toHaveFocus();expect(category).toHaveAttribute('aria-expanded','false');
+});
+
+it('moves to the next field after choosing a payee and a category',async()=>{
+ show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));
+ await userEvent.click(screen.getByRole('combobox',{name:'Payee'}));
+ await userEvent.keyboard('{ArrowDown}{Enter}');
+ const category=screen.getByRole('combobox',{name:'Category'});
+ await waitFor(()=>expect(category).toHaveFocus());expect(category).toHaveAttribute('aria-expanded','true');
+ await userEvent.click(screen.getByRole('option',{name:/Ready to Assign/}));
+ expect(category).toHaveValue('Inflow: Ready to Assign');
+ await waitFor(()=>expect(screen.getByRole('textbox',{name:'Memo'})).toHaveFocus());
+});
+
 it('tabs from the payee field to the next editable field and skips inline dropdown chevrons',async()=>{
  show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));
  const payee=screen.getByRole('combobox',{name:'Payee'});payee.focus();

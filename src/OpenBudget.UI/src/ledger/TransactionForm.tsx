@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { type Account, type CategoryOption, type Entry, type Split, isCreditAccount, loadCategoryBudget, parseMoney, requestJson, today } from './api';
-import { CategoryPicker } from './CategoryPicker';
+import { CategoryPicker, inflowCategoryId } from './CategoryPicker';
 
 export type TransactionFields = { accountId: string; date: string; amount: number; payee: string; memo: string; categoryId: string | null; status: string; splits: Split[] };
 
@@ -12,7 +12,7 @@ export function TransactionForm({ accounts, entry, selectedAccount, busy, onSubm
   const [amount, setAmount] = useState(String(entry?.amount ?? ''));
   const [payee, setPayee] = useState(entry?.payee ?? '');
   const [memo, setMemo] = useState(entry?.memo ?? '');
-  const [categoryId, setCategoryId] = useState(entry?.categoryId ?? '');
+  const [categoryId, setCategoryId] = useState(entry?.categoryId ?? (entry && entry.amount > 0 && !entry.transferId && !entry.isOpening && !entry.splits.length ? inflowCategoryId : ''));
   const [status, setStatus] = useState<string>(entry?.status ?? 'uncleared');
   const [splits, setSplits] = useState((entry?.splits ?? []).map(s => ({ categoryId: s.categoryId, amount: String(s.amount) })));
   const [categories, setCategories] = useState<CategoryOption[]>([]);
@@ -36,8 +36,8 @@ export function TransactionForm({ accounts, entry, selectedAccount, busy, onSubm
     if (parsedSplits.some(s => !s.categoryId || s.amount === null || s.amount === 0) || (splits.length && Math.round(parsedSplits.reduce((sum, s) => sum + (s.amount ?? 0) * 100, 0)) !== Math.round(parsed * 100))) {
       setError('Choose a category for each split. Split amounts must equal the signed transaction amount.'); return;
     }
-    if (credit && !entry?.isOpening && !splits.length && !categoryId) { setError('Credit account transactions require a category.'); return; }
-    await onSubmit({ accountId, date, amount: parsed, payee, memo, categoryId: splits.length ? null : categoryId || null, status,
+    if (credit && !entry?.isOpening && !splits.length && (!categoryId || categoryId === inflowCategoryId)) { setError('Credit account transactions require a category.'); return; }
+    await onSubmit({ accountId, date, amount: parsed, payee, memo, categoryId: splits.length || categoryId === inflowCategoryId ? null : categoryId || null, status,
       splits: parsedSplits as Split[] });
   }
   const credit = isCreditAccount(accounts.find(a => a.id === accountId));
@@ -54,7 +54,7 @@ export function TransactionForm({ accounts, entry, selectedAccount, busy, onSubm
       {!splits.length && <CategoryPicker {...categoryProps} value={categoryId} onChange={setCategoryId} />}
       <p className="ledger-hint">{credit ? 'Credit spending moves money from the category to this card’s payment category.' : 'Uncategorized income adds to Ready to Assign. Uncategorized spending reduces it until you choose a category.'}</p>
       {splits.map((split, index) => <div className="split-row" key={index}>
-        <label>Split {index + 1} category<CategoryPicker {...categoryProps} label={`Split ${index + 1} category`} value={split.categoryId} onChange={id => setSplits(items => items.map((item, i) => i === index ? { ...item, categoryId: id } : item))} /></label>
+        <label>Split {index + 1} category<CategoryPicker {...categoryProps} includeInflow={false} label={`Split ${index + 1} category`} value={split.categoryId} onChange={id => setSplits(items => items.map((item, i) => i === index ? { ...item, categoryId: id } : item))} /></label>
         <label>Split {index + 1} amount<input inputMode="decimal" required value={split.amount} onChange={e => setSplits(items => items.map((item, i) => i === index ? { ...item, amount: e.target.value } : item))} /></label>
         <button type="button" aria-label={`Remove split ${index + 1}`} onClick={() => setSplits(items => items.filter((_, i) => i !== index))}>×</button>
       </div>)}
