@@ -207,6 +207,122 @@ public sealed class WishlistPurchaseApiTests(PostgresFixture fixture) : IClassFi
     }
 
     [Fact]
+    public async Task The_purchase_keeps_the_users_payee_and_memo()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        var (client, budget) = await SetUpAsync(app, "payer");
+        var (_, bucket) = await BucketAsync(client, budget, "Kitchen", ("Blender", 80m), ("Kettle", 35m));
+        var account = await CheckingAsync(client);
+
+        // The payee is the store, not the item; the memo is the item name the UI fills in, edited by the user.
+        var blender = await Read<MutationDto>(await client.PostAsJsonAsync(PurchasePath(budget, bucket.Items[0].Id),
+            Purchase(await LedgerVersion(client), account, bucket.CategoryId, -79.99m, "Big Box Store", "Blender (on sale)")));
+        // No payee and no memo are allowed too; the server never substitutes the item name.
+        var kettle = await Read<MutationDto>(await client.PostAsJsonAsync(PurchasePath(budget, bucket.Items[1].Id),
+            Purchase(blender.Version, account, bucket.CategoryId, -35m, null)));
+
+        var register = (await client.GetFromJsonAsync<RegisterDto>($"/api/transactions?accountId={account}"))!;
+        var first = Assert.Single(register.Items, t => t.Id == blender.Id);
+        Assert.Equal("Big Box Store", first.Payee);
+        Assert.Equal("Blender (on sale)", first.Memo);
+        var second = Assert.Single(register.Items, t => t.Id == kettle.Id);
+        Assert.Equal("", second.Payee);
+        Assert.Equal("", second.Memo);
+        Assert.Equal(2, (await Overview(client, budget)).Buckets.Single().Purchased.Count);
+    }
+
+    [Fact]
+    public async Task Linking_an_already_purchased_item_is_rejected_without_writes()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        var (client, budget) = await SetUpAsync(app, "twice");
+        var (_, bucket) = await BucketAsync(client, budget, "Bikes", ("Helmet", 60m), ("Lock", 25m));
+        var account = await CheckingAsync(client);
+        var helmet = bucket.Items[0];
+        var created = await Read<MutationDto>(await client.PostAsJsonAsync(PurchasePath(budget, helmet.Id),
+            Purchase(await LedgerVersion(client), account, bucket.CategoryId, -60m, "Bike Shop", "Helmet")));
+        // "Mark purchased only" also makes an item unavailable for linking.
+        var lockItem = bucket.Items[1];
+        await Read<WishlistOverviewDto>(await client.PostAsJsonAsync($"/api/budgets/{budget}/wishlist/items/{lockItem.Id}/purchase",
+            new WishlistVersionRequest((await Overview(client, budget)).Version)));
+        var before = await Snapshot(app, budget, "Helmet");
+
+        foreach (var itemId in new[] { helmet.Id, lockItem.Id })
+        {
+            var response = await client.PostAsJsonAsync(PurchasePath(budget, itemId),
+                Purchase(created.Version, account, bucket.CategoryId, -60m, "Bike Shop", "Again"));
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Contains("already purchased or removed", await response.Content.ReadAsStringAsync());
+        }
+        Assert.Equal(before, await Snapshot(app, budget, "Helmet"));
+        await using var db = app.CreateDb();
+        Assert.Equal(created.Id, (await db.WishlistItems.SingleAsync(x => x.Id == helmet.Id)).PurchaseTransactionId);
+    }
+
+    [Fact]
+    public async Task Editing_a_linked_transaction_keeps_the_link_until_it_leaves_the_bucket_category()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        var (client, budget) = await SetUpAsync(app, "editor");
+        var (_, bucket) = await BucketAsync(client, budget, "Garden", ("Shears", 30m), ("Hose", 45m));
+        var account = await CheckingAsync(client);
+        var shears = bucket.Items[0];
+        var request = Purchase(await LedgerVersion(client), account, bucket.CategoryId, -30m, "Garden Centre", "Shears");
+        var created = await Read<MutationDto>(await client.PostAsJsonAsync(PurchasePath(budget, shears.Id), request));
+        var wishlistVersion = (await Overview(client, budget)).Version;
+
+        // Payee, memo, amount and status edits keep the item purchased and linked.
+        var edited = await Read<MutationDto>(await client.PutAsJsonAsync($"/api/transactions/{created.Id}",
+            request with { CommandId = Guid.NewGuid(), Version = created.Version, Payee = "Hardware Store", Memo = "Shears, gift", Amount = -28m, Status = "cleared" }));
+        var kept = (await Overview(client, budget)).Buckets.Single();
+        Assert.Equal(created.Id, Assert.Single(kept.Purchased).Purchase!.TransactionId);
+        Assert.Equal(["Hose"], kept.Items.Select(i => i.Name));
+
+        // Moving it to a regular category means it no longer bought the item: the item returns to its old position.
+        var moved = await Read<MutationDto>(await client.PutAsJsonAsync($"/api/transactions/{created.Id}",
+            request with { CommandId = Guid.NewGuid(), Version = edited.Version, Payee = "Hardware Store", CategoryId = "groceries" }));
+        var restored = await Overview(client, budget);
+        Assert.True(restored.Version > wishlistVersion);
+        Assert.Equal(["Shears", "Hose"], restored.Buckets.Single().Items.Select(i => i.Name));
+        Assert.Empty(restored.Buckets.Single().Purchased);
+        await using (var db = app.CreateDb())
+        {
+            var entry = await db.Transactions.IgnoreQueryFilters().SingleAsync(t => t.Id == created.Id);
+            Assert.False(entry.IsDeleted);
+            Assert.Equal("groceries", entry.CategoryId);
+            Assert.Null((await db.WishlistItems.SingleAsync(x => x.Id == shears.Id)).PurchaseTransactionId);
+        }
+
+        // Moving it back does not silently re-link; the item can be bought again with a new linked transaction.
+        await Read<MutationDto>(await client.PutAsJsonAsync($"/api/transactions/{created.Id}",
+            request with { CommandId = Guid.NewGuid(), Version = moved.Version }));
+        Assert.Equal(2, (await Overview(client, budget)).Buckets.Single().Items.Count);
+    }
+
+    [Fact]
+    public async Task Deleting_a_linked_transaction_with_a_custom_payee_restores_the_item()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        var (client, budget) = await SetUpAsync(app, "deleter");
+        var (_, bucket) = await BucketAsync(client, budget, "Office", ("Chair", 250m));
+        var account = await CheckingAsync(client);
+        var created = await Read<MutationDto>(await client.PostAsJsonAsync(PurchasePath(budget, bucket.Items[0].Id),
+            Purchase(await LedgerVersion(client), account, bucket.CategoryId, -240m, "Furniture Outlet", "Chair")));
+        Assert.Empty((await Overview(client, budget)).Buckets.Single().Items);
+
+        await Read<MutationDto>(await client.PostAsJsonAsync($"/api/transactions/{created.Id}/delete", new DeleteTransactionRequest(Guid.NewGuid(), created.Version)));
+
+        var restored = (await Overview(client, budget)).Buckets.Single();
+        Assert.Equal("Chair", Assert.Single(restored.Items).Name);
+        Assert.Empty(restored.Purchased);
+        await using var db = app.CreateDb();
+        var item = await db.WishlistItems.SingleAsync(x => x.Id == bucket.Items[0].Id);
+        Assert.Equal(WishlistRules.ActiveStatus, item.Status);
+        Assert.Null(item.PurchaseTransactionId);
+        Assert.Null(item.PurchasedAt);
+    }
+
+    [Fact]
     public async Task The_mcp_create_tool_records_a_wishlist_purchase()
     {
         await using var app = await fixture.CreateAppAsync();
@@ -237,19 +353,19 @@ public sealed class WishlistPurchaseApiTests(PostgresFixture fixture) : IClassFi
 
     private sealed record WriteSnapshot(int Transactions, int Commands, long LedgerVersion, string PhoneStatus);
 
-    private static async Task<WriteSnapshot> Snapshot(TestApp app, string budget)
+    private static async Task<WriteSnapshot> Snapshot(TestApp app, string budget, string trackedItem = "Phone")
     {
         await using var db = app.CreateDb();
         return new WriteSnapshot(
             await db.Transactions.IgnoreQueryFilters().CountAsync(t => t.BudgetId == budget),
             await db.LedgerCommands.IgnoreQueryFilters().CountAsync(c => c.BudgetId == budget),
             await db.LedgerStates.IgnoreQueryFilters().Where(x => x.BudgetId == budget).Select(x => x.Version).SingleAsync(),
-            await db.WishlistItems.Where(x => x.BudgetId == budget && x.Name == "Phone").Select(x => x.Status).SingleAsync());
+            await db.WishlistItems.Where(x => x.BudgetId == budget && x.Name == trackedItem).Select(x => x.Status).SingleAsync());
     }
 
     private static string PurchasePath(string budget, Guid itemId) => $"/api/budgets/{budget}/wishlist/items/{itemId}/purchase-transaction";
 
-    private static TransactionRequest Purchase(long version, Guid account, string categoryId, decimal amount, string payee, string? memo = null) =>
+    private static TransactionRequest Purchase(long version, Guid account, string categoryId, decimal amount, string? payee, string? memo = null) =>
         new(Guid.NewGuid(), version, account, Today, amount, payee, memo, categoryId, "uncleared", null);
 
     private static async Task<(HttpClient Client, string Budget)> SetUpAsync(TestApp app, string username)

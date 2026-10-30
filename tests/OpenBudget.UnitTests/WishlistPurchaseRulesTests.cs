@@ -40,6 +40,29 @@ public sealed class WishlistPurchaseRulesTests
         Assert.Equal("A wishlist purchase cannot repeat.", WishlistPurchaseRules.Validate(Item(), Request(repeat: "monthly")));
     }
 
+    [Fact]
+    public void Payee_and_memo_are_free_text_for_a_purchase()
+    {
+        var request = Request() with { Payee = "Big Box Store", Memo = "Birthday present" };
+        Assert.Null(WishlistPurchaseRules.Validate(Item(), request));
+        Assert.Null(WishlistPurchaseRules.Validate(Item(), request with { Payee = null, Memo = null }));
+    }
+
+    [Fact]
+    public void A_linked_purchase_keeps_its_link_only_while_it_spends_from_the_bucket_category()
+    {
+        var item = Item();
+        TransactionEntity Transaction(string? categoryId, bool deleted = false, Guid? transferId = null) =>
+            new() { Id = Guid.NewGuid(), Amount = -80m, CategoryId = categoryId, IsDeleted = deleted, TransferId = transferId };
+        Assert.True(WishlistPurchaseRules.KeepsLink(item, Transaction(WishlistRules.CategoryId(BucketId))));
+        Assert.False(WishlistPurchaseRules.KeepsLink(item, Transaction(WishlistRules.CategoryId(BucketId), deleted: true)));
+        Assert.False(WishlistPurchaseRules.KeepsLink(item, Transaction("groceries")));
+        Assert.False(WishlistPurchaseRules.KeepsLink(item, Transaction(WishlistRules.CategoryId(Guid.NewGuid()))));
+        // A split transaction has no single category.
+        Assert.False(WishlistPurchaseRules.KeepsLink(item, Transaction(null)));
+        Assert.False(WishlistPurchaseRules.KeepsLink(item, Transaction(WishlistRules.CategoryId(BucketId), transferId: Guid.NewGuid())));
+    }
+
     [Theory]
     [InlineData(0, 3, 0)]
     [InlineData(2, 3, 2)]

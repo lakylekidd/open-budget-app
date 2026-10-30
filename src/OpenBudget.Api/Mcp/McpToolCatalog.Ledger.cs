@@ -113,7 +113,8 @@ public static partial class McpToolCatalog
             });
 
         yield return Tool("transactions_create", "Create transaction", "Records a categorized, split or uncategorized transaction in an account. " +
-            "With wishlistItemId it records a Wishlist purchase: an outflow in that item's bucket category (wl-{bucketId}) that also marks the active item purchased (requires the wishlist entitlement).",
+            "With wishlistItemId it records a Wishlist purchase: an outflow in that item's bucket category (wl-{bucketId}) that also marks the active item purchased (requires the wishlist entitlement). " +
+            "Payee and memo are stored as given (the UI convention is memo = item name, payee = the store); an already purchased or removed item is rejected.",
             McpPermissions.AdminOnly, Effect.Write, Obj([.. TransactionFields(), O("wishlistItemId", Uuid("Active Wishlist item bought by this outflow (optional).")), LedgerVersionArg, CommandIdArg]),
             c => LedgerWriteAsync(c, version => c.OptStr("wishlistItemId") is { } itemId
                 ? c.Send("POST", "/api/budgets/{id}/wishlist/items/{itemId}/purchase-transaction", TransactionBody(c, version), Route.Of(("id", c.BudgetId!), ("itemId", itemId)))

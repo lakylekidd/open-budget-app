@@ -362,7 +362,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             var state = await db.LedgerStates.SingleAsync(ct);
             if (state.Version != version) throw new LedgerException("The ledger changed in another session. Reload, review the latest entries, and retry.", 409);
             var change = await action();
-            await RestoreWishlistPurchasesForDeletedAsync(ct);
+            await RestoreWishlistPurchasesForChangedAsync(ct);
             await db.SaveChangesAsync(ct);
             await RecalculateMonthsAsync(ct);
             state.Version++;

@@ -17,6 +17,12 @@ public static class WishlistPurchaseRules
         return null;
     }
 
+    // A linked purchase stays linked while its transaction exists and still spends from the item's bucket category.
+    // Amount, date, account, payee, memo and status edits keep the link; deleting the transaction or moving it to another
+    // category (including splitting it) unlinks it and returns the item to the wishlist.
+    public static bool KeepsLink(WishlistItemEntity item, TransactionEntity transaction) =>
+        !transaction.IsDeleted && transaction.TransferId is null && transaction.CategoryId == WishlistRules.CategoryId(item.BucketId);
+
     // An item returned to the wishlist goes back to its previous desire position, clamped to the end of the bucket.
     public static int RestorePosition(int previousSortOrder, int activeCount) => Math.Clamp(previousSortOrder, 0, activeCount);
 
@@ -60,18 +66,21 @@ public sealed partial class LedgerService
         await TouchWishlistAsync(item.BudgetId, ct);
     }
 
-    // Called by ExecuteAsync for every ledger command: items purchased through a transaction that this command
-    // soft-deleted (single delete, selection delete, review reject) return to their bucket's active list.
-    private async Task RestoreWishlistPurchasesForDeletedAsync(CancellationToken ct)
+    // Called by ExecuteAsync for every ledger command. An item purchased through a transaction returns to its bucket's
+    // active list when this command soft-deleted that transaction (single delete, selection delete, review reject) or
+    // edited it so it no longer spends from the bucket's category (another category, a split, or a transfer).
+    private async Task RestoreWishlistPurchasesForChangedAsync(CancellationToken ct)
     {
-        var deleted = db.ChangeTracker.Entries<TransactionEntity>()
-            .Where(e => e.State == EntityState.Modified && e.Entity.IsDeleted && !e.Property(t => t.IsDeleted).OriginalValue)
-            .Select(e => e.Entity.Id).ToList();
-        if (deleted.Count == 0) return;
+        var changed = db.ChangeTracker.Entries<TransactionEntity>()
+            .Where(e => e.State == EntityState.Modified)
+            .ToDictionary(e => e.Entity.Id, e => e.Entity);
+        if (changed.Count == 0) return;
         var budgetId = db.ActiveBudgetId;
-        var restored = await db.WishlistItems
-            .Where(x => x.BudgetId == budgetId && x.Status == WishlistRules.PurchasedStatus && x.PurchaseTransactionId != null && deleted.Contains(x.PurchaseTransactionId.Value))
+        var ids = changed.Keys.ToList();
+        var linked = await db.WishlistItems
+            .Where(x => x.BudgetId == budgetId && x.Status == WishlistRules.PurchasedStatus && x.PurchaseTransactionId != null && ids.Contains(x.PurchaseTransactionId.Value))
             .ToListAsync(ct);
+        var restored = linked.Where(x => !WishlistPurchaseRules.KeepsLink(x, changed[x.PurchaseTransactionId!.Value])).ToList();
         if (restored.Count == 0) return;
         var now = clock.GetUtcNow();
         foreach (var item in restored.OrderBy(x => x.SortOrder))
