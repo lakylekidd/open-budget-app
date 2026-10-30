@@ -85,7 +85,7 @@ Renames the default budget using optimistic concurrency. Request `{ "name": "Hou
 
 Reads or initializes a month using `YYYY-MM`. The first requested month receives a deterministic blank starter category structure. An unseen later month is created from the nearest prior month: positive category available balances become opening balances, while uncovered negative balances reset to zero in the category and reduce opening Ready to Assign. The operation is idempotent under repeated or concurrent reads.
 
-The response includes `month`, `note`, `version`, `openingReadyToAssign`, legacy `fundsAdded`, server-owned `ledgerIncome`, calculated `readyToAssign`, and ordered groups/categories. Each category includes `assigned`, total legacy-plus-ledger `activity`, calculated `available`, target and archive/display fields.
+The response includes `month`, `note`, `version`, `openingReadyToAssign`, legacy `fundsAdded`, server-owned `ledgerIncome`, calculated `readyToAssign`, and ordered groups/categories. Each category includes `assigned`, total legacy-plus-ledger `activity`, calculated `available`, the legacy `target` amount, archive/display fields, and the structured `categoryTarget` with its server-calculated `targetProgress` (see [category targets](#category-targets)).
 
 The Plan summary's **Expected Income** value displays this month's `ledgerIncome`; it does not use a separate fixed estimate.
 
@@ -182,6 +182,50 @@ Each credit account may have one debt payoff target on its payment category. Tar
 | `status` | `funded` when `toGo` is 0, `onTrack` when `assignThisMonth` is 0, otherwise `behind` |
 
 Worked example (October 2026, target March 2027, balance −2,674.47, Available 500.40, Assigned 0): needed 2,674.47, to go 2,174.07, percent 18, six months remaining, assign `ceil(2,174.07 / 6)` = 362.35.
+
+## Category targets
+
+A regular Plan category (any category outside the `credit-card-payments` group; `ccp-*` payment categories use [debt payoff targets](#debt-payoff-targets)) may have one structured target per budget. Targets are keyed by the logical category ID, so the same target applies in every month. They never change assignments, Available, Ready to Assign or ledger balances.
+
+Routes use the same access rule as `/api/budgets/{id}/months/{month}` (owner or joined editor of an active budget; others get `404`) and run under the budget's `LedgerGate`. Validation and conflict responses roll the gate transaction back, including a month initialized by that request.
+
+| Method | Path | Body / result |
+|---|---|---|
+| `GET` | `/api/budgets/{id}/categories/{categoryId}/target/{YYYY-MM}` | `{ categoryId, month, target, progress }`; `target`/`progress` are `null` without a target. |
+| `PUT` | `/api/budgets/{id}/categories/{categoryId}/target` | `{ commandId, version, month, kind, amount, behavior, weekday?, dayOfMonth?, dueDate?, repeatEvery?, repeatUnit? }` creates (`version: 0`) or replaces (current `target.version`) the target; returns the result for `month`. |
+| `POST` | `/api/budgets/{id}/categories/{categoryId}/target/delete` | `{ commandId, version, month }`; returns the result with `target: null`. |
+
+Validation (`400` without writes): the category must exist in `month` and be visible (not archived, group not archived) and must not be a payment category; `kind` is `weekly`, `monthly`, `yearly` or `custom`; `amount` is greater than zero with at most two decimals (maximum 999,999,999.99); `behavior` is `setAside` or `refill`. Weekly requires `weekday` 0 (Sunday)–6 (Saturday) and `setAside`. Monthly takes optional `dayOfMonth` 1–31 (null or 0 = last day; later days clamp to short months). Yearly and custom require `dueDate` (`YYYY-MM-DD`, years 1900–9998). Only custom takes `repeatEvery` 1–99 with `repeatUnit` `day`/`week`/`month`/`year` (both or neither); a non-repeating custom target cannot be due before the server's local date. Fields that do not belong to the kind are rejected. A missing category returns `404`.
+
+Writes use the target's own optimistic `version` (incremented on each save): a stale version, or deleting a target that no longer exists, returns `409` with `{ error, current }`, where `current` is the latest `{ target, progress }`. Each write appends a command receipt (`categoryTarget.save/{categoryId}` or `categoryTarget.delete/{categoryId}`) with before/after JSON to the ledger audit feed (`GET /api/ledger/audit`); targets do not advance the ledger revision. An identical replay of a `commandId` returns the current target state without a second write; a reused `commandId` with a different body returns `409`. Plan **Recent Moves** remains assignment-only, so target changes are not listed there.
+
+Changing kind, behavior, due date or repeat starts a new funding cycle (`startMonth` becomes the request month); changing only the amount, weekday or day keeps it. Each month DTO category (`GET/PUT /api/budgets/{id}/months/{month}` and the legacy month routes) includes `categoryTarget` (the definition) and `targetProgress` (calculated for that month; `null` for hidden categories). The legacy decimal `target` field is still accepted and returned for compatibility, but the Plan UI no longer edits it.
+
+### Target progress
+
+`targetProgress` is `{ needed, funded, moreNeeded, segments, fundedFraction, status, nextDueDate, monthsRemaining, isPastDue, cadence }`. Let A be the amount, `funded = max(Assigned this month, 0)` and `before = Available − Assigned` (opening balance plus this month's activity).
+
+| Target | `needed` this month |
+|---|---|
+| Weekly | `A × occurrences of the weekday in the month`; `segments` = occurrences (4 or 5) |
+| Monthly, set aside | `A` |
+| Monthly, refill | `max(A − before, 0)` (top Available up to A) |
+| Yearly / dated, set aside | `max(roundUpToCent((A − Assigned in earlier months of the cycle) / monthsRemaining), 0)` |
+| Yearly / dated, refill (fill up) | `max(roundUpToCent((A − before) / monthsRemaining), 0)` |
+| Custom repeating every N days/weeks | `A × due dates in the month` (minus `before` when filling up); a month with no due date spreads A towards the next one like a dated target |
+| Non-repeating custom after its due date | the whole unfunded remainder (`isPastDue` true; 0 once funded) |
+
+`monthsRemaining` counts the viewed month through the due month inclusive. Yearly targets (and custom targets repeating every N months/years) advance their due date by the period once it has passed; the next cycle starts the month after the previous due month and never before the target's `startMonth`. `moreNeeded = max(needed − funded, 0)`, `funded` in the response is capped at `needed`, `fundedFraction = min(funded / needed, 1)` (truncated to 4 decimals; 1 when nothing is needed) and `status` is `underfunded` while `moreNeeded > 0`, otherwise `funded`. `cadence` is a short schedule description such as `Every Friday` or `Every year by 15-03-2027`.
+
+Worked examples (amounts in EUR):
+
+- Weekly 25 every Friday, October 2026 (five Fridays), Assigned 50: needed 125, more needed 75, 5 segments, fraction 0.4. In November 2026 (four Fridays) needed is 100.
+- Monthly set aside 100, Assigned 30, Available 230: needed 100, more needed 70 (carried money does not count).
+- Monthly refill up to 150, Assigned 20, Available 80: before = 60, needed 90, more needed 70.
+- Yearly 1,000 by 15-03-2027 viewed in October 2026: six months, 1,000 / 6 = 166.666… → 166.67. In December with 166.67 and 100 assigned in October/November: (1,000 − 266.67) / 4 = 183.3325 → 183.34.
+- Custom 40 every 2 weeks from 02-10-2026: October has 2, 16 and 30 October → needed 120 in 3 segments; November (13 and 27) → 80.
+
+The Plan **Underfunded** filter shows categories whose `targetProgress.moreNeeded` is above zero (snoozed categories excluded); **Overfunded** shows categories whose Assigned exceeds `needed`. Categories without a structured target keep the previous legacy-`target` rule. **Auto-Assign → Underfunded** assigns, per category, the larger of the scheduled-outflow shortfall and `moreNeeded`, still capped by Ready to Assign.
 
 ## Register and payees
 

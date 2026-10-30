@@ -13,7 +13,8 @@ public sealed record BudgetDto(
     decimal ReadyToAssign,
     List<CategoryGroupDto> Groups)
 {
-    public static BudgetDto From(BudgetEntity budget) => new(
+    // Targets are keyed by logical category ID; progress is calculated only for active, non-payment categories.
+    public static BudgetDto From(BudgetEntity budget, IReadOnlyDictionary<string, (CategoryTargetDto Target, CategoryTargetProgressDto? Progress)>? targets = null) => new(
         budget.Month,
         budget.Note,
         budget.Version,
@@ -24,7 +25,9 @@ public sealed record BudgetDto(
         budget.Groups.OrderBy(g => g.SortOrder).Select(g => new CategoryGroupDto(
             g.Id, g.Name, g.SortOrder, g.IsArchived,
             g.Categories.OrderBy(c => c.SortOrder).Select(c => new CategoryDto(
-                c.Id, c.Name, c.Assigned, c.Activity, c.Available, c.Target, c.Icon, c.Snoozed, c.SortOrder, c.IsArchived, c.CreditOverspending)).ToList())).ToList());
+                c.Id, c.Name, c.Assigned, c.Activity, c.Available, c.Target, c.Icon, c.Snoozed, c.SortOrder, c.IsArchived, c.CreditOverspending,
+                targets is not null && targets.TryGetValue(c.Id, out var target) ? target.Target : null,
+                targets is not null && targets.TryGetValue(c.Id, out var progress) ? progress.Progress : null)).ToList())).ToList());
 }
 
 public sealed record BudgetUpdateDto(
@@ -35,8 +38,11 @@ public sealed record BudgetUpdateDto(
     List<CategoryGroupUpdateDto> Groups);
 
 public sealed record CategoryGroupDto(string Id, string Name, int SortOrder, bool IsArchived, List<CategoryDto> Categories);
+// Target is the legacy manual amount kept for compatibility; CategoryTarget/TargetProgress are the structured target
+// and its server-calculated progress for this month (null without a target; progress is null for hidden categories).
 public sealed record CategoryDto(string Id, string Name, decimal Assigned, decimal Activity, decimal Available, decimal Target,
-    string? Icon, bool Snoozed, int SortOrder, bool IsArchived, decimal CreditOverspending = 0);
+    string? Icon, bool Snoozed, int SortOrder, bool IsArchived, decimal CreditOverspending = 0,
+    CategoryTargetDto? CategoryTarget = null, CategoryTargetProgressDto? TargetProgress = null);
 public sealed record CategoryGroupUpdateDto(string Id, string Name, int SortOrder, bool IsArchived, List<CategoryUpdateDto> Categories);
 public sealed record CategoryUpdateDto(string Id, string Name, decimal Assigned, decimal Target, string? Icon,
     bool Snoozed, int SortOrder, bool IsArchived);

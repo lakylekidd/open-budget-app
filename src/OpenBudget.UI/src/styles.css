@@ -150,3 +150,44 @@
 .credit-target-summary .credit-target-total{margin-top:10px;padding-top:16px;border-top:1px solid #2c2e43}
 .credit-target-edit{border:0;border-radius:6px;background:#2e2f63;color:#fff;font:inherit;font-size:15px;font-weight:600;padding:9px 12px;cursor:pointer}.credit-target-edit:hover{background:#3a3b78}
 .credit-target-feedback{margin:0;font-size:12px;line-height:1.5;color:#ff8a95}.credit-target-feedback button{margin-left:4px;background:none;border:0;color:#9b9bff;font:inherit;cursor:pointer;text-decoration:underline}
+/* Category targets: editor, empty state and Plan row progress. */
+.category-target{margin:0 0 16px}.category-target>.credit-target-feedback{margin-top:8px}
+.category-target-empty{gap:12px}.category-target-empty>strong{font-size:14px}.category-target-empty p{margin:0;font-size:14px;line-height:1.45;color:#e3e3ee}
+.category-target-icon{margin:0 3px 0 4px}.category-target-create{justify-self:start;padding:9px 16px}
+.target-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:3px;border-radius:7px;background:#2f3147}
+.target-tabs button{border:1px solid transparent;border-radius:5px;background:none;color:#b8b9c9;font:inherit;font-size:14px;padding:5px 4px;cursor:pointer}
+.target-tabs button[aria-selected=true]{background:#14152b;border-color:#3d3f57;color:#fff;font-weight:600}.target-tabs button:focus-visible{outline:2px solid #6a6cff}
+.target-field{display:grid;gap:6px;position:relative}.target-field>label,.target-label{font-weight:700;font-size:13px;color:#fff}
+.target-input{width:100%;min-height:32px;border:1px solid #55576f;border-radius:4px;background:#3a3c52;color:#fff;font:inherit;font-size:14px;padding:5px 10px;box-sizing:border-box}
+.target-input:focus,.target-input[aria-expanded=true]{outline:0;border-color:#6a6cff;box-shadow:0 0 0 1px #6a6cff}
+.target-select{appearance:none;text-align:left;cursor:pointer;padding-right:28px;background-image:linear-gradient(45deg,transparent 50%,#8e8fa6 50%),linear-gradient(135deg,#8e8fa6 50%,transparent 50%);background-position:calc(100% - 14px) 52%,calc(100% - 10px) 52%;background-size:4px 4px;background-repeat:no-repeat}
+.target-select[aria-expanded=true]{background-image:linear-gradient(45deg,transparent 50%,#6a6cff 50%),linear-gradient(135deg,#6a6cff 50%,transparent 50%)}
+.target-behavior-popover{position:absolute;z-index:25;top:calc(100% + 10px);left:0;right:0;margin:0;padding:6px 0;list-style:none;background:#262841;border:1px solid #3a3c56;border-radius:8px;box-shadow:0 12px 28px #0009}
+.target-behavior-popover:before{content:"";position:absolute;top:-7px;left:50%;width:12px;height:12px;background:#262841;border-left:1px solid #3a3c56;border-top:1px solid #3a3c56;transform:translateX(-50%) rotate(45deg)}
+.target-behavior-popover li{display:grid;gap:5px;justify-items:start;padding:12px 16px;cursor:pointer;color:#d6d6e4;font-size:13px}
+.target-behavior-popover li+li{border-top:1px solid #3a3c56}.target-behavior-popover li:hover,.target-behavior-popover li:focus{outline:0;background:#30324d}
+.target-behavior-popover strong{display:flex;align-items:center;gap:8px;color:#fff;font-size:15px}.target-behavior-popover li[aria-selected=true] strong{color:#8f8bff}
+.target-check{display:inline-grid;place-items:center;width:17px;height:17px;border-radius:50%;background:#6a6cff;color:#fff;font-size:11px}
+.target-behavior-popover em{font-style:normal;font-weight:700;font-size:12px;color:#fff;background:#363a8a;border-radius:4px;padding:3px 8px;margin-top:4px}
+.target-behavior-popover small{font-size:13px;line-height:1.45;color:#d6d6e4;margin-top:4px}
+.target-date-input{display:flex;align-items:center;position:relative}.target-date-input input{width:100%;min-height:32px;border:1px solid #55576f;border-radius:4px;background:#3a3c52;color:#fff;font:inherit;font-size:14px;padding:5px 32px 5px 10px}
+.target-date-input input:focus{outline:0;border-color:#6a6cff;box-shadow:0 0 0 1px #6a6cff}
+.target-date-input button{position:absolute;right:6px;border:0;background:none;color:#a4a5bd;cursor:pointer;padding:3px;display:grid}
+.target-calendar{position:absolute;z-index:25;top:calc(100% + 10px);left:50%;transform:translateX(-50%);width:240px;padding:12px;background:#23223c;border-radius:8px;box-shadow:0 12px 28px #0009;color:#f3f2fa}
+.target-calendar-heading{display:flex;justify-content:space-between;align-items:center;padding:4px 6px 10px}.target-calendar-heading strong{font-size:16px}
+.target-calendar-heading button{border:0;background:none;color:#aaa6ff;font-size:26px;line-height:18px;cursor:pointer;padding:0 4px}
+.target-calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;row-gap:3px;font-size:14px;font-weight:600}
+.target-calendar-weekday{border-bottom:1px solid #39374d;padding:4px 0;color:#bab9ca}
+.target-calendar-grid button{border:0;background:none;color:#f4f3fa;height:28px;width:28px;justify-self:center;border-radius:50%;font:inherit;cursor:pointer;padding:0}
+.target-calendar-grid button.outside{color:#77758e}.target-calendar-grid button:hover{background:#44405d}.target-calendar-grid button[aria-pressed=true]{background:#6054ff;color:#fff}
+.target-toggle{display:flex;align-items:center;gap:10px;font-weight:700;font-size:13px;color:#fff;cursor:pointer}
+.target-toggle button{position:relative;width:40px;height:22px;border:0;border-radius:11px;background:#4a4c63;cursor:pointer;padding:0;transition:background .15s}
+.target-toggle button span{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .15s}
+.target-toggle button[aria-checked=true]{background:#5b5cf0}.target-toggle button[aria-checked=true] span{left:21px}.target-toggle button:focus-visible{outline:2px solid #8f8bff;outline-offset:2px}
+.target-repeat{display:grid;gap:6px}.target-repeat>div{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.category-status b{color:#fff;font-weight:600}
+.progress-track.target-track{gap:3px;background:transparent;overflow:visible}
+.target-track .target-segment{flex:1 1 0;display:block;height:100%;background:#3c3e53;overflow:hidden}
+.target-track .target-segment>span{display:block;height:100%;background:#ffdc00}
+.target-track.funded .target-segment>span{background:#75bd22}
+.available-cell .target-ring-icon{display:inline-block;vertical-align:-2px;margin-right:4px}
