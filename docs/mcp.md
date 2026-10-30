@@ -121,7 +121,7 @@ Every tool:
 | `accounts_credit_summary` | Credit account monthly summary | ✓ | — | ✓ | read-only |
 | `reconcile_account` | Reconcile account | — | — | ✓ | write |
 | `transactions_list` | List transactions | ✓ | — | ✓ | read-only |
-| `transactions_create` | Create transaction (optional `wishlistItemId` records a Wishlist purchase) | — | — | ✓ | write |
+| `transactions_create` | Create transaction (optional `wishlistItemId` records a Wishlist purchase; payee and memo are kept as given) | — | — | ✓ | write |
 | `transactions_import` | Import transaction | — | — | ✓ | write |
 | `transactions_update` | Update transaction | — | — | ✓ | write |
 | `transactions_delete` | Delete transaction | — | — | ✓ | destructive (confirm) |
