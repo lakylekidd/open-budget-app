@@ -97,8 +97,10 @@
 .lt-category-row .lt-subrow{box-sizing:border-box;min-height:30px;height:30px}
 .lt-category-row .lt-actual-subrow{height:31px}
 .lt-planned-expense-positive .lt-activity-value{color:#f0a331}
-@keyframes lt-row-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
-@keyframes lt-row-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(-6px)}}
-.lt-row-enter{animation:lt-row-in .18s ease both;animation-delay:var(--row-delay,0ms)}
-.lt-row-exit{animation:lt-row-out .18s ease both;animation-delay:var(--row-delay,0ms);pointer-events:none}
-@media (prefers-reduced-motion:reduce){.lt-row-enter,.lt-row-exit{animation:none}}
+/* Collapsible group rows: the wrapper's height slides between 0 and the rows' height, pushing the rows below.
+   overflow-y:clip (not hidden) so the sticky label column keeps sticking while scrolling sideways. */
+.lt-group-rows{display:grid;grid-template-rows:0fr;transition:grid-template-rows .26s cubic-bezier(.4,0,.2,1)}
+.lt-group-rows.open{grid-template-rows:1fr}
+.lt-group-rows-inner{min-height:0;overflow-y:clip;display:flex;flex-direction:column}
+.lt-group-rows:not(.open) .lt-group-rows-inner{pointer-events:none}
+@media (prefers-reduced-motion:reduce){.lt-group-rows{transition:none}}

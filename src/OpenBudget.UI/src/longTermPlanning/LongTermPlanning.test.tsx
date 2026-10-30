@@ -257,15 +257,13 @@ it('keeps group totals for collapsed categories and aggregates every subcategory
   expect(groupRow.querySelector('svg.disclosure-chevron')).toHaveClass('open');
   await user.click(screen.getByRole('button', { name: 'Collapse Everyday' }));
   expect(groupRow.querySelector('svg.disclosure-chevron')).not.toHaveClass('open');
-  expect(container.querySelector('.lt-category-row')).toHaveClass('lt-row-exit');
+  expect(container.querySelector('.lt-group-rows')).not.toHaveClass('open');
   await waitFor(() => expect(container.querySelector('.lt-category-row')).not.toBeInTheDocument());
   expect(groupRow.querySelectorAll('.lt-month-values')[0]).toHaveTextContent('€600.00');
 
   await user.click(screen.getByRole('button', { name: 'Expand Everyday' }));
-  const expandedRows = container.querySelectorAll('.lt-category-row');
-  expect(expandedRows[0]).toHaveClass('lt-row-enter');
-  expect((expandedRows[1] as HTMLElement).style.getPropertyValue('--row-delay')).toBe('25ms');
-  await waitFor(() => expect(container.querySelector('.lt-category-row')).not.toHaveClass('lt-row-enter'));
+  expect(container.querySelectorAll('.lt-group-rows .lt-category-row').length).toBeGreaterThan(1);
+  await waitFor(() => expect(container.querySelector('.lt-group-rows')).toHaveClass('open'));
 });
 
 it('shows loading failures and offers a retry instead of showing sample forecasts', async () => {

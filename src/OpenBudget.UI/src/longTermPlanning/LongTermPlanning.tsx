@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { longTermYearStore, useRoutedLongTermYear } from '../routing/longTermYear';
 import { parseAssignment } from '../budgetMoney';
 import { MoneyInput } from '../MoneyInput';
@@ -62,17 +62,8 @@ function plannedExpenseTone(metric: Metric, value: number | null | undefined) {
   return metric === 'plannedExpenses' && (value ?? 0) > 0 ? 'lt-planned-expense-positive' : '';
 }
 
-const ROW_ANIMATION_MS = 180;
-const ROW_STAGGER_MS = 25;
-const MAX_STAGGERED_ROWS = 8;
-
-function rowDelayMs(position: number) {
-  return Math.min(position, MAX_STAGGERED_ROWS) * ROW_STAGGER_MS;
-}
-
-function rowAnimationMs(rowCount: number) {
-  return ROW_ANIMATION_MS + rowDelayMs(Math.max(rowCount - 1, 0));
-}
+// Matches the .lt-group-rows height transition in longTermPlanning.css.
+const ROW_ANIMATION_MS = 260;
 
 function prefersReducedMotion() {
   return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -111,7 +102,9 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
   useEffect(() => () => onPendingChange?.(false), [onPendingChange]);
   useEffect(() => () => rowMotionTimers.current.forEach(timer => window.clearTimeout(timer)), []);
 
-  function toggleGroup(groupId: string, rowCount: number) {
+  // Group rows sit in a wrapper whose height slides open or shut, pushing the groups below. Expanding mounts the rows
+  // shut ('enter') and opens them on the next frames; collapsing slides them shut ('exit') before unmounting them.
+  function toggleGroup(groupId: string) {
     const collapsing = !collapsed.includes(groupId) && rowMotion[groupId] !== 'exit';
     const clearMotion = () => setRowMotion(current => { const next = { ...current }; delete next[groupId]; return next; });
     window.clearTimeout(rowMotionTimers.current.get(groupId));
@@ -125,11 +118,11 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
       rowMotionTimers.current.set(groupId, window.setTimeout(() => {
         setCollapsed(values => [...values, groupId]);
         clearMotion();
-      }, rowAnimationMs(rowCount)));
+      }, ROW_ANIMATION_MS));
     } else {
       setCollapsed(values => values.filter(id => id !== groupId));
       setRowMotion(current => ({ ...current, [groupId]: 'enter' }));
-      rowMotionTimers.current.set(groupId, window.setTimeout(clearMotion, rowAnimationMs(rowCount)));
+      requestAnimationFrame(() => requestAnimationFrame(clearMotion));
     }
   }
 
@@ -395,11 +388,10 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
             {displayedPlan.groups.map(group => {
               const motion = rowMotion[group.id];
               const isCollapsed = collapsed.includes(group.id) || motion === 'exit';
-              const rowCount = group.categories.length;
               return <div className="lt-group-block" role="rowgroup" key={group.id}>
                 <div className="lt-grid-row lt-group-row" role="row">
                   <div className="lt-label-cell lt-sticky-label lt-group-label" role="rowheader">
-                    <button type="button" aria-expanded={!isCollapsed} aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${group.name}`} onClick={() => toggleGroup(group.id, rowCount)}>
+                    <button type="button" aria-expanded={!isCollapsed} aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${group.name}`} onClick={() => toggleGroup(group.id)}>
                       <DisclosureChevron open={!isCollapsed} className="lt-disclosure" /><strong>{group.name}</strong>
                     </button>
                   </div>
@@ -407,9 +399,8 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
                     <div className="lt-subrow lt-planned-subrow" data-subrow="planned">{plannedMetrics.map(metric => renderGroupMetric(group, monthIndex, metric))}</div>
                   </div>)}
                 </div>
-                {(!collapsed.includes(group.id) || motion === 'exit') && group.categories.map((category, index) => <div
-                  className={`lt-grid-row lt-category-row${motion ? ` lt-row-${motion}` : ''}`} role="row" key={category.id}
-                  style={motion ? { '--row-delay': `${rowDelayMs(motion === 'exit' ? rowCount - 1 - index : index)}ms` } as CSSProperties : undefined}>
+                {!collapsed.includes(group.id) && <div className={`lt-group-rows${motion ? '' : ' open'}`} role="none"><div className="lt-group-rows-inner" role="none">
+                {group.categories.map(category => <div className="lt-grid-row lt-category-row" role="row" key={category.id}>
                   <div className="lt-label-cell lt-sticky-label" role="rowheader">
                     <strong title={category.name}>{category.name}</strong>
                     <div className="lt-pair-labels"><span>Planned</span><span>Actual</span></div>
@@ -419,6 +410,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
                     <div className="lt-subrow lt-actual-subrow" data-subrow="actual">{actualMetrics.map(metric => renderMetric(category, monthIndex, metric))}</div>
                   </div>)}
                 </div>)}
+                </div></div>}
               </div>;
             })}
           </div>
