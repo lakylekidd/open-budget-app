@@ -155,3 +155,4 @@
 .money-input-shell>.money-input-icon{position:absolute;left:8px;top:50%;transform:translateY(-50%);display:inline-flex;color:#a9abc0;pointer-events:none}
 .money-input-shell>input.money-input{width:100%;box-sizing:border-box;padding-left:28px}
 .lt-value-line .money-input-shell>.money-input-icon{left:5px}.lt-value-line .money-input-shell>input.money-input{padding-left:22px}
+.money-input-shell>input.money-input{text-align:right}
