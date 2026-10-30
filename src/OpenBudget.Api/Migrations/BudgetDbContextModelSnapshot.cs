@@ -475,6 +475,72 @@ namespace OpenBudget.Api.Migrations
                     b.ToTable("CategoryGroups");
                 });
 
+            modelBuilder.Entity("OpenBudget.Api.CategoryTargetEntity", b =>
+                {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("CategoryId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)");
+
+                    b.Property<string>("Behavior")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("DayOfMonth")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly?>("DueDate")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<int?>("RepeatEvery")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RepeatUnit")
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)");
+
+                    b.Property<string>("StartMonth")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("Weekday")
+                        .HasColumnType("integer");
+
+                    b.HasKey("BudgetId", "CategoryId");
+
+                    b.HasIndex("Id")
+                        .IsUnique();
+
+                    b.ToTable("CategoryTargets");
+                });
+
             modelBuilder.Entity("OpenBudget.Api.CreditPayoffTargetEntity", b =>
                 {
                     b.Property<Guid>("AccountId")
@@ -1445,6 +1511,15 @@ namespace OpenBudget.Api.Migrations
                     b.HasOne("OpenBudget.Api.BudgetEntity", null)
                         .WithMany("Groups")
                         .HasForeignKey("BudgetId", "BudgetMonth")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.CategoryTargetEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.BudgetPlanEntity", null)
+                        .WithMany()
+                        .HasForeignKey("BudgetId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

@@ -89,7 +89,7 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
 
         var budget = await GetMonthAsync(budgetId, request.Month, cancellationToken);
         if (budget.Version != request.Version)
-            return BudgetUpdateResult.Conflict(BudgetDto.From(budget));
+            return BudgetUpdateResult.Conflict(await ToDtoAsync(budget, cancellationToken));
         if (budget.FundsAdded != request.FundsAdded)
             return BudgetUpdateResult.Invalid("Funds added is a preserved legacy baseline. Record new income through a cash account transaction.");
 
@@ -222,14 +222,52 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
         try
         {
             await db.SaveChangesAsync(cancellationToken);
-            return BudgetUpdateResult.Success(BudgetDto.From(budget));
+            return BudgetUpdateResult.Success(await ToDtoAsync(budget, cancellationToken));
         }
         catch (DbUpdateConcurrencyException)
         {
             db.ChangeTracker.Clear();
             var latest = await QueryMonth(budgetId, request.Month).SingleAsync(cancellationToken);
-            return BudgetUpdateResult.Conflict(BudgetDto.From(latest));
+            return BudgetUpdateResult.Conflict(await ToDtoAsync(latest, cancellationToken));
         }
+    }
+
+    // Month DTO with each category's structured target and its server-calculated progress for that month.
+    public async Task<BudgetDto> ToDtoAsync(BudgetEntity budget, CancellationToken cancellationToken)
+    {
+        var targets = await db.CategoryTargets.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.BudgetId == budget.BudgetId).ToListAsync(cancellationToken);
+        if (targets.Count == 0) return BudgetDto.From(budget);
+        var history = await LoadTargetHistoryAsync(budget.BudgetId, budget.Month, targets, cancellationToken);
+        var categories = budget.Groups.SelectMany(g => g.Categories.Select(c => (Group: g, Category: c))).ToDictionary(x => x.Category.Id, StringComparer.Ordinal);
+        var result = new Dictionary<string, (CategoryTargetDto Target, CategoryTargetProgressDto? Progress)>(StringComparer.Ordinal);
+        foreach (var target in targets)
+        {
+            if (!categories.TryGetValue(target.CategoryId, out var row)) continue;
+            var active = !row.Category.IsArchived && !row.Group.IsArchived && !CategoryTargetRules.IsPaymentCategory(row.Category.Id, row.Group.Id);
+            result[target.CategoryId] = (target.ToDto(), active ? CalculateTarget(target, budget.Month, row.Category, history) : null);
+        }
+        return BudgetDto.From(budget, result);
+    }
+
+    public static CategoryTargetProgressDto CalculateTarget(CategoryTargetEntity target, string month, CategoryEntity category,
+        IReadOnlyDictionary<string, Dictionary<string, decimal>> history) =>
+        CategoryTargetRules.Calculate(target.ToDefinition(), month, category.Assigned, category.Available,
+            history.TryGetValue(target.CategoryId, out var prior) ? prior : null);
+
+    // Assigned amounts from earlier months, needed only by "set aside" yearly/custom targets.
+    public async Task<IReadOnlyDictionary<string, Dictionary<string, decimal>>> LoadTargetHistoryAsync(string budgetId, string month,
+        IReadOnlyCollection<CategoryTargetEntity> targets, CancellationToken cancellationToken)
+    {
+        var dated = targets.Where(x => CategoryTargetRules.NeedsHistory(x.ToDefinition())).ToList();
+        if (dated.Count == 0) return new Dictionary<string, Dictionary<string, decimal>>();
+        var ids = dated.Select(x => x.CategoryId).ToList();
+        var from = dated.Min(x => x.StartMonth) ?? month;
+        var rows = await db.Categories.AsNoTracking()
+            .Where(c => c.BudgetId == budgetId && ids.Contains(c.Id) && string.Compare(c.BudgetMonth, from) >= 0 && string.Compare(c.BudgetMonth, month) < 0)
+            .Select(c => new { c.Id, c.BudgetMonth, c.Assigned }).ToListAsync(cancellationToken);
+        return rows.GroupBy(x => x.Id, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.ToDictionary(x => x.BudgetMonth, x => x.Assigned, StringComparer.Ordinal), StringComparer.Ordinal);
     }
 
     public static decimal CalculateReadyToAssign(BudgetEntity budget) =>

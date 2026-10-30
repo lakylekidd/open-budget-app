@@ -28,6 +28,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     }
 });
 builder.Services.AddScoped<BudgetService>();
+builder.Services.AddScoped<CategoryTargetService>();
 builder.Services.AddScoped<BudgetOwnershipService>();
 builder.Services.AddScoped<BudgetSharingService>();
 builder.Services.AddScoped<EntitlementService>();
@@ -163,12 +164,13 @@ app.MapGet("/health", async (BudgetDbContext db, CancellationToken cancellationT
 app.MapAuthenticationEndpoints();
 EntitlementService.MapEndpoints(app);
 BudgetOwnershipService.MapEndpoints(app);
+CategoryTargetService.MapEndpoints(app);
 BudgetSharingService.MapEndpoints(app);
 
 app.MapGet("/api/budget/{month}", async (string month, BudgetService budgets, LedgerGate gate, CancellationToken cancellationToken) =>
 {
     if (!IsMonth(month)) return Results.BadRequest(new { error = "Month must use YYYY-MM format." });
-    return await gate.RunAsync(async () => Results.Ok(BudgetDto.From(await budgets.GetMonthAsync(month, cancellationToken))), cancellationToken);
+    return await gate.RunAsync(async () => Results.Ok(await budgets.ToDtoAsync(await budgets.GetMonthAsync(month, cancellationToken), cancellationToken)), cancellationToken);
 });
 
 app.MapGet("/api/budget", async (BudgetService budgets, CancellationToken cancellationToken) =>

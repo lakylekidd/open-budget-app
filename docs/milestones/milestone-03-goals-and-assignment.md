@@ -1,6 +1,6 @@
 # Milestone 3 — Goals, templates, and guided assignment
 
-**Status:** In progress — monthly Auto-Assign actions are implemented; target rules, templates and recommendation preview/apply workflows remain planned.
+**Status:** In progress — monthly Auto-Assign actions and category targets (create/edit/delete, Weekly/Monthly/Yearly/Custom, server-calculated monthly progress, Underfunded filter and Auto-Assign integration) are implemented; pause/snooze semantics, templates and recommendation preview/apply workflows remain planned.
 
 ## Goal
 
@@ -41,3 +41,14 @@ A person can set aside money for upcoming bills and longer-term savings, underst
 ## Product references
 
 [Using targets](https://support.ynab.com/how-to-use-targets-rk5kkI9ks), [getting started with targets](https://support.ynab.com/en_us/getting-started-with-targets-ryAEP08xC), [auto-assign](https://support.ynab.com/en_us/auto-assign-a-guide-r1gBNbBJo).
+
+## Implemented: category targets (2026-10-30)
+
+- **Acceptance 1 (partial):** create, edit and remove a target per regular category; type-specific fields are validated by the API (`400`, no partial writes). Pause/resume is not implemented; snoozed categories are excluded from the Underfunded filter and Auto-Assign target needs.
+- **Acceptance 2-3:** the card shows the cadence, due date and needed/assigned/to-go amounts; progress is recalculated from the month's Assigned/Available on every month read, so it follows assignments, activity and target edits.
+- **Acceptance 4:** non-repeating custom targets due before today, out-of-range dates, zero/invalid amounts and repeat intervals outside 1-99 are rejected.
+- **Acceptance 12:** decimal calculations with round-up-to-cent spreading are deterministic; see [API](../api.md#target-progress) for formulas and worked examples.
+- Writes are versioned per target, serialized by `LedgerGate`, replay-safe by command ID and audited in the ledger command receipts. Payment categories are rejected.
+- Tests: `CategoryTargetRulesTests` (unit), `CategoryTargetApiTests` (PostgreSQL HTTP), `CategoryTarget.test.tsx` and `App.test.tsx` (UI workflow).
+
+Remaining for this milestone: pause/snooze/resume, category templates, and recommendation preview/apply with reasons and versioned apply.

@@ -767,3 +767,101 @@ it('opens Long-Term Planning from the main navigation',async()=>{
   const year=new Date().getFullYear();
   expect(vi.mocked(fetch)).toHaveBeenCalledWith(`/api/long-term-planning/${year}`,expect.objectContaining({signal:expect.any(AbortSignal)}));
 });
+
+const weeklyTarget={kind:'weekly',amount:25,behavior:'setAside',weekday:5,dayOfMonth:null,dueDate:null,repeatEvery:null,repeatUnit:null,startMonth:'2026-10',version:1,createdAt:'2026-10-01T00:00:00Z',updatedAt:'2026-10-01T00:00:00Z'};
+const weeklyProgress={needed:125,funded:0,moreNeeded:125,segments:5,fundedFraction:0,status:'underfunded',nextDueDate:null,monthsRemaining:null,isPastDue:false,cadence:'Every Friday'};
+function addTarget(month:Month,categoryId:string,target:unknown,progress:unknown){const category=month.groups.flatMap(group=>group.categories).find(item=>item.id===categoryId)!;Object.assign(category,{categoryTarget:target,targetProgress:progress});}
+function routeTargets(handler:(path:string,init?:RequestInit)=>Response|undefined){const base=vi.mocked(fetch).getMockImplementation()!;vi.mocked(fetch).mockImplementation(async(path,init)=>handler(String(path),init)??base(path,init));}
+
+it('shows the weekly target amount still needed and one bar segment per weekday occurrence',async()=>{
+  months['2026-10']=budget('2026-10',0,0,0);
+  addTarget(months['2026-10'],'utilities',weeklyTarget,weeklyProgress);
+  render(<App/>);await saved();
+  const categoryRow=row();
+  expect(within(categoryRow).getByText(/more needed this month/)).toHaveTextContent('€125.00 more needed this month');
+  const bar=within(categoryRow).getByRole('img',{name:'Target progress: 0% of €125.00 funded'});
+  expect(bar).toHaveAttribute('data-segments','5');
+  expect(bar.querySelectorAll('.target-segment')).toHaveLength(5);
+  const available=categoryRow.querySelector('.available-cell') as HTMLElement;
+  expect(available).toHaveClass('underfunded');
+  expect(available.querySelector('.target-ring-icon')).not.toBeNull();
+});
+
+it('fills weekly segments as money is assigned and turns green once funded',async()=>{
+  months['2026-10']=budget('2026-10',62.5,0,62.5);
+  addTarget(months['2026-10'],'utilities',weeklyTarget,{...weeklyProgress,funded:62.5,moreNeeded:62.5,fundedFraction:0.5});
+  months['2026-11']=budget('2026-11',100,0,100);
+  addTarget(months['2026-11'],'utilities',weeklyTarget,{...weeklyProgress,needed:100,funded:100,moreNeeded:0,segments:4,fundedFraction:1,status:'funded'});
+  render(<App/>);await saved();
+  const fills=[...row().querySelectorAll('.target-segment > span')].map(item=>(item as HTMLElement).style.width);
+  expect(fills).toEqual(['100%','100%','50%','0%','0%']);
+  await next('Next','Nov 2026');
+  const funded=row();
+  expect(funded.querySelectorAll('.target-segment')).toHaveLength(4);
+  expect(funded.querySelector('.target-track')).toHaveClass('funded');
+  expect(funded.querySelector('.available-cell')).toHaveClass('positive');
+  expect(funded.querySelector('.target-ring-icon')).toBeNull();
+  expect(within(funded).queryByText(/more needed this month/)).not.toBeInTheDocument();
+});
+
+it('uses the server target need for the Underfunded filter and Auto-Assign Underfunded',async()=>{
+  months['2026-10'].groups[0].categories.push({id:'food',name:'Food',assigned:0,activity:0,available:0,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false});
+  addTarget(months['2026-10'],'food',{...weeklyTarget,kind:'monthly',weekday:null,amount:40},{...weeklyProgress,needed:40,moreNeeded:40,segments:1,cadence:'Every month by the last day'});
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('tab',{name:'Underfunded'}));
+  expect(screen.getByRole('checkbox',{name:'Select Food'})).toBeInTheDocument();
+  expect(screen.queryByRole('checkbox',{name:'Select Electricity'})).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('tab',{name:'All'}));
+  await userEvent.click(screen.getByRole('button',{name:'Assign'}));
+  const underfunded=await screen.findByRole('button',{name:'Underfunded €40.00'});
+  await waitFor(()=>expect(underfunded).toBeEnabled());
+  await userEvent.click(underfunded);
+  await waitFor(()=>expect(writes).toHaveLength(1));
+  const categories=(writes[0].groups as {categories:{id:string;assigned:number}[]}[]).flatMap(group=>group.categories);
+  expect(categories.find(category=>category.id==='food')?.assigned).toBe(40);
+  expect(categories.find(category=>category.id==='utilities')?.assigned).toBe(0);
+});
+
+it('creates a category target from the details panel and updates the row without a Plan save',async()=>{
+  const targetWrites:{path:string;body:Record<string,unknown>}[]=[];
+  routeTargets((path,init)=>{
+    if(path==='/api/budgets/default/categories/utilities/target'&&init?.method==='PUT'){
+      const body=JSON.parse(String(init.body));targetWrites.push({path,body});
+      return response({categoryId:'utilities',month:'2026-10',target:{...weeklyTarget,...body,version:1},progress:{...weeklyProgress,needed:100,moreNeeded:100,segments:4,cadence:'Every Sunday'}});
+    }
+    return undefined;
+  });
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Edit assigned for Electricity'}));
+  await userEvent.keyboard('{Escape}');
+  const card=await screen.findByRole('region',{name:'Electricity target'});
+  expect(card).toHaveTextContent('How much do you need for Electricity?');
+  await userEvent.click(within(card).getByRole('button',{name:'Create Target'}));
+  const editor=screen.getByRole('form',{name:'Category target'});
+  await userEvent.click(within(editor).getByRole('tab',{name:'Weekly'}));
+  const amount=within(editor).getByLabelText('I need');
+  await userEvent.click(amount);await userEvent.clear(amount);await userEvent.type(amount,'25');
+  await userEvent.selectOptions(within(editor).getByLabelText('Every'),'Sunday');
+  await userEvent.click(within(editor).getByRole('button',{name:'Save Target'}));
+  await waitFor(()=>expect(targetWrites).toHaveLength(1));
+  expect(targetWrites[0].body).toMatchObject({version:0,month:'2026-10',kind:'weekly',amount:25,weekday:0,behavior:'setAside'});
+  expect(await within(row()).findByText(/more needed this month/)).toHaveTextContent('€100.00 more needed this month');
+  expect(row().querySelectorAll('.target-segment')).toHaveLength(4);
+  expect(screen.getByRole('region',{name:'Electricity target'})).toHaveTextContent('Set aside €25.00 every Sunday');
+  await new Promise(resolve=>setTimeout(resolve,600));
+  expect(writes).toHaveLength(0);
+});
+
+it('never offers a category target for a credit card payment category',async()=>{
+  const account={isClosed:false,unclearedBalance:0,isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0};
+  focusAccounts=[{...account,id:'card-1',name:'Mastercard',balance:-100,clearedBalance:-100,accountType:'creditCard'}];
+  const october=budget('2026-10',0,0,15);
+  october.groups.unshift({id:'credit-card-payments',name:'Credit Card Payments',sortOrder:0,isArchived:false,categories:[{id:'ccp-card-1',name:'Mastercard',assigned:0,activity:0,available:20,target:0,icon:'💳',snoozed:false,sortOrder:0,isArchived:false}]});
+  months['2026-10']=october;
+  render(<App/>);await saved();
+  const paymentRow=screen.getByRole('button',{name:'Move available money from Mastercard'}).closest('.category-row') as HTMLElement;
+  await userEvent.click(within(paymentRow).getByRole('button',{name:'Edit assigned for Mastercard'}));
+  await screen.findByRole('region',{name:'Mastercard payment'});
+  expect(screen.queryByRole('button',{name:'Create Target'})).not.toBeInTheDocument();
+  expect(screen.queryByRole('region',{name:'Mastercard target'})).not.toBeInTheDocument();
+});
