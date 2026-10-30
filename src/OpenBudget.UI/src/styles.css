@@ -204,3 +204,9 @@
 .group-assigned.has-planned>span:first-child{line-height:18px}
 .planned-amount{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:5px;font-size:11px;line-height:12px;font-weight:400;color:#8f90a6}
 .group-assigned .planned-amount{padding-right:0}
+/* Planned amount: muted, on the Assigned line, just past Assigned's right edge (in the empty left
+   side of the Activity column), so Assigned amounts stay aligned whether or not a plan exists. */
+.assigned-cell.has-planned,.group-assigned.has-planned{flex-direction:row;align-items:center;justify-content:flex-end;gap:0;position:relative;overflow:visible}
+.assigned-cell.has-planned .amount-button{height:auto;padding-block:3px}
+.has-planned>span:first-child{line-height:inherit}
+.has-planned .planned-amount{position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%);max-width:55%;min-width:0;line-height:14px;text-align:left;pointer-events:none}
