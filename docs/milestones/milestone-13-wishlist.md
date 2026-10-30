@@ -43,7 +43,7 @@ For each bucket, with `A` = the bucket category's Available in the evaluated mon
 
 - `remaining = max(C − A, 0)`, `canPurchase = A ≥ C` (exactly equal counts as purchasable), `fundedFraction = A ≤ 0 ? 0 : min(A / C, 1)` truncated to 4 decimals.
 - Purchased/removed items are skipped; a bucket without active items has no progress (`null`).
-- Shown as "€X of €Y — €Z to go" with a progress bar; when purchasable: a **Ready to buy** badge on the bucket, "You can buy <item> now.", the nav count, and the Plan row text "Ready to buy <item>" (otherwise "€Z to go for <item>"). The category details panel in Plan shows the same progress with an **Open Wishlist** link.
+- Shown as "€X of €Y — €Z to go" with a progress bar; when purchasable: a **Ready to buy** badge on the bucket, "You can buy <item> now.", the nav count, and the Plan row text "You can buy <item>" with a checkmark (otherwise "€Z to go for <item>"; derived client-side from the row's live Available vs the item cost, in cents). The category details panel in Plan shows the same progress with an **Open Wishlist** link.
 - Reordering items changes the next item immediately in the Wishlist overview and in the Plan month DTO (`wishlistProgress`).
 
 ## Concurrency and persistence
@@ -57,7 +57,7 @@ For each bucket, with `A` = the bucket category's Available in the evaluated mon
 1. A Free user does not see the Wishlist nav item and receives `403` from the Wishlist API; Plus/Pro users (or users with an Allow override) see it directly below Long-Term Planning; a Deny override hides it for a Plus user.
 2. Enabling creates the Wishlist group and one category per bucket in every initialized month; later months inherit it.
 3. Renaming and reordering buckets update category names and order in every month; Plan saves cannot rename, archive, reorder, move or delete Wishlist categories.
-4. Assigning money in Plan updates bucket progress; Available equal to the next item's cost shows "Ready to buy" on the bucket, the Plan row and the nav count.
+4. Assigning money in Plan updates bucket progress; Available equal to the next item's cost shows "Ready to buy" on the bucket and the nav count, and a checkmark with "You can buy <item>" on the Plan row.
 5. Reordering items changes the next item and its progress in both the Wishlist screen and the Plan DTO.
 6. Disabling archives the group without changing Available or Ready to Assign; re-enabling restores it with the same money.
 7. Purchased and removed items stay in collapsible history and can be restored.
