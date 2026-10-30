@@ -17,11 +17,22 @@ const minimumProjection: LoanProjection = { monthlyPayment: 1789.49, paymentsRem
 let loan: LoanDetails;
 let mutations: { path: string; method: string; body: Record<string, unknown> }[];
 let simulations: string[];
+let pairings: { accountId: string; accountName: string; categoryId: string; slot: string }[];
+const cat = (id: string, name: string, sortOrder: number, isArchived = false) => ({ id, name, sortOrder, isArchived, available: 0 });
+// Plan as the pairing step sees it: protected (Credit Card Payments, Wishlist) and archived rows must be hidden.
+const planGroups = [
+  { id: 'credit-card-payments', name: 'Credit Card Payments', sortOrder: 0, isArchived: false, categories: [cat('ccp-visa', 'Visa', 0)] },
+  { id: 'must', name: 'Must Pay', sortOrder: 2, isArchived: false, categories: [cat('vve', 'VvE', 0), cat('mortgage-a', 'Mortgage (400K @ 3.47%)', 1), cat('old', 'Old bill', 2, true)] },
+  { id: 'tax', name: 'Tax', sortOrder: 1, isArchived: false, categories: [cat('income-tax', 'Income Tax', 0), cat('ozb', 'OZB', 1)] },
+  { id: 'wishlist', name: 'Wishlist', sortOrder: 3, isArchived: false, categories: [cat('wl-1', 'Camera', 0)] },
+  { id: 'gone', name: 'Archived group', sortOrder: 4, isArchived: true, categories: [cat('gone-1', 'Gone', 0)] },
+];
 const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
 
 beforeEach(() => {
   try { window.localStorage.clear(); } catch { /* ignore */ }
   mutations = []; simulations = [];
+  pairings = [{ accountId: 'other-loan', accountName: 'Mortgage A', categoryId: 'mortgage-a', slot: 'loan' }];
   loan = {
     accountId: 'mortgage', accountType: 'mortgage', version: 3, currentMonth: '2026-10', balance: -389651.68, interestRate: 3.47, minimumPayment: 1789.49,
     escrowAmount: 0, originalBalance: 397000, percentRemaining: 98.1, balanceConfirmedAt: null, estimatedInterestThisMonth: 1126.74,
@@ -59,7 +70,8 @@ beforeEach(() => {
     if (path.startsWith('/api/accounts')) return response({ version: 3, accounts: [checking, mortgage, phone] });
     if (path.startsWith('/api/transactions')) return response({ version: 3, page: 1, pageSize: 25, total: 0, items: [], accounts: { version: 3, accounts: [checking, mortgage, phone] } });
     if (path.startsWith('/api/schedules')) return response({ version: 3, page: 1, pageSize: 25, total: 0, items: [] });
-    if (path.startsWith('/api/budget/')) return response({ readyToAssign: 0, groups: [{ id: 'home', name: 'Home', categories: [{ id: 'rent', name: 'Rent', available: 0 }] }] });
+    if (path === '/api/loan-pairings') return response({ items: pairings });
+    if (path.startsWith('/api/budget/')) return response({ readyToAssign: 0, groups: planGroups });
     if (path === '/api/payees') return response([]);
     if (path === '/api/flags') return response({ version: 3, flags: [] });
     throw new Error(`Unexpected request ${path}`);
@@ -105,9 +117,115 @@ it('shows the Mortgages and Loans section with Contract and validates the add fo
   expect(next).toBeDisabled();
   await user.clear(within(form).getByLabelText('Interest rate')); await user.type(within(form).getByLabelText('Interest rate'), '4.9');
   await user.click(next);
+  // Next opens the optional pairing step; Skip creates the account unpaired.
+  const step = await screen.findByRole('dialog', { name: 'Optional: Pair a Category' });
+  expect(mutations).toHaveLength(0);
+  await user.click(within(step).getByRole('button', { name: 'Skip' }));
   await waitFor(() => expect(mutations).toHaveLength(1));
   expect(mutations[0].path).toBe('/api/accounts');
-  expect(mutations[0].body).toMatchObject({ name: 'Car', accountType: 'autoLoan', openingBalance: -12000, loan: { interestRate: 4.9, minimumPayment: 275, createPairedCategory: true, contract: null } });
+  expect(mutations[0].body).toMatchObject({ name: 'Car', accountType: 'autoLoan', openingBalance: -12000, loan: { interestRate: 4.9, minimumPayment: 275, contract: null,
+    pairedCategoryId: null, newPairedCategory: null, separateDeviceCategory: false, devicePairedCategoryId: null, newDevicePairedCategory: null } });
+});
+
+async function openPairStep(user: ReturnType<typeof userEvent.setup>, name = 'Car') {
+  await user.click(await screen.findByRole('button', { name: 'Add account' }));
+  await user.click(within(screen.getByRole('region', { name: 'Mortgages and Loans' })).getByRole('button', { name: 'Auto Loan' }));
+  const form = screen.getByRole('dialog', { name: 'Add Unlinked Account' });
+  await user.type(within(form).getByLabelText('Give it a nickname'), name);
+  await user.type(within(form).getByLabelText('Current account balance'), '12000');
+  await user.type(within(form).getByLabelText('Interest rate'), '4.9');
+  await user.type(within(form).getByLabelText('Monthly payment required by your lender'), '275');
+  await user.click(within(form).getByRole('button', { name: 'Next' }));
+  return screen.findByRole('dialog', { name: 'Optional: Pair a Category' });
+}
+
+it('opens the pairing step after Next, keeps entered values on back and pairs an existing grouped category', async () => {
+  const user = userEvent.setup();
+  show('');
+  let step = await openPairStep(user);
+  expect(step).toHaveTextContent('Pair your loan with a plan category');
+  expect(step).toHaveTextContent('Pairing works best when there is a one-to-one relationship between your loan account and a plan category.');
+  expect(within(step).getByRole('group', { name: 'Which category do you want to pair your loan with?' })).toBeInTheDocument();
+  expect(within(step).getByRole('radio', { name: /Select an existing category/ })).toBeChecked();
+  expect(within(step).getByRole('radio', { name: /Create a new category/ })).not.toBeChecked();
+  expect(within(step).getByRole('button', { name: 'Close dialog' })).toBeInTheDocument();
+  const next = within(step).getByRole('button', { name: 'Next' });
+  expect(next).toBeDisabled();
+
+  // Back returns to the form with every value kept, and Next returns to the step.
+  await user.click(within(step).getByRole('button', { name: 'Back' }));
+  const form = screen.getByRole('dialog', { name: 'Add Unlinked Account' });
+  expect(within(form).getByLabelText('Give it a nickname')).toHaveValue('Car');
+  expect(within(form).getByLabelText('Interest rate')).toHaveValue('4.9');
+  expect(within(form).getByLabelText('Monthly payment required by your lender')).toHaveValue('275');
+  await user.click(within(form).getByRole('button', { name: 'Next' }));
+  step = await screen.findByRole('dialog', { name: 'Optional: Pair a Category' });
+
+  // Grouped in plan order; protected and archived rows hidden; another loan's category is disabled.
+  const select = await within(step).findByLabelText('Select a category');
+  const groups = within(select).getAllByRole('group');
+  expect(groups.map(group => group.getAttribute('label'))).toEqual(['Tax', 'Must Pay']);
+  expect(within(groups[1]).getAllByRole('option').map(option => option.textContent)).toEqual(['VvE', 'Mortgage (400K @ 3.47%)']);
+  expect(within(select).getByRole('option', { name: 'Mortgage (400K @ 3.47%)' })).toBeDisabled();
+  expect(within(select).getByRole('option', { name: 'Mortgage (400K @ 3.47%)' })).toHaveAttribute('title', 'Already paired with Mortgage A');
+  expect(within(select).queryByRole('option', { name: 'Visa' })).not.toBeInTheDocument();
+  expect(within(select).queryByRole('option', { name: 'Camera' })).not.toBeInTheDocument();
+  expect(within(select).queryByRole('option', { name: 'Old bill' })).not.toBeInTheDocument();
+  expect(within(select).queryByRole('option', { name: 'Gone' })).not.toBeInTheDocument();
+  await user.selectOptions(select, 'ozb');
+  expect(within(step).getByRole('button', { name: 'Next' })).toBeEnabled();
+  await user.click(within(step).getByRole('button', { name: 'Next' }));
+  await waitFor(() => expect(mutations).toHaveLength(1));
+  expect(mutations[0].body).toMatchObject({ name: 'Car', loan: { pairedCategoryId: 'ozb', newPairedCategory: null, separateDeviceCategory: false } });
+});
+
+it('creates a new category in an existing or new category group from the pairing step', async () => {
+  const user = userEvent.setup();
+  show('');
+  const step = await openPairStep(user, 'Tesla');
+  await user.click(within(step).getByRole('radio', { name: /Create a new category/ }));
+  expect(within(step).queryByLabelText('Select a category')).not.toBeInTheDocument();
+  const name = within(step).getByLabelText('Give your category a name');
+  expect(name).toHaveValue('Tesla');
+  const group = within(step).getByLabelText('Add to category group');
+  expect(within(group).getAllByRole('option').filter(option => option.textContent).map(option => option.textContent)).toEqual(['New Category Group', 'Tax', 'Must Pay']);
+  expect(within(step).getByRole('button', { name: 'Next' })).toBeDisabled();
+
+  // Duplicate names in the chosen group are caught before saving.
+  await user.selectOptions(group, 'tax');
+  await user.clear(name); await user.type(name, 'ozb');
+  expect(within(step).getByRole('alert')).toHaveTextContent('already has a category with that name');
+  expect(within(step).getByRole('button', { name: 'Next' })).toBeDisabled();
+  await user.clear(name); await user.type(name, 'Car loan');
+
+  // New Category Group reveals the group name input.
+  await user.selectOptions(group, 'New Category Group');
+  const groupName = within(step).getByLabelText('Category group name');
+  expect(within(step).getByRole('button', { name: 'Next' })).toBeDisabled();
+  await user.type(groupName, 'tax');
+  expect(within(step).getByRole('alert')).toHaveTextContent('category group with that name already exists');
+  await user.clear(groupName); await user.type(groupName, 'Debts');
+  // Switching back to "existing" and again to "new" keeps the typed values.
+  await user.click(within(step).getByRole('radio', { name: /Select an existing category/ }));
+  await user.click(within(step).getByRole('radio', { name: /Create a new category/ }));
+  expect(within(step).getByLabelText('Category group name')).toHaveValue('Debts');
+  await user.click(within(step).getByRole('button', { name: 'Next' }));
+  await waitFor(() => expect(mutations).toHaveLength(1));
+  expect(mutations[0].body).toMatchObject({ name: 'Tesla', loan: { pairedCategoryId: null, newPairedCategory: { name: 'Car loan', groupId: null, newGroupName: 'Debts' } } });
+});
+
+it('keeps the pairing step open with the server error when creation fails', async () => {
+  const user = userEvent.setup();
+  show('');
+  const fetchMock = vi.mocked(fetch);
+  const original = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (path, init) => init?.method === 'POST'
+    ? response({ error: 'That category is already paired with another loan. A category can be paired with only one loan.' }, 400) : original(path, init));
+  const step = await openPairStep(user);
+  await user.selectOptions(await within(step).findByLabelText('Select a category'), 'vve');
+  await user.click(within(step).getByRole('button', { name: 'Next' }));
+  expect(await screen.findByText(/already paired with another loan/)).toBeInTheDocument();
+  expect(screen.getByRole('dialog', { name: 'Optional: Pair a Category' })).toBeInTheDocument();
 });
 
 it('adds a contract with discount fields', async () => {
@@ -128,8 +246,45 @@ it('adds a contract with discount fields', async () => {
   expect(within(form).getByRole('button', { name: 'Next' })).toBeDisabled();
   await user.clear(within(form).getByLabelText('Discounted monthly cost')); await user.type(within(form).getByLabelText('Discounted monthly cost'), '10');
   await user.click(within(form).getByRole('button', { name: 'Next' }));
+
+  // Contracts with a device: same category (default) or separate contract and device categories.
+  const step = await screen.findByRole('dialog', { name: 'Optional: Pair a Category' });
+  expect(step).toHaveTextContent('Pair your contract with a plan category');
+  expect(within(step).getByRole('radio', { name: /Use the same category for the device and contract/ })).toBeChecked();
+  await user.click(within(step).getByRole('radio', { name: /Use separate categories/ }));
+  const contractSection = within(step).getByRole('region', { name: 'Contract category' });
+  const deviceSection = within(step).getByRole('region', { name: 'Device category' });
+  await user.selectOptions(await within(contractSection).findByLabelText('Contract: Select a category'), 'vve');
+  expect(within(step).getByRole('button', { name: 'Next' })).toBeDisabled();
+  // The same category cannot cover both slots.
+  await user.selectOptions(within(deviceSection).getByLabelText('Device: Select a category'), 'vve');
+  expect(within(step).getByRole('alert')).toHaveTextContent('Choose different categories');
+  await user.click(within(deviceSection).getByRole('radio', { name: /Create a new category/ }));
+  expect(within(deviceSection).getByLabelText('Device: Give your category a name')).toHaveValue('Phone Device');
+  await user.selectOptions(within(deviceSection).getByLabelText('Device: Add to category group'), 'must');
+  await user.click(within(step).getByRole('button', { name: 'Next' }));
   await waitFor(() => expect(mutations).toHaveLength(1));
-  expect(mutations[0].body).toMatchObject({ accountType: 'contract', openingBalance: 0, loan: { interestRate: 0, contract: { months: 12, startDate: '2026-10-01', includesDevice: true, monthlyServiceCost: 20, deviceTotal: 600, discountMonths: 3, discountedServiceCost: 10 } } });
+  expect(mutations[0].body).toMatchObject({ accountType: 'contract', openingBalance: 0, loan: { interestRate: 0,
+    contract: { months: 12, startDate: '2026-10-01', includesDevice: true, monthlyServiceCost: 20, deviceTotal: 600, discountMonths: 3, discountedServiceCost: 10 },
+    pairedCategoryId: 'vve', newPairedCategory: null, separateDeviceCategory: true, devicePairedCategoryId: null, newDevicePairedCategory: { name: 'Phone Device', groupId: 'must', newGroupName: null } } });
+});
+
+it('offers the device choice only for contracts that include a device', async () => {
+  const user = userEvent.setup();
+  show('');
+  await user.click(await screen.findByRole('button', { name: 'Add account' }));
+  await user.click(within(screen.getByRole('region', { name: 'Mortgages and Loans' })).getByRole('button', { name: 'Contract' }));
+  const form = screen.getByRole('dialog', { name: 'Add Unlinked Account' });
+  await user.type(within(form).getByLabelText('Give it a nickname'), 'SIM only');
+  await user.selectOptions(within(form).getByLabelText('Contract length'), '12');
+  await user.click(within(form).getByLabelText('Includes a device'));
+  await user.type(within(form).getByLabelText('Monthly contract cost'), '15');
+  await user.click(within(form).getByRole('button', { name: 'Next' }));
+  const step = await screen.findByRole('dialog', { name: 'Optional: Pair a Category' });
+  expect(within(step).queryByRole('radio', { name: /Use the same category/ })).not.toBeInTheDocument();
+  await user.click(within(step).getByRole('button', { name: 'Skip' }));
+  await waitFor(() => expect(mutations).toHaveLength(1));
+  expect(mutations[0].body).toMatchObject({ loan: { contract: { includesDevice: false }, pairedCategoryId: null, separateDeviceCategory: false } });
 });
 
 it('renders the loan page with stats, chart, paired category and monthly activity', async () => {
@@ -269,7 +424,7 @@ it('edits loan details, unpairs the category and preselects Add Activity as a pa
   await user.click(within(dialog).getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(mutations).toHaveLength(1));
   expect(mutations[0]).toMatchObject({ path: '/api/accounts/mortgage', method: 'PUT' });
-  expect(mutations[0].body).toMatchObject({ accountType: 'personalLoan', workingBalance: -389651.68, loan: { escrowAmount: 150, interestRate: 3.47, pairedCategoryId: null, createPairedCategory: false } });
+  expect(mutations[0].body).toMatchObject({ accountType: 'personalLoan', workingBalance: -389651.68, loan: { escrowAmount: 150, interestRate: 3.47, pairedCategoryId: null, newPairedCategory: null } });
 
   await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit Account' })).not.toBeInTheDocument());
   await user.click(screen.getByRole('button', { name: 'Add Activity' }));
@@ -293,4 +448,75 @@ it('shows the contract summary and schedule with the discount highlighted', asyn
   expect(within(schedule).getByText('Discount')).toBeInTheDocument();
   expect(within(page).queryByRole('button', { name: 'Try It Now' })).not.toBeInTheDocument();
   expect(page).toHaveTextContent('No category is paired');
+});
+
+it('pairs an unpaired loan from Edit Account through the same step, then saves with the account update', async () => {
+  const user = userEvent.setup();
+  loan = { ...loan, pairedCategory: null };
+  pairings = [...pairings, { accountId: 'mortgage', accountName: 'Mortgage (400K @ 3.47%)', categoryId: 'income-tax', slot: 'loan' }];
+  show();
+  await user.click(await screen.findByRole('button', { name: 'Edit account' }));
+  let dialog = screen.getByRole('dialog', { name: 'Edit Account' });
+  expect(await within(dialog).findByText(/Not paired/)).toBeInTheDocument();
+  await user.type(within(dialog).getByLabelText('Account Notes'), 'Fixed rate');
+  await user.click(within(dialog).getByRole('button', { name: 'Pair Category' }));
+  const step = await screen.findByRole('dialog', { name: 'Optional: Pair a Category' });
+  expect(within(step).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+  const select = await within(step).findByLabelText('Select a category');
+  // The loan's own pairing is not "taken"; another loan's is.
+  expect(within(select).getByRole('option', { name: 'Income Tax' })).toBeEnabled();
+  expect(within(select).getByRole('option', { name: 'Mortgage (400K @ 3.47%)' })).toBeDisabled();
+
+  // Back returns to Edit Account without changes and keeps edited fields.
+  await user.click(within(step).getByRole('button', { name: 'Back' }));
+  dialog = screen.getByRole('dialog', { name: 'Edit Account' });
+  expect(within(dialog).getByLabelText('Account Notes')).toHaveValue('Fixed rate');
+  expect(mutations).toHaveLength(0);
+
+  await user.click(within(dialog).getByRole('button', { name: 'Pair Category' }));
+  const again = await screen.findByRole('dialog', { name: 'Optional: Pair a Category' });
+  await user.click(within(again).getByRole('radio', { name: /Create a new category/ }));
+  expect(within(again).getByLabelText('Give your category a name')).toHaveValue('Mortgage (400K @ 3.47%)');
+  await user.selectOptions(within(again).getByLabelText('Add to category group'), 'tax');
+  await user.click(within(again).getByRole('button', { name: 'Next' }));
+  dialog = screen.getByRole('dialog', { name: 'Edit Account' });
+  expect(dialog).toHaveTextContent('Paired with “Mortgage (400K @ 3.47%)” (new)');
+  expect(mutations).toHaveLength(0);
+  await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(mutations).toHaveLength(1));
+  expect(mutations[0]).toMatchObject({ path: '/api/accounts/mortgage', method: 'PUT' });
+  expect(mutations[0].body).toMatchObject({ notes: 'Fixed rate', loan: { pairedCategoryId: null, newPairedCategory: { name: 'Mortgage (400K @ 3.47%)', groupId: 'tax', newGroupName: null } } });
+});
+
+it('shows and edits separate contract and device categories', async () => {
+  const user = userEvent.setup();
+  const category = (id: string, name: string, available: number) => ({ id, name, groupName: 'Bills', available, isArchived: false, isAutomatic: false, targetKind: null, targetMoreNeeded: null });
+  const fetchMock = vi.mocked(fetch);
+  const original = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (path, init) => {
+    const result = await original(path, init);
+    if (path !== '/api/accounts/phone/loan') return result;
+    const body = await result.json();
+    return response({ ...body, separateDeviceCategory: true, pairedCategory: category('vve', 'Phone plan', 20), devicePairedCategory: category('ozb', 'Phone device', -5) });
+  });
+  const onCreateTarget = show('phone');
+  const page = await screen.findByRole('region', { name: 'Phone loan' });
+  const contractRow = within(page).getByRole('region', { name: 'Contract category' });
+  const deviceRow = within(page).getByRole('region', { name: 'Device category' });
+  expect(contractRow).toHaveTextContent('Bills: Phone plan');
+  expect(contractRow).toHaveTextContent('Available to spend€20.00');
+  expect(deviceRow).toHaveTextContent('Bills: Phone device');
+  expect(deviceRow).toHaveTextContent('-€5.00');
+  await user.click(within(deviceRow).getByRole('button', { name: /Create Debt Payment Target/ }));
+  expect(onCreateTarget).toHaveBeenCalledWith('ozb', true);
+
+  await user.click(screen.getByRole('button', { name: 'Edit account' }));
+  const dialog = screen.getByRole('dialog', { name: 'Edit Account' });
+  expect(await within(dialog).findByText('“Phone plan”')).toBeInTheDocument();
+  expect(dialog).toHaveTextContent('Device:“Phone device”');
+  await user.click(within(dialog).getByRole('button', { name: 'Unpair device category' }));
+  expect(dialog).toHaveTextContent('Device:Not paired');
+  await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(mutations).toHaveLength(1));
+  expect(mutations[0].body).toMatchObject({ loan: { pairedCategoryId: 'vve', separateDeviceCategory: true, devicePairedCategoryId: null, newDevicePairedCategory: null } });
 });

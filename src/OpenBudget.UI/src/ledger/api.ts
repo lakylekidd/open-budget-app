@@ -13,7 +13,6 @@ export const accountTypeLabel = (type: AccountType) => accountTypeSections.flatM
 export const isCreditAccount = (account: Pick<Account, 'accountType'> | undefined) => account?.accountType === 'creditCard' || account?.accountType === 'lineOfCredit';
 export const isLoanAccount = (account: Pick<Account, 'accountType'> | undefined) => loanAccountTypes.some(type => type.value === account?.accountType);
 export const accountFamily = (account: Pick<Account, 'accountType'> | undefined) => isLoanAccount(account) ? 'loan' : isCreditAccount(account) ? 'credit' : 'cash';
-export const loanCategoryId = (accountId: string) => `loan-${accountId}`;
 export const creditPaymentGroupId = 'credit-card-payments';
 export const creditPaymentCategoryId = (accountId: string) => `ccp-${accountId}`;
 export type CreditSummary = { accountId: string; month: string; priorBalance: number; spendingAndOutflows: number; interestCharges: number; paymentsAndInflows: number; currentBalance: number };

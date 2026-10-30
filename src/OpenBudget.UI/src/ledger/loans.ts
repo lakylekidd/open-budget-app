@@ -2,8 +2,14 @@ import type { AccountType } from './api';
 
 export type ContractTerms = { months: number; startDate: string; includesDevice: boolean; upfrontCost: number; monthlyServiceCost: number;
   deviceTotal: number; discountMonths: number; discountedServiceCost: number | null };
-export type LoanTerms = { interestRate: number; minimumPayment: number; escrowAmount: number; pairedCategoryId: string | null;
-  createPairedCategory: boolean; contract: ContractTerms | null };
+// A category created and paired by the same server command: exactly one of groupId / newGroupName is set.
+export type NewPairedCategory = { name: string; groupId: string | null; newGroupName: string | null };
+// Pairing fields of LoanTerms. Each slot is unpaired, an existing category ID, or a new category; the device slot is
+// used only by contracts with a device when separateDeviceCategory is set.
+export type LoanPairing = { pairedCategoryId: string | null; newPairedCategory: NewPairedCategory | null; separateDeviceCategory: boolean;
+  devicePairedCategoryId: string | null; newDevicePairedCategory: NewPairedCategory | null };
+export const unpaired: LoanPairing = { pairedCategoryId: null, newPairedCategory: null, separateDeviceCategory: false, devicePairedCategoryId: null, newDevicePairedCategory: null };
+export type LoanTerms = { interestRate: number; minimumPayment: number; escrowAmount: number; contract: ContractTerms | null } & LoanPairing;
 export type BalancePoint = { month: string; balance: number };
 export type LoanProjection = { monthlyPayment: number; paymentsRemaining: number | null; payoffMonth: string | null; interestRemaining: number;
   principalRemaining: number; remainingToPay: number; neverPaidOff: boolean; track: BalancePoint[] };
@@ -17,7 +23,8 @@ export type ContractDetails = ContractTerms & { endDate: string; totalCost: numb
 export type LoanDetails = { accountId: string; accountType: AccountType; version: number; currentMonth: string; balance: number; interestRate: number;
   minimumPayment: number; escrowAmount: number; originalBalance: number; percentRemaining: number | null; balanceConfirmedAt: string | null;
   estimatedInterestThisMonth: number; pairedCategory: PairedCategory | null; projection: LoanProjection; history: BalancePoint[];
-  activity: LoanActivityMonth[]; contract: ContractDetails | null };
+  activity: LoanActivityMonth[]; contract: ContractDetails | null; separateDeviceCategory?: boolean; devicePairedCategory?: PairedCategory | null };
+export type LoanPairingItem = { accountId: string; accountName: string; categoryId: string; slot: 'loan' | 'device' };
 export type LoanSimulation = { accountId: string; currentMonth: string; balance: number; minimumPayment: number; extra: number; projection: LoanProjection };
 
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];

@@ -732,6 +732,10 @@ namespace OpenBudget.Api.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("DevicePairedCategoryId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<decimal>("DeviceTotal")
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)");
@@ -770,6 +774,9 @@ namespace OpenBudget.Api.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<bool>("SeparateDeviceCategory")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -778,6 +785,10 @@ namespace OpenBudget.Api.Migrations
                         .HasColumnType("numeric(14,2)");
 
                     b.HasKey("AccountId");
+
+                    b.HasIndex("BudgetId", "DevicePairedCategoryId")
+                        .IsUnique()
+                        .HasFilter("\"DevicePairedCategoryId\" IS NOT NULL");
 
                     b.HasIndex("BudgetId", "PairedCategoryId")
                         .IsUnique()

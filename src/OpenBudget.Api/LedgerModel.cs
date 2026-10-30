@@ -163,6 +163,8 @@ public static class LedgerModel
             e.Ignore(x => x.Contract);
             e.HasOne<AccountEntity>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => new { x.BudgetId, x.PairedCategoryId }).IsUnique().HasFilter("\"PairedCategoryId\" IS NOT NULL");
+            e.Property(x => x.DevicePairedCategoryId).HasMaxLength(100);
+            e.HasIndex(x => new { x.BudgetId, x.DevicePairedCategoryId }).IsUnique().HasFilter("\"DevicePairedCategoryId\" IS NOT NULL");
         });
         model.Entity<ReconciliationEntity>(e =>
         {

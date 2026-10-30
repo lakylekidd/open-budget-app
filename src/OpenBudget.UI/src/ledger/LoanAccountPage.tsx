@@ -5,7 +5,7 @@ import { LedgerDialog } from './LedgerDialog';
 import { LoanChart } from './LoanChart';
 import { RegisterIcon } from './AccountRegister';
 import './loans.css';
-import { type LoanActivityMonth, type LoanDetails, type LoanSimulation, addMonths, dayLabel, durationLabel, monthLabel, monthShortName, percentLabel, shortMonthLabel } from './loans';
+import { type LoanActivityMonth, type LoanDetails, type LoanSimulation, type PairedCategory, addMonths, dayLabel, durationLabel, monthLabel, monthShortName, percentLabel, shortMonthLabel } from './loans';
 
 type Mutate = (path: string, method: string, fields: object) => Promise<boolean>;
 
@@ -71,18 +71,37 @@ export function LoanAccountPage({ account, refresh, disabled, onMenu, onEdit, on
       </section>
       {contract && <ContractSchedule contract={contract} />}
       <section className="loan-card"><button className="loan-card-heading" aria-expanded={categoryOpen} onClick={() => setCategoryOpen(open => !open)}><span>Paired Plan Category</span><Chevron open={categoryOpen} /></button>
-        {categoryOpen && <div className="loan-card-body loan-category">{details.pairedCategory ? <>
-          <div><span>Category</span><button className="loan-link" onClick={() => onOpenCategory(details.pairedCategory!.id)}>{details.pairedCategory.groupName}: {details.pairedCategory.name}</button></div>
-          <div><span>Available to spend</span><b className={`loan-pill ${details.pairedCategory.available < 0 ? 'negative' : details.pairedCategory.available > 0 ? 'positive' : ''}`}>{formatMoney(details.pairedCategory.available)}</b></div>
-          <div><span>Target</span>{details.pairedCategory.targetKind ? <button className="loan-link" onClick={() => onCreateTarget(details.pairedCategory!.id)}>{details.pairedCategory.targetMoreNeeded ? `${formatMoney(details.pairedCategory.targetMoreNeeded)} more needed` : 'Target funded'}</button>
-            : <button className="loan-link" disabled={details.pairedCategory.isArchived} onClick={() => onCreateTarget(details.pairedCategory!.id)}><span className="loan-plus" aria-hidden="true">+</span>Create Debt Payment Target</button>}</div>
-        </> : <p>No category is paired. Payments into this account reduce Ready to Assign. Pair a category from Edit Account.</p>}</div>}
+        {categoryOpen && (details.separateDeviceCategory ? <div className="loan-card-body loan-category-slots">
+          <PairedCategoryRow title="Contract" category={details.pairedCategory ?? null} onOpenCategory={onOpenCategory} onCreateTarget={onCreateTarget} />
+          <PairedCategoryRow title="Device" category={details.devicePairedCategory ?? null} onOpenCategory={onOpenCategory} onCreateTarget={onCreateTarget} />
+          <p className="loan-help">Each payment is split between these categories in proportion to that month’s scheduled contract and device amounts.</p>
+        </div> : <div className="loan-card-body loan-category">{details.pairedCategory ? <PairedCategoryFields category={details.pairedCategory} onOpenCategory={onOpenCategory} onCreateTarget={onCreateTarget} />
+          : <p>No category is paired. Payments into this account reduce Ready to Assign. Pair a category from Edit Account.</p>}</div>)}
       </section>
       <ActivityList months={details.activity} contract={Boolean(contract)} />
     </div>
     {simulatorOpen && <PayoffSimulator accountId={account.id} details={details} onClose={() => setSimulatorOpen(false)} onCreateTarget={onCreateTarget} />}
     {updateOpen && <UpdateBalanceDialog balance={details.balance} disabled={disabled} onClose={() => setUpdateOpen(false)}
       onSubmit={async fields => { if (await onMutate(`/api/accounts/${account.id}/loan/balance`, 'POST', fields)) { setUpdateOpen(false); setReload(n => n + 1); } }} />}
+  </section>;
+}
+
+type CategoryActions = { onOpenCategory: (categoryId: string) => void; onCreateTarget: (categoryId: string) => void };
+
+function PairedCategoryFields({ category, onOpenCategory, onCreateTarget }: CategoryActions & { category: PairedCategory }) {
+  return <>
+    <div><span>Category</span><button className="loan-link" onClick={() => onOpenCategory(category.id)}>{category.groupName}: {category.name}</button></div>
+    <div><span>Available to spend</span><b className={`loan-pill ${category.available < 0 ? 'negative' : category.available > 0 ? 'positive' : ''}`}>{formatMoney(category.available)}</b></div>
+    <div><span>Target</span>{category.targetKind ? <button className="loan-link" onClick={() => onCreateTarget(category.id)}>{category.targetMoreNeeded ? `${formatMoney(category.targetMoreNeeded)} more needed` : 'Target funded'}</button>
+      : <button className="loan-link" disabled={category.isArchived} onClick={() => onCreateTarget(category.id)}><span className="loan-plus" aria-hidden="true">+</span>Create Debt Payment Target</button>}</div>
+  </>;
+}
+
+// Contracts with a separate device category show one row per slot (contract, device).
+function PairedCategoryRow({ title, category, ...actions }: CategoryActions & { title: string; category: PairedCategory | null }) {
+  return <section className="loan-category loan-category-slot" aria-label={`${title} category`}>
+    <h3>{title}</h3>
+    {category ? <PairedCategoryFields category={category} {...actions} /> : <p>Not paired. This share of each payment reduces Ready to Assign.</p>}
   </section>;
 }
 

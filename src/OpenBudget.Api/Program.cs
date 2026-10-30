@@ -245,6 +245,8 @@ app.MapGet("/api/accounts/{id:guid}/payoff-target/{month}", (Guid id, string mon
     gate.RunAsync(() => ledger.GetPayoffTargetAsync(id, month, ct), ct));
 app.MapPut("/api/accounts/{id:guid}/payoff-target", (Guid id, SaveCreditPayoffTargetRequest request, LedgerService ledger, CancellationToken ct) => ledger.SavePayoffTargetAsync(id, request, ct));
 app.MapPost("/api/accounts/{id:guid}/payoff-target/delete", (Guid id, DeleteCreditPayoffTargetRequest request, LedgerService ledger, CancellationToken ct) => ledger.DeletePayoffTargetAsync(id, request, ct));
+app.MapGet("/api/loan-pairings", (LedgerService ledger, LedgerGate gate, CancellationToken ct) =>
+    gate.RunAsync(() => ledger.GetLoanPairingsAsync(ct), ct));
 app.MapGet("/api/accounts/{id:guid}/loan", (Guid id, LedgerService ledger, LedgerGate gate, CancellationToken ct) =>
     gate.RunAsync(() => ledger.GetLoanAsync(id, ct), ct));
 app.MapGet("/api/accounts/{id:guid}/loan/simulation", (Guid id, decimal? payment, string? payoffMonth, decimal? extra, LedgerService ledger, LedgerGate gate, CancellationToken ct) =>

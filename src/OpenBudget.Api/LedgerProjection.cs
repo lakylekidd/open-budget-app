@@ -16,7 +16,8 @@ public sealed class LedgerProjection(BudgetDbContext db)
         var creditIds = creditAccounts.Select(a => a.Id).ToHashSet();
         var loans = await LoansAsync(budgetId, ct);
         var loanIds = loans.Select(x => x.Account.Id).ToHashSet();
-        var loanPairs = loans.ToDictionary(x => x.Account.Id, x => x.Terms.PairedCategoryId);
+        var loanPairs = loans.ToDictionary(x => x.Account.Id, x => new LoanRules.Pairing(x.Terms.PairedCategoryId,
+            x.Terms.SeparateDeviceCategory, x.Terms.DevicePairedCategoryId, x.Terms.Contract));
         var autoPaired = loans.Where(x => x.Terms.PairedCategoryId == LoanRules.AutoCategoryId(x.Account.Id))
             .Select(x => (x.Account, x.Terms.PairedCategoryId!)).ToList();
         var byMonth = entries.GroupBy(t => Month(t.Date)).ToDictionary(g => g.Key, g => g.ToList());

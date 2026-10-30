@@ -99,7 +99,7 @@ public sealed class LoanRulesTests
         Assert.NotNull(LoanRules.ValidateTerms("mortgage", valid with { MinimumPayment = 0 }));
         Assert.NotNull(LoanRules.ValidateTerms("mortgage", valid with { MinimumPayment = 1.001m }));
         Assert.NotNull(LoanRules.ValidateTerms("mortgage", valid with { EscrowAmount = 1_789.49m }));
-        Assert.NotNull(LoanRules.ValidateTerms("mortgage", valid with { PairedCategoryId = "rent", CreatePairedCategory = true }));
+        Assert.NotNull(LoanRules.ValidateTerms("mortgage", valid with { PairedCategoryId = "rent", NewPairedCategory = new("Mortgage", "home") }));
         Assert.NotNull(LoanRules.ValidateTerms("mortgage", valid with { Contract = Phone() }));
         var contract = new LoanTermsRequest(0, 0, Contract: Phone());
         Assert.Null(LoanRules.ValidateTerms("contract", contract));
@@ -162,7 +162,7 @@ public sealed class LoanRulesTests
     [Fact]
     public void Loan_payments_spend_from_the_paired_category_and_unpaired_payments_use_ready_to_assign()
     {
-        var pairs = new Dictionary<Guid, string?> { [Loan] = "loan-1", [OtherLoan] = null };
+        var pairs = new Dictionary<Guid, LoanRules.Pairing> { [Loan] = new("loan-1"), [OtherLoan] = new(null) };
         var payment = Guid.NewGuid();
         var draw = Guid.NewGuid();
         var unpaired = Guid.NewGuid();
@@ -184,6 +184,94 @@ public sealed class LoanRulesTests
         Assert.Equal(-650m, missing.Income);
     }
 
+    [Theory]
+    // Phone: starts 31 Jan 2026 (upfront 50 counts as device), service 10 for Jan-Jun 2026 then 20, device 24.99/month (25.22 in Dec 2027).
+    [InlineData("44.99", "2026-10-31", "20.00", "24.99")]  // exactly the scheduled amounts
+    [InlineData("50.00", "2026-10-02", "22.22", "27.78")]  // 50 x 20 / 44.99 = 22.227 -> 22.22; the cent goes to the device
+    [InlineData("34.99", "2026-03-31", "10.00", "24.99")]  // discount month: 10 vs 24.99
+    [InlineData("100.00", "2026-03-01", "28.57", "71.43")] // discount month ratio 10 / 34.99
+    [InlineData("84.99", "2026-01-31", "10.00", "74.99")]  // start month adds the upfront cost to the device side
+    [InlineData("-50.00", "2026-10-15", "-22.22", "-27.78")] // a draw reverses a payment of the same amount exactly
+    [InlineData("100.00", "2028-03-01", "39.25", "60.75")]  // nothing scheduled: whole-contract ratio 420 vs 649.99
+    [InlineData("100.00", "2025-11-01", "39.25", "60.75")]  // before the start date: same whole-contract ratio
+    [InlineData("0.01", "2026-10-01", "0.00", "0.01")]     // a single cent always goes to the device
+    public void Contract_payments_split_by_the_months_scheduled_contract_and_device_amounts(string amount, string date, string contract, string device)
+    {
+        var (service, deviceShare) = LoanRules.SplitContractPayment(Parse(amount), Phone(), DateOnly.Parse(date, System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal(Parse(contract), service);
+        Assert.Equal(Parse(device), deviceShare);
+        Assert.Equal(Parse(amount), service + deviceShare);
+    }
+
+    [Fact]
+    public void Contract_split_handles_zero_sided_months_and_scheduled_amounts()
+    {
+        // A free discount month puts the whole payment on the device; a contract without a device keeps it all on the contract.
+        Assert.Equal((0m, 34.99m), LoanRules.SplitContractPayment(34.99m, Phone() with { DiscountedServiceCost = 0 }, new DateOnly(2026, 3, 31)));
+        var simOnly = new ContractTermsRequest(12, new DateOnly(2026, 3, 15), false, 5m, 15m, 0);
+        Assert.Equal((15m, 0m), LoanRules.SplitContractPayment(15m, simOnly, new DateOnly(2026, 6, 15)));
+        Assert.Equal((20m, 0m), LoanRules.ScheduledInMonth(simOnly, "2026-03"));
+        Assert.Equal((10m, 74.99m), LoanRules.ScheduledInMonth(Phone(), "2026-01"));
+        Assert.Equal((20m, 25.22m), LoanRules.ScheduledInMonth(Phone(), "2027-12"));
+        Assert.Equal((0m, 0m), LoanRules.ScheduledInMonth(Phone(), "2028-01"));
+    }
+
+    [Fact]
+    public void Separate_device_pairing_splits_contract_payments_between_two_categories()
+    {
+        var payment = Guid.NewGuid();
+        var draw = Guid.NewGuid();
+        TransactionEntity[] entries =
+        [
+            Leg(Cash, -50, payment, new(2026, 10, 2)), Leg(Loan, 50, payment, new(2026, 10, 2)),
+            Leg(Loan, -10, draw, new(2026, 10, 20)), Leg(Cash, 10, draw, new(2026, 10, 20))
+        ];
+        var both = new Dictionary<Guid, LoanRules.Pairing> { [Loan] = new("phone", true, "device", Phone()) };
+        var flows = LoanRules.Project(entries, both, _ => true);
+        // Payment 50 -> 22.22 / 27.78; draw 10 -> 4.44 / 5.56 back.
+        Assert.Equal(-17.78m, flows.CategoryActivity["phone"]);
+        Assert.Equal(-22.22m, flows.CategoryActivity["device"]);
+        Assert.Equal(0, flows.Income);
+
+        // An unpaired device slot sends the device share to Ready to Assign; turning separation off uses one category.
+        var deviceUnpaired = LoanRules.Project(entries, new Dictionary<Guid, LoanRules.Pairing> { [Loan] = new("phone", true, null, Phone()) }, _ => true);
+        Assert.Equal(-17.78m, deviceUnpaired.CategoryActivity["phone"]);
+        Assert.Equal(-22.22m, deviceUnpaired.Income);
+        var single = LoanRules.Project(entries, new Dictionary<Guid, LoanRules.Pairing> { [Loan] = new("phone", false, "device", Phone()) }, _ => true);
+        Assert.Equal(-40m, single.CategoryActivity["phone"]);
+        Assert.False(single.CategoryActivity.ContainsKey("device"));
+    }
+
+    [Fact]
+    public void Pairing_validation_rejects_ambiguous_protected_and_invalid_requests()
+    {
+        var contract = new LoanTermsRequest(0, 0, Contract: Phone());
+        var mortgage = new LoanTermsRequest(3m, 500m);
+        Assert.Null(LoanRules.ValidateTerms("contract", contract with { PairedCategoryId = "phone", SeparateDeviceCategory = true, DevicePairedCategoryId = "device" }));
+        Assert.Null(LoanRules.ValidateTerms("contract", contract with { NewPairedCategory = new("Phone", null, "Bills"), SeparateDeviceCategory = true,
+            NewDevicePairedCategory = new("Device", null, "Bills") }));
+        Assert.Null(LoanRules.ValidateTerms("mortgage", mortgage with { NewPairedCategory = new("Mortgage", "home") }));
+        Assert.NotNull(LoanRules.ValidateTerms("mortgage", mortgage with { SeparateDeviceCategory = true }));
+        Assert.NotNull(LoanRules.ValidateTerms("contract", contract with { SeparateDeviceCategory = true, Contract = Phone() with { IncludesDevice = false, DeviceTotal = 0 } }));
+        Assert.NotNull(LoanRules.ValidateTerms("contract", contract with { DevicePairedCategoryId = "device" }));
+        Assert.NotNull(LoanRules.ValidateTerms("contract", contract with { SeparateDeviceCategory = true, PairedCategoryId = "same", DevicePairedCategoryId = "same" }));
+        Assert.NotNull(LoanRules.ValidateTerms("contract", contract with { SeparateDeviceCategory = true, DevicePairedCategoryId = "d", NewDevicePairedCategory = new("D", "home") }));
+        Assert.NotNull(LoanRules.ValidateTerms("contract", contract with { NewPairedCategory = new("Phone", "home"), SeparateDeviceCategory = true,
+            NewDevicePairedCategory = new(" phone ", "home") }));
+        Assert.NotNull(LoanRules.ValidateTerms("mortgage", mortgage with { NewPairedCategory = new(" ", "home") }));
+        Assert.NotNull(LoanRules.ValidateTerms("mortgage", mortgage with { NewPairedCategory = new(new string('x', 161), "home") }));
+        Assert.NotNull(LoanRules.ValidateTerms("mortgage", mortgage with { NewPairedCategory = new("Mortgage") }));
+        Assert.NotNull(LoanRules.ValidateTerms("mortgage", mortgage with { NewPairedCategory = new("Mortgage", "home", "Debts") }));
+        Assert.NotNull(LoanRules.ValidateTerms("mortgage", mortgage with { NewPairedCategory = new("Mortgage", null, new string('g', 121)) }));
+        Assert.NotNull(LoanRules.ValidateTerms("mortgage", mortgage with { PairedCategoryId = new string('c', 101) }));
+        Assert.True(LoanRules.IsProtectedGroup(CreditCardRules.PaymentGroupId));
+        Assert.True(LoanRules.IsProtectedGroup(WishlistRules.GroupId));
+        Assert.False(LoanRules.IsProtectedGroup("home"));
+        Assert.True(LoanRules.IsProtectedCategory(CreditCardRules.PaymentCategoryId(Loan)));
+        Assert.True(LoanRules.IsProtectedCategory(WishlistRules.CategoryId(Loan)));
+        Assert.False(LoanRules.IsProtectedCategory("rent"));
+    }
+
     [Fact]
     public void Account_families_and_types_are_classified()
     {
@@ -198,6 +286,6 @@ public sealed class LoanRulesTests
 
     private static ContractTermsRequest Phone() => new(24, new DateOnly(2026, 1, 31), true, 50m, 20m, 599.99m, 6, 10m);
 
-    private static TransactionEntity Leg(Guid account, decimal amount, Guid transfer) =>
-        new() { Id = Guid.NewGuid(), AccountId = account, Amount = amount, TransferId = transfer };
+    private static TransactionEntity Leg(Guid account, decimal amount, Guid transfer, DateOnly date = default) =>
+        new() { Id = Guid.NewGuid(), AccountId = account, Amount = amount, TransferId = transfer, Date = date };
 }

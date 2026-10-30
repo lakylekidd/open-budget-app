@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { MoneyInput } from '../MoneyInput';
 import { type LoanAccountType, loanAccountTypes, parseMoney, today } from './api';
 import './loans.css';
-import { type ContractTerms, type LoanTerms, parseRate } from './loans';
+import { type ContractTerms, type LoanPairing, type LoanTerms, parseRate, unpaired } from './loans';
+import { type PairDraft, PairCategoryStep, pairDraft, renameDraft } from './PairCategoryStep';
 
 export type ContractDraft = { months: string; customMonths: string; startDate: string; includesDevice: boolean; upfront: string; service: string;
   device: string; discount: boolean; discountMonths: string; discounted: string };
@@ -56,29 +57,43 @@ export function ContractFields({ draft, onChange, disabled }: { draft: ContractD
   </fieldset>;
 }
 
-// "Add Unlinked Account" for mortgages, loans and contracts. Next stays disabled until the required fields are valid.
-export function LoanAccountForm({ accountType, busy, onSubmit }: { accountType: LoanAccountType; busy: boolean; onSubmit: (fields: object) => Promise<void> }) {
+// "Add Unlinked Account" for mortgages, loans and contracts. Next stays disabled until the required fields are valid and
+// opens the optional pairing step (the parent switches the dialog title/back button through `pairing`). The account,
+// any new category/group and the pairing are sent as one create command; Skip creates the account unpaired.
+export function LoanAccountForm({ accountType, busy, pairing = false, onPairingChange, onSubmit }: {
+  accountType: LoanAccountType; busy: boolean; pairing?: boolean; onPairingChange?: (open: boolean) => void; onSubmit: (fields: object) => Promise<void>;
+}) {
   const [type, setType] = useState<LoanAccountType>(accountType);
   const [name, setName] = useState('');
   const [balance, setBalance] = useState('');
   const [rate, setRate] = useState('');
   const [payment, setPayment] = useState('');
   const [contract, setContract] = useState(contractDraft());
+  const [pair, setPair] = useState<PairDraft | null>(null);
   const [error, setError] = useState('');
   const isContract = type === 'contract';
   const parsedBalance = parseMoney(balance), parsedRate = parseRate(rate), parsedPayment = parseMoney(payment);
   const parsedContract = isContract ? parseContract(contract) : null;
   const valid = name.trim().length > 0 && (isContract ? typeof parsedContract === 'object'
     : parsedBalance !== null && parsedBalance > 0 && parsedRate !== null && parsedPayment !== null && parsedPayment > 0);
-  async function submit(event: React.FormEvent) {
+  const includesDevice = isContract && contract.includesDevice;
+  function next(event: React.FormEvent) {
     event.preventDefault(); setError('');
     if (!valid) { setError(typeof parsedContract === 'string' ? parsedContract : 'Enter a nickname, the balance you owe, the interest rate and the monthly payment.'); return; }
+    setPair(current => current ? renameDraft(current, name) : pairDraft(name));
+    onPairingChange?.(true);
+  }
+  async function create(choice: LoanPairing) {
+    if (!valid) return;
+    const pairing = includesDevice ? choice : { ...choice, separateDeviceCategory: false, devicePairedCategoryId: null, newDevicePairedCategory: null };
     const loan: LoanTerms = isContract
-      ? { interestRate: 0, minimumPayment: 0, escrowAmount: 0, pairedCategoryId: null, createPairedCategory: true, contract: parsedContract as ContractTerms }
-      : { interestRate: parsedRate!, minimumPayment: parsedPayment!, escrowAmount: 0, pairedCategoryId: null, createPairedCategory: true, contract: null };
+      ? { interestRate: 0, minimumPayment: 0, escrowAmount: 0, contract: parsedContract as ContractTerms, ...pairing }
+      : { interestRate: parsedRate!, minimumPayment: parsedPayment!, escrowAmount: 0, contract: null, ...pairing };
     await onSubmit({ name: name.trim(), accountType: type, date: today(), openingBalance: isContract ? 0 : -parsedBalance!, loan });
   }
-  return <form className="loan-account-form" onSubmit={submit}>
+  if (pairing && pair) return <PairCategoryStep draft={pair} onChange={setPair} subject={isContract ? 'contract' : 'loan'} includesDevice={includesDevice} busy={busy}
+    secondaryLabel="Skip" onSecondary={() => void create(unpaired)} onNext={result => void create(result.pairing)} />;
+  return <form className="loan-account-form" onSubmit={next}>
     <p className="loan-intro">Let’s go! And don’t worry—if you change your mind, you can link your account at any time.</p>
     <label>Give it a nickname<input autoFocus maxLength={120} value={name} disabled={busy} onChange={e => setName(e.target.value)} /></label>
     <label>What type of account are you adding?<select value={type} disabled={busy} onChange={e => setType(e.target.value as LoanAccountType)}>{loanAccountTypes.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
