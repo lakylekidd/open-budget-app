@@ -20,3 +20,6 @@ src/OpenBudget.UI/.vite/
 *.user
 *.suo
 appsettings.Local.json
+
+# Local agent worktrees
+/.claude/worktrees/
