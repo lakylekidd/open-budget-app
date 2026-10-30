@@ -157,6 +157,27 @@ it('shows the Long-Term Planning amount as muted text beside Assigned only when 
   expect(food.querySelector('.planned-amount')).toBeNull();
 });
 
+it('resizes the Plan summary column with a 300px minimum and remembers the width',async()=>{
+  render(<App/>);await saved();
+  const layout=document.querySelector('.budget-layout') as HTMLElement;
+  layout.getBoundingClientRect=()=>({left:0,right:1200,width:1200,top:0,bottom:800,height:800,x:0,y:0,toJSON:()=>({})}) as DOMRect;
+  const handle=screen.getByRole('separator',{name:'Resize summary panel'});
+  fireEvent.pointerDown(handle,{pointerId:1,clientX:800});
+  fireEvent.pointerMove(handle,{pointerId:1,clientX:700});
+  fireEvent.pointerUp(handle,{pointerId:1,clientX:700});
+  expect(layout.style.getPropertyValue('--summary-width')).toBe('500px');
+  expect(window.localStorage.getItem('openbudget.summaryWidth')).toBe('500');
+  fireEvent.pointerDown(handle,{pointerId:1,clientX:700});
+  fireEvent.pointerMove(handle,{pointerId:1,clientX:1150});
+  fireEvent.pointerUp(handle,{pointerId:1,clientX:1150});
+  expect(layout.style.getPropertyValue('--summary-width')).toBe('300px');
+  fireEvent.keyDown(handle,{key:'ArrowLeft'});
+  expect(layout.style.getPropertyValue('--summary-width')).toBe('310px');
+  fireEvent.doubleClick(handle);
+  expect(layout.style.getPropertyValue('--summary-width')).toBe('');
+  expect(window.localStorage.getItem('openbudget.summaryWidth')).toBeNull();
+});
+
 it('mutes zero Assigned amounts like zero Activity',async()=>{
   months['2026-10'].groups[0].categories.push({id:'food',name:'Food',assigned:12,activity:0,available:12,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false});
   render(<App/>);await saved();

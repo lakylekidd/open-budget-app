@@ -176,6 +176,20 @@ function BudgetApplication() {
     setSidebarWidth(next);
     window.localStorage.setItem('openbudget.sidebarWidth', String(next));
   }
+  // Plan summary column width (px). null = default 33% layout. Minimum 300px; the category table keeps at least 480px.
+  const [summaryWidth, setSummaryWidth] = useState<number | null>(() => {
+    const saved = Number(window.localStorage.getItem('openbudget.summaryWidth'));
+    return Number.isFinite(saved) && saved >= 300 ? saved : null;
+  });
+  const budgetLayoutRef = useRef<HTMLDivElement>(null);
+  const resizingSummary = useRef(false);
+  function changeSummaryWidth(width: number) {
+    const layout = budgetLayoutRef.current?.getBoundingClientRect().width ?? 0;
+    const max = layout > 0 ? Math.max(300, layout - 480) : 900;
+    const next = Math.min(max, Math.max(300, Math.round(width)));
+    setSummaryWidth(next);
+    try { window.localStorage.setItem('openbudget.summaryWidth', String(next)); } catch { /* storage unavailable */ }
+  }
   function toggleSidebar() {
     if (window.innerWidth <= 700) { setMobileMenu(false); return; }
     setBudgetMenuOpen(false);
@@ -1026,7 +1040,7 @@ function BudgetApplication() {
 
       {showSearch && <div className="search-row"><Icon name="search" size={17} /><input autoFocus value={query} onChange={event => setQuery(event.target.value)} placeholder="Find a category" aria-label="Find a category" /><button className="icon-button" aria-label="Close search" onClick={() => { setShowSearch(false); setQuery(''); }}><Icon name="close" size={16} /></button></div>}
 
-      <div className="budget-layout">
+      <div className="budget-layout" ref={budgetLayoutRef} style={summaryWidth === null ? undefined : { '--summary-width': `${summaryWidth}px` } as CSSProperties}>
         <section className="budget-table-wrap" aria-label="Monthly budget categories">
           <div className="table-tools">
             <button className="table-tool" onClick={addGroup}><span className="circle-plus">+</span> Category Group</button>
@@ -1128,6 +1142,13 @@ function BudgetApplication() {
         </section>
 
         <aside className="summary-column">
+          <div className="summary-resizer" role="separator" aria-label="Resize summary panel" aria-orientation="vertical" aria-valuemin={300} aria-valuenow={summaryWidth ?? undefined} tabIndex={0}
+            onPointerDown={event => { resizingSummary.current = true; event.currentTarget.setPointerCapture?.(event.pointerId); event.preventDefault(); }}
+            onPointerMove={event => { if (resizingSummary.current) changeSummaryWidth((budgetLayoutRef.current?.getBoundingClientRect().right ?? 0) - event.clientX); }}
+            onPointerUp={event => { resizingSummary.current = false; event.currentTarget.releasePointerCapture?.(event.pointerId); }}
+            onPointerCancel={() => { resizingSummary.current = false; }}
+            onDoubleClick={() => { setSummaryWidth(null); try { window.localStorage.removeItem('openbudget.summaryWidth'); } catch { /* storage unavailable */ } }}
+            onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); const current = summaryWidth ?? (event.currentTarget.parentElement?.getBoundingClientRect().width || 300); changeSummaryWidth(current + (event.key === 'ArrowLeft' ? 10 : -10)); } }} />
           {selectedCategory && selectedPaymentAccount ? <CreditPaymentDetails account={selectedPaymentAccount} month={data.month} available={selectedCategory.available} money={money} onClose={() => setSelectedCategoryId(null)} onChanged={() => setLedgerRefresh(value => value + 1)} /> : selectedCategory && <section className="category-detail-card"><header><strong>{selectedCategory.name}</strong><button type="button" aria-label="Close category details" onClick={() => setSelectedCategoryId(null)}>×</button></header><div className="summary-body"><div className="summary-line"><span>Available Balance</span><strong>{money(selectedCategory.available)}</strong></div><div className="summary-line"><span>Assigned This Month</span><strong>{money(selectedCategory.assigned)}</strong></div><div className="summary-line"><span>Activity</span><strong>{money(selectedCategory.activity)}</strong></div>{upcomingLoading ? <p role="status">Loading upcoming transactions…</p> : upcomingError ? <div role="alert">{upcomingError} <button onClick={() => setBudgetRefresh(value => value + 1)}>Retry</button></div> : selectedUpcoming.length > 0 && <><button className="category-upcoming-detail" onClick={() => openUpcoming(selectedCategory)}><span>{selectedUpcoming.length} Upcoming {selectedUpcoming.length === 1 ? 'Transaction' : 'Transactions'}</span><strong>{money(selectedUpcomingTotal)}</strong><span>Available After Upcoming</span><strong>{money(selectedCategory.available + selectedUpcomingTotal)}</strong></button>{selectedCategory.available + selectedUpcomingTotal < 0 && <span className="category-underfunded-hint">This category does not have enough available to cover these transactions.</span>}</>}</div></section>}
           {selectedCategory?.wishlistProgress && <WishlistCategoryCard progress={liveWishlistProgress(selectedCategory.wishlistProgress, selectedCategory.available)} money={money} onOpen={() => navigate('Wishlist')} />}
           {selectedCategory && !selectedPaymentAccount && !selectedCategory.id.startsWith('ccp-') && !selectedCategory.isArchived && <CategoryTargetCard key={`${selectedCategory.id}-${data.month}`} startEditing={targetEditRequest === selectedCategory.id} budgetId={selectedBudgetId} month={data.month} category={selectedCategory} money={money} onChanged={applyTargetResult} />}

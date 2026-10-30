@@ -214,3 +214,8 @@
 .amount-button .assigned-zero{opacity:.65}
 /* Group Assigned lines up with category Assigned text (cell 4px + amount button 4px padding). */
 .group-assigned{padding-right:8px}
+/* Resizable Plan summary column: drag its left edge (min 300px); double-click resets to the default 33%. */
+.budget-layout[style*="--summary-width"]{grid-template-columns:minmax(480px,1fr) minmax(300px,var(--summary-width))}
+.summary-column{position:relative}
+.summary-resizer{position:sticky;top:0;float:left;width:9px;height:100%;margin:-16px 0 -48px -16px;z-index:5;cursor:col-resize;touch-action:none}
+.summary-resizer:hover,.summary-resizer:focus-visible{background:#7776ce55;outline:0}
