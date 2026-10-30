@@ -28,45 +28,64 @@
 .wishlist-intro-icon{display:grid;place-items:center;width:52px;height:52px;border-radius:50%;background:#303078;color:#a3acff}
 .wishlist-empty strong{display:block;color:#fff;font-size:16px;margin-bottom:4px}
 
-.wishlist-buckets{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr));gap:16px;align-items:start}
-.wishlist-bucket{background:#15172d;border:1px solid #23253f;border-radius:10px;padding:16px;display:grid;gap:12px;min-width:0}
-.wishlist-bucket.is-ready{border-color:#75bd22;box-shadow:0 0 0 1px #75bd2255}
-.wishlist-bucket-head{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap}
-.wishlist-bucket-head>div:first-child{flex:1;min-width:140px}
-.wishlist-bucket-head h2{margin:0;font-size:18px;overflow-wrap:anywhere}
+/* Bucket tab strip: one scrolling row, selected tab highlighted, trailing "+" tab creates a bucket. */
+.wishlist-tabs{margin:0 0 16px}
+.wishlist-tablist{display:flex;align-items:stretch;gap:4px;overflow-x:auto;overflow-y:hidden;border-bottom:1px solid var(--line);scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+.wishlist-tablist .wishlist-tab{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;max-width:260px;min-height:40px;padding:0 16px;border-radius:8px 8px 0 0;background:transparent;color:#c4c5cf;font-weight:600;white-space:nowrap;border-bottom:2px solid transparent}
+.wishlist-tablist .wishlist-tab:hover{background:var(--subcat-row-hover);color:#fff}
+.wishlist-tablist .wishlist-tab.is-selected{background:#303078;color:#fff;border-bottom-color:#8b85ff}
+.wishlist-tablist .wishlist-tab.drop-target{box-shadow:inset 0 2px #8b85ff}
+.wishlist-tab-name{overflow:hidden;text-overflow:ellipsis}
+.wishlist-tab-ready{flex:none;width:8px;height:8px;border-radius:50%;background:#a1cc6e}
+.wishlist-tablist .wishlist-tab-add{padding:0 14px;font-size:20px;line-height:1;color:#a3acff}
+.wishlist-tab-slot{flex:0 0 auto;display:flex;align-items:center}
+.wishlist-tab.is-editing{display:flex;align-items:center;padding:0 4px}
+.wishlist-tab-input{box-sizing:border-box;width:180px;height:30px;padding:4px 8px;border:1px solid #7583ff;border-radius:5px;background:#3a3c52;color:#fff;font:inherit;font-size:14px}
+.wishlist-tab-input[aria-invalid="true"]{border-color:#ff8da0}
+.wishlist-tabs-error{margin:8px 0 0}
+
+/* Selected bucket panel */
+.wishlist-panel{display:grid;gap:12px;min-width:0}
+.wishlist-panel:focus{outline:none}
+.wishlist-panel-head{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap}
+.wishlist-panel-summary{flex:1;min-width:220px;display:grid;gap:6px}
 .wishlist-range{font-size:12px;color:#a3acff}
 .wishlist-bucket-tools,.wishlist-item-tools{display:flex;gap:4px;flex-wrap:wrap}
 .wishlist-bucket-tools button,.wishlist-item-tools button{padding:4px 8px;font-size:12px}
 .wishlist-ready-badge{align-self:center;padding:3px 9px;border-radius:12px;background:#a1cc6e;color:#15200b;font-size:12px;font-weight:700;white-space:nowrap}
-.wishlist-progress-block{display:grid;gap:6px}
 .wishlist-amounts{margin:0;font-size:14px;color:#e5e6f2}
 .wishlist-funds{margin:0;font-size:13px;color:#c4c5cf}
 .wishlist-progress{height:6px;border-radius:3px;background:#3c3e53;overflow:hidden}
 .wishlist-progress>span{display:block;height:100%;background:#7583ff;border-radius:3px}
 .wishlist-progress.ready>span{background:#75bd22}
 .wishlist-can-buy{margin:0;color:#a1cc6e;font-size:13px;font-weight:600}
-.wishlist-items{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.wishlist-items{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .wishlist-items-empty{margin:0;color:#a4a5b5;font-size:13px}
-.wishlist-item{display:grid;grid-template-columns:14px 22px minmax(0,1fr) auto;grid-template-areas:"handle rank main cost" "tools tools tools tools";align-items:start;gap:4px 8px;padding:10px;border-radius:8px;background:#1c1e38;cursor:grab}
-.wishlist-item.is-next{background:#20205a;box-shadow:inset 3px 0 #7583ff}
-.wishlist-item.drop-target{box-shadow:inset 0 2px #8b85ff}
-.wishlist-handle{grid-area:handle;color:#6f7090;font-size:12px;line-height:20px}
-.wishlist-rank{grid-area:rank;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#303247;color:#c4c5cf;font-size:12px;font-weight:700}
-.wishlist-item-main{grid-area:main;min-width:0}
-.wishlist-item-title{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.wishlist-item-title a{color:#a3acff;font-weight:600;overflow-wrap:anywhere}
-.wishlist-item-title strong{overflow-wrap:anywhere}
-.wishlist-next-tag{padding:1px 6px;border-radius:4px;background:#5b54ff;color:#fff;font-size:11px;font-weight:700}
-.wishlist-item-main p{margin:3px 0 0;color:#c4c5cf;font-size:13px;overflow-wrap:anywhere}
-.wishlist-item-main small{color:#8f90a6;font-size:12px}
-.wishlist-cost{grid-area:cost;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.wishlist-item-tools{grid-area:tools;justify-content:flex-end}
+
+/* Item rows reuse the Plan subcategory row look (--subcat-* tokens in styles.css): height, background, hover, border, name and money type. */
+.wishlist-row{display:grid;grid-template-columns:14px minmax(0,1fr) auto auto;align-items:center;gap:0 12px;min-height:var(--subcat-row-height);padding:4px 14px 4px 10px;background:var(--subcat-row-bg);border-bottom:1px solid var(--line);cursor:grab;box-sizing:border-box}
+.wishlist-row:hover,.wishlist-row:focus-within{background:var(--subcat-row-hover)}
+.wishlist-row.is-next{box-shadow:inset 3px 0 #7583ff}
+.wishlist-row.drop-target{box-shadow:inset 0 2px #8b85ff}
+.wishlist-handle{color:#6f7090;font-size:12px}
+.wishlist-row-main{min-width:0}
+.wishlist-row-title{display:flex;align-items:center;gap:8px;min-width:0}
+.wishlist-row-name{font-size:var(--subcat-name-size);font-weight:var(--subcat-name-weight);line-height:24px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+a.wishlist-row-name{color:#a3acff;text-decoration:none}
+a.wishlist-row-name:hover{text-decoration:underline}
+.wishlist-rank{flex:none;display:grid;place-items:center;min-width:20px;height:20px;border-radius:50%;background:#303247;color:#c4c5cf;font-size:12px;font-weight:700}
+.wishlist-next-tag{flex:none;padding:1px 6px;border-radius:4px;background:#5b54ff;color:#fff;font-size:11px;font-weight:700}
+.wishlist-row-detail{margin:0;color:#c4c5cf;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wishlist-row-money{font-size:var(--subcat-money-size);font-weight:400;color:#f1f1ff;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;min-width:84px}
+.wishlist-row .wishlist-item-tools{opacity:0;justify-content:flex-end;flex-wrap:nowrap}
+.wishlist-row:hover .wishlist-item-tools,.wishlist-row:focus-within .wishlist-item-tools{opacity:1}
+@media(hover:none){.wishlist-row .wishlist-item-tools{opacity:1}}
 .wishlist-add-item{justify-self:start;background:transparent!important;color:#a3acff!important;padding:4px 0!important}
 .wishlist-history{font-size:13px;color:#c4c5cf}
-.wishlist-history summary{cursor:pointer;color:#e5e6f2}
-.wishlist-history ul{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:4px}
-.wishlist-history li{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.wishlist-history li span{flex:1;min-width:0}
+.wishlist-history summary{cursor:pointer;color:#e5e6f2;padding:4px 0}
+.wishlist-history ul{list-style:none;margin:4px 0 0;padding:0;border-top:1px solid var(--line)}
+.wishlist-history .wishlist-row{display:flex;flex-wrap:wrap;gap:4px 8px;cursor:default;min-height:var(--subcat-row-height)}
+.wishlist-history .wishlist-row-name{flex:1;min-width:120px;font-size:14px}
 .wishlist-history li button{padding:2px 8px;font-size:12px}
 
 .wishlist-form{display:grid;gap:12px}
@@ -86,7 +105,8 @@
 @media(max-width:520px){
   .wishlist-page{padding:16px 12px 56px}
   .wishlist-heading h1{font-size:24px}
-  .wishlist-item{grid-template-columns:22px minmax(0,1fr) auto;grid-template-areas:"rank main cost" "tools tools tools"}
+  .wishlist-row{grid-template-columns:minmax(0,1fr) auto;row-gap:4px;padding:6px 10px}
+  .wishlist-row .wishlist-item-tools{grid-column:1 / -1;justify-content:flex-start;flex-wrap:wrap}
   .wishlist-handle{display:none}
 }
 .wishlist-history li button.wishlist-history-link{padding:0;color:#a3acff;text-decoration:underline;font-size:12px}
