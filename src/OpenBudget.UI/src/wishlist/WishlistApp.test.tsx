@@ -79,7 +79,7 @@ it('places Wishlist directly below Long-Term Planning with a ready-to-buy badge 
   expect(screen.queryByRole('button', { name: 'Add category to Wishlist' })).not.toBeInTheDocument();
 
   await userEvent.click(nav);
-  const bucket = await screen.findByRole('region', { name: 'Games bucket' });
+  const bucket = await screen.findByRole('tabpanel', { name: 'Games' });
   expect(within(bucket).getByText('Ready to buy')).toBeInTheDocument();
 });
 

@@ -1,10 +1,12 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useId, useMemo, useState, type FormEvent } from 'react';
 import { MoneyInput } from '../MoneyInput';
 import { LedgerDialog } from '../ledger/LedgerDialog';
 import { parseMoney } from '../ledger/api';
-import { WishlistIcon, WishlistProgressBar } from './WishlistPlanParts';
+import { BucketPanel } from './BucketPanel';
+import { BucketTabs, maxBucketNameLength, type BucketEditing } from './BucketTabs';
+import { WishlistIcon } from './WishlistPlanParts';
 import {
-  addedAgo, isWebLink, reorder, sendWishlistCommand, WishlistConflictError,
+  isWebLink, reorder, sendWishlistCommand, WishlistConflictError,
   type WishlistAccess, type WishlistBucket, type WishlistItem, type WishlistOverview, type WishlistPurchase,
 } from './wishlistApi';
 import './wishlist.css';
@@ -25,14 +27,24 @@ type ItemDraft = { name: string; url: string; cost: string; description: string;
 type Confirm = { kind: 'disable' } | { kind: 'deleteBucket'; bucket: WishlistBucket } | { kind: 'purchase'; bucket: WishlistBucket; item: WishlistItem };
 type Notice = { text: string; action?: { label: string; page: string } };
 
+// The selected bucket tab is remembered per budget in this browser; storage can be unavailable (private mode, blocked site data).
+const selectedBucketKey = (budgetId: string) => `openbudget.wishlist.bucket.${budgetId}`;
+function readSelectedBucket(budgetId: string): string | null {
+  try { return window.localStorage.getItem(selectedBucketKey(budgetId)); } catch { return null; }
+}
+function writeSelectedBucket(budgetId: string, bucketId: string) {
+  try { window.localStorage.setItem(selectedBucketKey(budgetId), bucketId); } catch { /* the selection just is not remembered */ }
+}
+
 export function WishlistPage({ budgetId, currency, access, onAccessChange, onRetry, onNavigate, onRecordPurchase, onOpenTransaction }: Props) {
   const money = useMemo(() => { const format = new Intl.NumberFormat('en-IE', { style: 'currency', currency: currency || 'EUR' }); return (value: number) => format.format(value); }, [currency]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [bucketDialog, setBucketDialog] = useState<{ bucket?: WishlistBucket } | null>(null);
-  const [bucketName, setBucketName] = useState('');
-  const [bucketError, setBucketError] = useState('');
+  const idPrefix = useId();
+  const [editing, setEditing] = useState<BucketEditing | null>(null);
+  const [nameError, setNameError] = useState('');
+  const [selection, setSelection] = useState(() => ({ budgetId, id: readSelectedBucket(budgetId) }));
   const [itemDialog, setItemDialog] = useState<{ item?: WishlistItem } | null>(null);
   const [itemDraft, setItemDraft] = useState<ItemDraft>({ name: '', url: '', cost: '', description: '', bucketId: '' });
   const [itemError, setItemError] = useState('');
@@ -56,13 +68,23 @@ export function WishlistPage({ budgetId, currency, access, onAccessChange, onRet
     } finally { setBusy(false); }
   }
 
-  function openBucketDialog(bucket?: WishlistBucket) { setBucketDialog({ bucket }); setBucketName(bucket?.name ?? ''); setBucketError(''); }
-  async function saveBucket(event: FormEvent) {
-    event.preventDefault();
-    const name = bucketName.trim();
-    if (!name || name.length > 60) { setBucketError('Enter a bucket name of up to 60 characters.'); return; }
-    const saved = bucketDialog?.bucket ? await run(`/buckets/${bucketDialog.bucket.id}`, 'PUT', { name }) : await run('/buckets', 'POST', { name });
-    if (saved) setBucketDialog(null);
+  const storedBucketId = selection.budgetId === budgetId ? selection.id : readSelectedBucket(budgetId);
+  function selectBucket(bucketId: string) { setSelection({ budgetId, id: bucketId }); writeSelectedBucket(budgetId, bucketId); }
+  function startEditing(next: BucketEditing) { setError(''); setNameError(''); setEditing(next); }
+  function stopEditing() { setError(''); setNameError(''); setEditing(null); }
+
+  // Saves the inline name editor (draft "+" tab or double-click rename). Resolves false to keep the editor open with its error.
+  async function commitBucketName(rawName: string): Promise<boolean> {
+    const name = rawName.trim();
+    if (!name || name.length > maxBucketNameLength) { setNameError(`Enter a bucket name of up to ${maxBucketNameLength} characters.`); return false; }
+    if (!editing || access.status !== 'ready') return false;
+    setNameError('');
+    const known = new Set(access.overview.buckets.map(bucket => bucket.id));
+    const saved = editing.kind === 'rename' ? await run(`/buckets/${editing.bucketId}`, 'PUT', { name }) : await run('/buckets', 'POST', { name });
+    if (!saved) return false;
+    if (editing.kind === 'new') { const created = saved.buckets.find(bucket => !known.has(bucket.id)); if (created) selectBucket(created.id); }
+    setEditing(null);
+    return true;
   }
 
   function openItemDialog(bucketId: string, item?: WishlistItem) {
@@ -92,10 +114,10 @@ export function WishlistPage({ budgetId, currency, access, onAccessChange, onRet
     const next = reorder(buckets, from, to);
     if (next !== buckets) void run('/buckets/order', 'PUT', { bucketIds: next.map(bucket => bucket.id) });
   }
-  function dropOn(bucket: WishlistBucket, targetItemId?: string) {
+  function dropOn(bucket: WishlistBucket, targetItemId?: string, fromTab = false) {
     const source = drag;
     setDrag(null); setDropTarget(null);
-    if (!source || busy) return;
+    if (!source || busy || (fromTab && source.bucketId === bucket.id)) return;
     if (source.bucketId !== bucket.id) {
       const sourceItem = access.status === 'ready' ? access.overview.buckets.find(b => b.id === source.bucketId)?.items.find(item => item.id === source.itemId) : undefined;
       if (sourceItem) void run(`/items/${sourceItem.id}`, 'PUT', { name: sourceItem.name, url: sourceItem.url, cost: sourceItem.cost, description: sourceItem.description, bucketId: bucket.id });
@@ -119,7 +141,6 @@ export function WishlistPage({ budgetId, currency, access, onAccessChange, onRet
 
   const heading = <div className="wishlist-heading"><div><span className="eyebrow">SAVE FOR WHAT YOU WANT</span><h1>Wishlist</h1></div>
     {access.status === 'ready' && access.overview.isEnabled && <div className="wishlist-heading-actions">
-      <button type="button" className="wishlist-primary" disabled={busy} onClick={() => openBucketDialog()}>Add bucket</button>
       <button type="button" disabled={busy} onClick={() => setConfirm({ kind: 'disable' })}>Turn off Wishlist</button>
     </div>}</div>;
 
@@ -128,6 +149,8 @@ export function WishlistPage({ budgetId, currency, access, onAccessChange, onRet
   if (access.status === 'forbidden') return <div className="wishlist-page">{heading}<section className="wishlist-intro"><div className="wishlist-intro-icon"><WishlistIcon size={28} /></div><h2>Wishlist is a Plus and Pro feature</h2><p>Your current membership does not include Wishlist. Ask your administrator to upgrade your membership or enable Wishlist for your account.</p></section></div>;
 
   const overview = access.overview;
+  const selectedIndex = Math.max(0, overview.buckets.findIndex(bucket => bucket.id === storedBucketId));
+  const selectedBucket: WishlistBucket | undefined = overview.buckets[selectedIndex];
   if (!overview.isEnabled) return <div className="wishlist-page">{heading}
     {error && <p className="wishlist-error" role="alert">{error}</p>}
     {notice && <p className="wishlist-notice" role="status">{notice.text}</p>}
@@ -143,64 +166,23 @@ export function WishlistPage({ budgetId, currency, access, onAccessChange, onRet
   return <div className="wishlist-page">
     {heading}
     <p className="wishlist-subtitle">Each bucket is funded by its Plan category. Progress uses Available in {new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' }).format(new Date(`${overview.month}-01T12:00:00`))}.</p>
-    {error && <p className="wishlist-error" role="alert">{error}</p>}
+    {error && !editing && <p className="wishlist-error" role="alert">{error}</p>}
     {notice && <p className="wishlist-notice" role="status">{notice.text}{notice.action && <button type="button" onClick={() => onNavigate(notice.action!.page)}>{notice.action.label}</button>}<button type="button" aria-label="Dismiss" onClick={() => setNotice(null)}>×</button></p>}
-    {overview.buckets.length === 0 ? <section className="wishlist-empty"><strong>No Buckets</strong><p>Create a bucket such as Electronics, Games or Small/Large to start ranking the things you want.</p><button type="button" className="wishlist-primary" disabled={busy} onClick={() => openBucketDialog()}>Add bucket</button></section>
-      : <div className="wishlist-buckets">{overview.buckets.map((bucket, bucketIndex) => {
-        const progress = bucket.progress;
-        return <section key={bucket.id} className={`wishlist-bucket ${progress?.canPurchase ? 'is-ready' : ''}`} aria-label={`${bucket.name} bucket`}>
-          <header className="wishlist-bucket-head">
-            <div><h2>{bucket.name}</h2><span className="wishlist-range">{bucket.minCost === null ? 'No items' : bucket.minCost === bucket.maxCost ? money(bucket.minCost) : `${money(bucket.minCost)}–${money(bucket.maxCost ?? bucket.minCost)}`}</span></div>
-            {progress?.canPurchase && <span className="wishlist-ready-badge">Ready to buy</span>}
-            <div className="wishlist-bucket-tools">
-              <button type="button" aria-label={`Move ${bucket.name} bucket up`} disabled={busy || bucketIndex === 0} onClick={() => moveBucket(overview.buckets, bucketIndex, bucketIndex - 1)}>↑</button>
-              <button type="button" aria-label={`Move ${bucket.name} bucket down`} disabled={busy || bucketIndex === overview.buckets.length - 1} onClick={() => moveBucket(overview.buckets, bucketIndex, bucketIndex + 1)}>↓</button>
-              <button type="button" aria-label={`Rename ${bucket.name} bucket`} disabled={busy} onClick={() => openBucketDialog(bucket)}>Rename</button>
-              <button type="button" aria-label={`Delete ${bucket.name} bucket`} disabled={busy} onClick={() => setConfirm({ kind: 'deleteBucket', bucket })}>Delete</button>
-            </div>
-          </header>
-          {progress ? <div className="wishlist-progress-block">
-            <p className="wishlist-amounts" data-testid={`progress-${bucket.id}`}>{money(Math.max(progress.available, 0))} of {money(progress.cost)}{progress.canPurchase ? '' : ` — ${money(progress.remaining)} to go`}</p>
-            <WishlistProgressBar progress={progress} money={money} />
-            {progress.canPurchase && <p className="wishlist-can-buy">You can buy <b>{progress.nextItemName}</b> now.</p>}
-          </div> : <p className="wishlist-funds">{money(bucket.available)} available</p>}
-          {bucket.items.length === 0 ? <p className="wishlist-items-empty">No items yet. Add the things you want and rank them by desire.</p>
-            : <ol className="wishlist-items" onDragOver={event => { if (drag) { event.preventDefault(); } }} onDrop={event => { event.preventDefault(); dropOn(bucket, dropTarget?.bucketId === bucket.id ? dropTarget.itemId : undefined); }}>
-              {bucket.items.map((item, index) => <li key={item.id} className={`wishlist-item ${index === 0 ? 'is-next' : ''} ${dropTarget?.itemId === item.id ? 'drop-target' : ''}`} draggable={!busy}
-                onDragStart={event => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', item.id); setDrag({ bucketId: bucket.id, itemId: item.id }); }}
-                onDragEnd={() => { setDrag(null); setDropTarget(null); }}
-                onDragOver={event => { if (!drag) return; event.preventDefault(); setDropTarget({ bucketId: bucket.id, itemId: item.id }); }}
-                onDrop={event => { event.preventDefault(); event.stopPropagation(); dropOn(bucket, item.id); }}>
-                <span className="wishlist-handle" aria-hidden="true">⋮⋮</span>
-                <span className="wishlist-rank">{index + 1}</span>
-                <div className="wishlist-item-main">
-                  <div className="wishlist-item-title">{item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer">{item.name}</a> : <strong>{item.name}</strong>}{index === 0 && <span className="wishlist-next-tag">Next</span>}</div>
-                  {item.description && <p>{item.description}</p>}
-                  <small>{addedAgo(item.createdAt)}</small>
-                </div>
-                <strong className="wishlist-cost">{money(item.cost)}</strong>
-                <div className="wishlist-item-tools">
-                  <button type="button" aria-label={`Move ${item.name} up`} disabled={busy || index === 0} onClick={() => moveItem(bucket, index, index - 1)}>↑</button>
-                  <button type="button" aria-label={`Move ${item.name} down`} disabled={busy || index === bucket.items.length - 1} onClick={() => moveItem(bucket, index, index + 1)}>↓</button>
-                  <button type="button" aria-label={`Edit ${item.name}`} disabled={busy} onClick={() => openItemDialog(bucket.id, item)}>Edit</button>
-                  <button type="button" aria-label={`Mark ${item.name} purchased`} className={index === 0 && progress?.canPurchase ? 'wishlist-primary' : ''} disabled={busy} onClick={() => setConfirm({ kind: 'purchase', bucket, item })}>Purchased</button>
-                  <button type="button" aria-label={`Remove ${item.name}`} disabled={busy} onClick={() => void run(`/items/${item.id}/remove`, 'POST')}>Remove</button>
-                </div>
-              </li>)}
-            </ol>}
-          <button type="button" className="wishlist-add-item" disabled={busy} onClick={() => openItemDialog(bucket.id)}>+ Add item to {bucket.name}</button>
-          <History title="Purchased" items={bucket.purchased} money={money} busy={busy} onRestore={item => void run(`/items/${item.id}/restore`, 'POST')} onOpenTransaction={onOpenTransaction} />
-          <History title="Removed" items={bucket.removed} money={money} busy={busy} onRestore={item => void run(`/items/${item.id}/restore`, 'POST')} />
-        </section>;
-      })}</div>}
-
-    {bucketDialog && <LedgerDialog title={bucketDialog.bucket ? 'Rename bucket' : 'New bucket'} onClose={() => setBucketDialog(null)}>
-      <form className="wishlist-form" onSubmit={event => void saveBucket(event)} noValidate>
-        <label>Bucket name<input autoFocus maxLength={60} value={bucketName} onChange={event => setBucketName(event.target.value)} placeholder="Electronics" /></label>
-        {(bucketError || error) && <p className="wishlist-error" role="alert">{bucketError || error}</p>}
-        <footer><button type="button" onClick={() => setBucketDialog(null)}>Cancel</button><button type="submit" className="button-primary" disabled={busy}>{busy ? 'Saving…' : 'Save bucket'}</button></footer>
-      </form>
-    </LedgerDialog>}
+    <BucketTabs buckets={overview.buckets} selectedId={selectedBucket?.id ?? null} editing={editing} busy={busy} nameError={nameError || (editing ? error : '')} idPrefix={idPrefix}
+      onSelect={selectBucket} onStartCreate={() => startEditing({ kind: 'new' })} onStartRename={bucketId => startEditing({ kind: 'rename', bucketId })}
+      onCommitName={commitBucketName} onCancelEdit={stopEditing} onEditName={() => { setNameError(''); setError(''); }}
+      dropBucketId={drag && dropTarget && !dropTarget.itemId && dropTarget.bucketId !== drag.bucketId ? dropTarget.bucketId : null}
+      onItemDragOver={bucketId => { if (!drag || drag.bucketId === bucketId) return false; if (dropTarget?.bucketId !== bucketId || dropTarget.itemId) setDropTarget({ bucketId }); return true; }}
+      onItemDrop={bucketId => { const target = overview.buckets.find(bucket => bucket.id === bucketId); if (target) dropOn(target, undefined, true); }} />
+    {!selectedBucket ? <section className="wishlist-empty"><strong>No Buckets</strong><p>Use the + tab to create a bucket such as Electronics, Games or Small/Large and start ranking the things you want.</p></section>
+      : <BucketPanel key={selectedBucket.id} idPrefix={idPrefix} bucket={selectedBucket} bucketIndex={selectedIndex} bucketCount={overview.buckets.length} money={money} busy={busy} drag={drag} dropTarget={dropTarget}
+        onMoveBucket={to => moveBucket(overview.buckets, selectedIndex, to)} onRenameBucket={() => startEditing({ kind: 'rename', bucketId: selectedBucket.id })}
+        onDeleteBucket={() => setConfirm({ kind: 'deleteBucket', bucket: selectedBucket })}
+        onAddItem={() => openItemDialog(selectedBucket.id)} onEditItem={item => openItemDialog(selectedBucket.id, item)}
+        onPurchase={item => setConfirm({ kind: 'purchase', bucket: selectedBucket, item })} onRemove={item => void run(`/items/${item.id}/remove`, 'POST')} onRestore={item => void run(`/items/${item.id}/restore`, 'POST')}
+        onMoveItem={(from, to) => moveItem(selectedBucket, from, to)}
+        onDragStart={source => setDrag(source)} onDragEnd={() => { setDrag(null); setDropTarget(null); }} onDragOverItem={target => { if (dropTarget?.itemId !== target.itemId) setDropTarget(target); }}
+        onDropOn={targetItemId => dropOn(selectedBucket, targetItemId)} onOpenTransaction={onOpenTransaction} />}
 
     {itemDialog && <LedgerDialog title={itemDialog.item ? 'Edit item' : 'New wishlist item'} onClose={() => setItemDialog(null)}>
       <form className="wishlist-form" onSubmit={event => void saveItem(event)} noValidate>
@@ -229,18 +211,4 @@ export function WishlistPage({ budgetId, currency, access, onAccessChange, onRet
       </div>
     </LedgerDialog>}
   </div>;
-}
-
-// Collapsed purchase/removal history; restoring puts the item back at the bottom of its bucket.
-// A purchase recorded as a transaction shows "Purchased <date> · <amount spent>" and links to that transaction.
-function History({ title, items, money, busy, onRestore, onOpenTransaction }: { title: string; items: WishlistItem[]; money: (value: number) => string; busy: boolean; onRestore: (item: WishlistItem) => void; onOpenTransaction?: (purchase: WishlistPurchase) => void }) {
-  if (items.length === 0) return null;
-  const date = (value: string) => new Date(value).toLocaleDateString('en-GB');
-  return <details className="wishlist-history">
-    <summary>{title} ({items.length})</summary>
-    <ul>{items.map(item => <li key={item.id}><span>{item.name}</span>
-      {item.purchase ? <small>Purchased {date(`${item.purchase.date}T12:00:00`)} · {money(item.purchase.amount)}{onOpenTransaction && <> · <button type="button" className="wishlist-history-link" aria-label={`View transaction for ${item.name}`} onClick={() => onOpenTransaction(item.purchase!)}>View transaction</button></>}</small>
-        : <small>{money(item.cost)} · {date(item.purchasedAt ?? item.removedAt ?? item.createdAt)}</small>}
-      <button type="button" aria-label={`Restore ${item.name}`} disabled={busy} onClick={() => onRestore(item)}>Restore</button></li>)}</ul>
-  </details>;
 }
