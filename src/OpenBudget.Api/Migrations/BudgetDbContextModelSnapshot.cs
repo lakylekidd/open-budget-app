@@ -1366,6 +1366,84 @@ namespace OpenBudget.Api.Migrations
                     b.ToTable("Transactions");
                 });
 
+            modelBuilder.Entity("OpenBudget.Api.TransactionImageBlobEntity", b =>
+                {
+                    b.Property<Guid>("ImageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.HasKey("ImageId");
+
+                    b.ToTable("TransactionImageBlobs");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.TransactionImageEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<Guid>("TransactionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TransactionId");
+
+                    b.HasIndex("BudgetId", "TransactionId", "CreatedAt");
+
+                    b.ToTable("TransactionImages");
+                });
+
             modelBuilder.Entity("OpenBudget.Api.UserEntitlementOverrideEntity", b =>
                 {
                     b.Property<string>("UserId")
@@ -1745,6 +1823,24 @@ namespace OpenBudget.Api.Migrations
                     b.Navigation("Account");
 
                     b.Navigation("Payee");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.TransactionImageBlobEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.TransactionImageEntity", null)
+                        .WithOne()
+                        .HasForeignKey("OpenBudget.Api.TransactionImageBlobEntity", "ImageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.TransactionImageEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.TransactionEntity", null)
+                        .WithMany()
+                        .HasForeignKey("TransactionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("OpenBudget.Api.UserEntitlementOverrideEntity", b =>

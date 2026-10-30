@@ -63,6 +63,8 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
                 ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS "Balance"
             FROM "Transactions" WHERE NOT "IsDeleted" AND "BudgetId" = {db.ActiveBudgetId}
             """).Where(r => ids.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.Balance, ct);
+        var imageCounts = await db.TransactionImages.Where(i => ids.Contains(i.TransactionId)).GroupBy(i => i.TransactionId)
+            .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
         var transferIds = items.Where(t => t.TransferId != null).Select(t => t.TransferId!.Value).Distinct().ToArray();
         var legs = await db.Transactions.Where(t => !t.IsDeleted && t.TransferId != null && transferIds.Contains(t.TransferId.Value))
             .Select(t => new { t.Id, t.TransferId, t.Status, t.Account.Name, t.Account.IsClosed }).ToListAsync(ct);
@@ -74,7 +76,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
         return new(accounts.Version, page, pageSize, total, items.Select(entry =>
         {
             var other = entry.TransferId is null ? null : legs.SingleOrDefault(t => t.TransferId == entry.TransferId && t.Id != entry.Id);
-            return ToDto(entry) with { RunningBalance = running.GetValueOrDefault(entry.Id), TransferAccountName = other?.Name,
+            return ToDto(entry) with { RunningBalance = running.GetValueOrDefault(entry.Id), TransferAccountName = other?.Name, ImageCount = imageCounts.GetValueOrDefault(entry.Id),
                 CategoryName = entry.CategoryId is null ? null : labels.GetValueOrDefault((Month(entry.Date), entry.CategoryId)),
                 CanEdit = !accounts.Accounts.Single(a => a.Id == entry.AccountId).IsClosed && other?.IsClosed != true,
                 IsLocked = entry.Status == "reconciled" || accounts.Accounts.Single(a => a.Id == entry.AccountId).IsClosed || other?.Status == "reconciled" || other?.IsClosed == true };

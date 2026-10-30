@@ -6,7 +6,7 @@ public sealed record AccountsDto(long Version, List<AccountDto> Accounts);
 public sealed record SplitDto(string CategoryId, decimal Amount, string? Payee = null, string? Memo = null);
 public sealed record TransactionDto(Guid Id, Guid AccountId, DateOnly Date, decimal Amount, string Payee, string Memo,
     string? CategoryId, string Status, Guid? TransferId, bool IsOpening, List<SplitDto> Splits, bool NeedsAttention,
-    decimal? RunningBalance = null, string? TransferAccountName = null, string? CategoryName = null, bool IsLocked = false, string? FlagColor = null, Guid? ScheduleId = null, bool CanEdit = true, bool IsApproved = true, bool NeedsCategory = false);
+    decimal? RunningBalance = null, string? TransferAccountName = null, string? CategoryName = null, bool IsLocked = false, string? FlagColor = null, Guid? ScheduleId = null, bool CanEdit = true, bool IsApproved = true, bool NeedsCategory = false, int ImageCount = 0);
 public sealed record RegisterDto(long Version, int Page, int PageSize, int Total, List<TransactionDto> Items, AccountsDto Accounts);
 public sealed record CreateAccountRequest(Guid CommandId, long Version, string Name, DateOnly Date, decimal OpeningBalance, string AccountType = "checking");
 public sealed record UpdateAccountRequest(Guid CommandId, long Version, string Name, bool IsClosed, string? AccountType = null, bool? IsFavorite = null, string? Notes = null, decimal? WorkingBalance = null);

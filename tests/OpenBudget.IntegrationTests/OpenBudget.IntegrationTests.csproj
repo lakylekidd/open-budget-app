@@ -21,6 +21,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\OpenBudget.UnitTests\TestImages.cs" Link="TestImages.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\OpenBudget.Api\OpenBudget.Api.csproj" />
   </ItemGroup>
 

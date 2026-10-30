@@ -15,7 +15,7 @@ export type Accounts = { version: number; accounts: Account[] };
 export type Split = { categoryId: string; amount: number; payee?: string; memo?: string };
 export type Entry = { id: string; accountId: string; date: string; amount: number; payee: string; memo: string; categoryId: string | null;
   status: 'uncleared' | 'cleared' | 'reconciled'; transferId: string | null; isOpening: boolean; splits: Split[]; needsAttention: boolean;
-  isApproved?:boolean; needsCategory?:boolean; canEdit?:boolean; flagColor?:string|null; scheduleId?:string|null; runningBalance: number | null; transferAccountName: string | null; categoryName: string | null; isLocked: boolean };
+  isApproved?:boolean; needsCategory?:boolean; imageCount?:number; canEdit?:boolean; flagColor?:string|null; scheduleId?:string|null; runningBalance: number | null; transferAccountName: string | null; categoryName: string | null; isLocked: boolean };
 export type Register = { version: number; page: number; pageSize: number; total: number; items: Entry[]; accounts: Accounts };
 export type CategoryOption = { id: string; name: string; isArchived?: boolean; groupId?: string; groupName?: string; available?: number };
 export type Audit = { id: string; kind: string; version: number; createdAt: string; beforeJson: string; afterJson: string };

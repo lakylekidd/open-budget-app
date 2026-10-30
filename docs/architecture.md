@@ -113,3 +113,35 @@ Every money field (Plan Assigned and move/assign amounts, transaction outflow/in
 Selecting a regular category in Plan adds a collapsible **Target** card under its details (never for credit card payment categories, which keep their debt payoff target). Without a target it asks "How much do you need for ...?" and offers **Create Target**. The editor (`CategoryTarget.tsx`) has Weekly / Monthly / Yearly / Custom tabs: Weekly takes an amount and weekday; Monthly an amount, a "By" day (Last Day of Month or 1st-31st) and a "Next month I want to" popover (Set aside another / Refill up to); Yearly an amount, a dd-MM-yyyy date with a calendar (`TargetDateField.tsx`) and "Next year I want to"; Custom an amount, "I want to" (Set aside another / Fill up to), "Due on" and a Repeat switch revealing Every [1-99] [Day/Week/Month/Year]. Delete (only for a saved target), Cancel and Save Target finish the editor. A saved target shows a progress ring, "EUR X more needed this month", Needed/Assigned/Due/To Go rows and **Edit Target**. Writes keep their command for lost-response retries (same command ID) and a `409` offers **Reload target**; results patch the loaded month without a Plan save.
 
 `CategoryTargetService` owns validation, access, versioning and receipts; `CategoryTargetRules` is the pure calculation used by `BudgetService.ToDtoAsync`, so Plan rows render from the month response without extra calls. Rows with an active target show "EUR X more needed this month" above a bar split into `segments` equal parts (one per weekday occurrence for weekly targets) that fill yellow while underfunded and green when funded, and the Available pill turns yellow with a small progress-ring icon while money is still needed.
+
+## Transaction image attachments
+
+The register Images column (View Options → Show Images) shows a button per actual transaction with an image icon and count (`Images for <payee> <date> (N)`); scheduled rows keep the plain icon. It opens `TransactionImagesDialog` (`src/OpenBudget.UI/src/ledger/TransactionImages.tsx`), built on `LedgerDialog` so it keeps the dark theme, focus trap and Escape-to-close. Images are added by drag and drop onto the drop zone, by pasting an image anywhere while the dialog is open (`paste` event `clipboardData.files`; the async Clipboard read API is not used), by the multiple-file picker, or from an https URL. The viewer shows the current image with Previous/Next buttons and ArrowLeft/ArrowRight, a thumbnail strip with the current image highlighted (`aria-current`) and "2 of 5", deletion behind an inline confirmation, loading/empty ("Drop, paste or upload receipts")/error/progress states, and a full-screen viewer with a fit-to-screen/actual-size toggle, its own focus trap and Escape to return. Uploads use `XMLHttpRequest` for progress; a lost response keeps the command ID so a retry replays. Captions are not implemented.
+
+### Security model
+
+The feature accepts files and fetches URLs, so it is treated as high risk (ISO 27001 Annex A: A.8.26 application security requirements, A.8.12 data leakage prevention, A.8.24 use of cryptography, A.8.15/A.8.16 logging and monitoring, A.5.34 privacy and protection of PII).
+
+| Control | Implementation |
+|---|---|
+| Access control | Authenticated routes; budget-scoped query filters plus the existing budget-cookie membership check; other budgets' images return `404`. Unguessable UUIDs; no user input reaches a storage path. |
+| Input validation | Magic-byte allowlist (JPEG/PNG/WebP/GIF), markup/polyglot rejection, header dimension limits, 10 MB per image, 10 files / 50 MB per request, 20 per transaction, sanitized display names. |
+| Output handling | Stored validated content type, `nosniff`, inline sanitized disposition, `default-src 'none'; img-src 'self'; sandbox` CSP, same-origin CORP, `private` cache. |
+| SSRF | https on port 443 only, DNS resolution and address blocklist inside `ConnectCallback` (defeats DNS rebinding), manual re-validated redirects (at most 3), 10 s timeout, streamed byte cap, generic errors, per-user rate limit. |
+| Privacy | EXIF/GPS/XMP/IPTC/comments and PNG/WebP text metadata stripped before storage; orientation preserved. |
+| Audit | Add/delete receipts in `LedgerCommands` with metadata only; image changes never bump money calculations. Logs never contain bytes, file names or URL paths/queries (host only). |
+
+Documented limitations: pixels are not decoded or re-encoded, so a malformed image with valid headers is stored and left to the browser's image decoder (served only as an image type with `nosniff` and a sandbox CSP); GIF comment/application extensions are not stripped; there is no malware scanning (enable Microsoft Defender for Storage malware scanning when using Azure Blob Storage); thumbnails are CSS-scaled originals.
+
+### Storage
+
+`ITransactionImageStore` (`SaveAsync`/`ReadAsync`/`DeleteAsync` keyed by budget ID and image ID) abstracts bytes. The default `PostgresTransactionImageStore` keeps them in `TransactionImageBlobs` within the same database transaction as metadata and receipts, which suits local, Aspire and self-hosted Compose deployments; PostgreSQL encryption at rest and TLS connections are the operator's responsibility, as for the rest of the ledger.
+
+For Azure production, implement `ITransactionImageStore` over Azure Blob Storage (not shipped: the `Azure.Storage.Blobs`/`Azure.Identity` dependencies could not be verified in this change):
+
+1. Create a StorageV2 account with public blob access disabled, minimum TLS 1.2, secure transfer required, shared-key authorization disabled, encryption at rest (Microsoft-managed or customer-managed keys in Azure Key Vault), soft delete per the retention policy, and a private endpoint where the network allows.
+2. Create one private container (for example `transaction-images`). Store blobs at `{budgetId}/{imageId}` (both server-generated) with the validated content type.
+3. Grant the API's managed identity **Storage Blob Data Contributor** scoped to that container only. Authenticate with `ManagedIdentityCredential` (or `DefaultAzureCredential`) and configure only the account endpoint URL. Never put account keys, SAS tokens or connection strings in config or code; any unavoidable secret belongs in Azure Key Vault.
+4. Keep serving through the authenticated API endpoint (no SAS URLs to browsers) so ownership checks and security headers still apply.
+5. Write the blob before committing metadata and delete metadata before the blob; schedule a reconciliation job for orphaned blobs, because blob writes are outside the PostgreSQL transaction. Budget deletion must also delete the `{budgetId}/` prefix.
+6. Send storage diagnostic logs to Log Analytics (Azure Monitor) for access auditing, and enable Defender for Storage.
