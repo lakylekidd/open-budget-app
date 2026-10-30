@@ -35,10 +35,20 @@ export function WishlistNavItem({ access, active, onClick }: { access: WishlistA
   </button>;
 }
 
-// Target-style status text for a Wishlist category row in Plan.
+// The server computes wishlistProgress once per load, but Plan edits update category.available immediately.
+// Derive canPurchase/remaining/fraction on the client from the row's live available and the item cost (compared in
+// cents); fall back to the server values only when the cost is missing.
+export function liveWishlistProgress(progress: WishlistProgress, available: number): WishlistProgress {
+  if (!(progress.cost > 0)) return progress;
+  const cents = Math.round(available * 100);
+  const costCents = Math.round(progress.cost * 100);
+  return { ...progress, available, canPurchase: cents >= costCents, remaining: Math.max(costCents - cents, 0) / 100, fundedFraction: Math.min(1, Math.max(0, cents / costCents)) };
+}
+
+// Status text for a Wishlist category row in Plan: checkmark + "You can buy X" when affordable, else "€X to go for Y".
 export function WishlistRowStatus({ progress, money }: { progress: WishlistProgress; money: Money }) {
   return progress.canPurchase
-    ? <span className="wishlist-row-ready">Ready to buy <b>{progress.nextItemName}</b></span>
+    ? <span className="wishlist-row-ready"><svg className="wishlist-row-check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"><path d="m5 12 4 4L19 6" /></svg>You can buy <b>{progress.nextItemName}</b></span>
     : <><b>{money(progress.remaining)}</b> to go for {progress.nextItemName}</>;
 }
 
