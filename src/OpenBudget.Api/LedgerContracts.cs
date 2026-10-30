@@ -18,6 +18,15 @@ public sealed record DeleteTransactionRequest(Guid CommandId, long Version);
 public sealed record StatusRequest(Guid CommandId, long Version, string Status);
 public sealed record ReconcileRequest(Guid CommandId, long Version, decimal StatementBalance);
 public sealed record MutationDto(Guid Id, long Version);
+public sealed record CreditSummaryDto(Guid AccountId, string Month, decimal PriorBalance, decimal SpendingAndOutflows, decimal InterestCharges,
+    decimal PaymentsAndInflows, decimal CurrentBalance);
+public sealed record SaveCreditPayoffTargetRequest(Guid CommandId, long Version, string Kind, string? TargetMonth = null, decimal? MonthlyAmount = null);
+public sealed record DeleteCreditPayoffTargetRequest(Guid CommandId, long Version);
+public sealed record CreditPayoffTargetDto(string Kind, string? TargetMonth, decimal? MonthlyAmount, decimal PayoffAmount, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+// Status is funded (nothing to go), onTrack (nothing more to assign this month) or behind.
+public sealed record CreditPayoffProgressDto(decimal NeededForPayoff, decimal AvailableForPayment, decimal AssignedThisMonth, decimal ToGo,
+    int Percent, decimal AssignThisMonth, int? MonthsRemaining, bool IsPastDue, string Status);
+public sealed record CreditPayoffDto(Guid AccountId, string Month, long Version, CreditPayoffTargetDto? Target, CreditPayoffProgressDto? Progress);
 public sealed record AuditDto(Guid Id, Guid ResourceId, string Kind, long Version, DateTimeOffset CreatedAt, string BeforeJson, string AfterJson);
 public sealed record AuditPageDto(int Page, int PageSize, int Total, List<AuditDto> Items);
 

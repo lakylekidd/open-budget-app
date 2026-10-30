@@ -24,7 +24,7 @@ public sealed record BudgetDto(
         budget.Groups.OrderBy(g => g.SortOrder).Select(g => new CategoryGroupDto(
             g.Id, g.Name, g.SortOrder, g.IsArchived,
             g.Categories.OrderBy(c => c.SortOrder).Select(c => new CategoryDto(
-                c.Id, c.Name, c.Assigned, c.Activity, c.Available, c.Target, c.Icon, c.Snoozed, c.SortOrder, c.IsArchived)).ToList())).ToList());
+                c.Id, c.Name, c.Assigned, c.Activity, c.Available, c.Target, c.Icon, c.Snoozed, c.SortOrder, c.IsArchived, c.CreditOverspending)).ToList())).ToList());
 }
 
 public sealed record BudgetUpdateDto(
@@ -36,7 +36,7 @@ public sealed record BudgetUpdateDto(
 
 public sealed record CategoryGroupDto(string Id, string Name, int SortOrder, bool IsArchived, List<CategoryDto> Categories);
 public sealed record CategoryDto(string Id, string Name, decimal Assigned, decimal Activity, decimal Available, decimal Target,
-    string? Icon, bool Snoozed, int SortOrder, bool IsArchived);
+    string? Icon, bool Snoozed, int SortOrder, bool IsArchived, decimal CreditOverspending = 0);
 public sealed record CategoryGroupUpdateDto(string Id, string Name, int SortOrder, bool IsArchived, List<CategoryUpdateDto> Categories);
 public sealed record CategoryUpdateDto(string Id, string Name, decimal Assigned, decimal Target, string? Icon,
     bool Snoozed, int SortOrder, bool IsArchived);

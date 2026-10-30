@@ -43,7 +43,7 @@ export function AccountHeader({ current, accounts, disabled, loading = false, on
   return <>
     <header className="account-register-header"><div className="account-register-identity">
       <h1>{loading ? 'Loading account…' : current ? current.name : 'All Accounts'}{current && <button className={`account-favorite ${current.isFavorite ? 'is-favorite' : ''}`} disabled={disabled} aria-label={current.isFavorite ? 'Remove favorite account' : 'Favorite account'} aria-pressed={current.isFavorite} onClick={onFavorite}>★</button>}{current?.isClosed && <small>Closed</small>}</h1>
-      <div className="account-register-meta"><span><RegisterIcon name="bank" size={12}/>{current ? {checking:'Checking',savings:'Savings',cash:'Cash'}[current.accountType] : 'Cash accounts'}</span>
+      <div className="account-register-meta"><span><RegisterIcon name="bank" size={12}/>{current ? {checking:'Checking',savings:'Savings',cash:'Cash',creditCard:'Credit Card',lineOfCredit:'Line of Credit'}[current.accountType] : 'Cash accounts'}</span>
         {current && <><span title={current.connectionStatus === 'connected' ? 'Automatically connected and synced' : 'Transactions are entered manually; automatic bank sync is not connected.'}><RegisterIcon name="check" size={13}/>{current.connectionStatus === 'connected' ? 'Connected' : 'Unlinked'}</span>
           <span><RegisterIcon name="lock" size={12}/>{reconciliationText(current.lastReconciledAt)}</span></>}
       </div></div>

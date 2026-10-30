@@ -130,9 +130,58 @@ Stale writes return 409 `{ "error": "..." }`; reload and review before sending a
 
 Closed accounts retain history and must be reopened before writes. Reconciliation compares the current cleared ledger balance rather than a date cutoff. There is no automatic adjustment: clear/correct entries until the difference is zero, then explicitly confirm. Reconciled entries cannot be deleted or have their status toggled directly. Transaction/transfer edits require explicit `confirmReconciledEdit=true` when either affected leg is reconciled. Confirmed edits retain the reconciliation row with `isInvalidated=true`, mark reconciled legs cleared, and store before/after audit (including invalidated snapshot IDs). The account reports its latest non-invalidated reconciliation, or null until reconciled again. Closed accounts still require reopening.
 
-Account responses also include `accountType` (`checking`, `savings`, `cash`), `isFavorite`, read-only `connectionStatus`, nullable UTC `lastReconciledAt`, and `needsCategoryCount`. Create requests optionally accept `accountType` (default `checking`). Updates optionally accept `accountType` and `isFavorite`; omission preserves their values. Existing accounts are migrated to checking/nonfavorite without changing ledger balances. Connection status currently returns `unlinked` because automatic provider sync is not implemented; callers cannot mark an account connected through the account-edit API. Last reconciliation time comes from the latest persisted confirmation, and category-attention counts use the complete account ledger.
+Account responses also include `accountType` (`checking`, `savings`, `cash`, `creditCard`, `lineOfCredit`), `isFavorite`, read-only `connectionStatus`, nullable UTC `lastReconciledAt`, and `needsCategoryCount`. Create requests optionally accept `accountType` (default `checking`). Updates optionally accept `accountType` and `isFavorite`; omission preserves their values. Existing accounts are migrated to checking/nonfavorite without changing ledger balances. Connection status currently returns `unlinked` because automatic provider sync is not implemented; callers cannot mark an account connected through the account-edit API. Last reconciliation time comes from the latest persisted confirmation, and category-attention counts use the complete account ledger.
 
 Header calculations are `clearedBalance + unclearedBalance = balance` (Working Balance). Cleared includes both cleared and reconciled entries. Filters never alter those account totals.
+
+## Credit accounts and card payments
+
+`accountType` also accepts `creditCard` and `lineOfCredit`. An account cannot later switch between cash and credit types (`400`). A credit account's opening balance is the existing debt as a negative amount; it is excluded from Ready to Assign.
+
+Each credit account owns one server-managed payment category, ID `ccp-{accountId}`, named after the account in the first group `credit-card-payments` ("Credit Card Payments"). Monthly Plan saves may assign to these categories but cannot create, move or add other categories to that group (`400`). Transactions and schedules cannot use a payment category (`400`); pay a card with a transfer.
+
+Rules applied by the ledger projection for each month:
+
+| Card activity | Effect |
+|---|---|
+| Purchase from a funded category (e.g. 40 from Groceries with 100 available) | Groceries activity −40; payment category +40. |
+| Purchase from a partially funded category (40, only 25 available) | Groceries −40 (Available −15, reported as `creditOverspending: 15`); payment +25. The 15 becomes card debt: the next month opens Groceries at zero **without** reducing Ready to Assign. Assigning 15 later moves it into the payment category. |
+| Refund (+10 to Groceries) | Groceries +10; payment −10. |
+| Fee or interest | Enter as categorized spending; follows the purchase rules. |
+| Payment (transfer 30 cash → card) | Budget-neutral for cash; payment category −30. |
+
+Credit account transactions without a category or split are rejected with `Credit account transactions require a category.` Opening entries and transfers are exempt.
+
+`GET /api/accounts/{id}/credit-summary/{YYYY-MM}` returns `priorBalance` (before the month), `spendingAndOutflows`, `interestCharges` (currently always 0), `paymentsAndInflows` and `currentBalance` for a credit account. Monthly category DTOs include read-only `creditOverspending`.
+
+### Debt payoff targets
+
+Each credit account may have one debt payoff target on its payment category. Targets are ledger commands: they require `commandId` and the current ledger `version`, replay an identical command, reject a reused command ID with a different body (`409`) or a stale version (`409`), write an audit receipt (`payoffTarget.save/{accountId}`, `payoffTarget.delete/{accountId}`) and increment the ledger version. They never change Plan amounts, category `target` values or ledger balances.
+
+| Method | Route | Body / result |
+|---|---|---|
+| `GET` | `/api/accounts/{id}/payoff-target/{YYYY-MM}` | `{ accountId, month, version, target, progress }`; `target` and `progress` are `null` when none is saved. |
+| `PUT` | `/api/accounts/{id}/payoff-target` | `{ commandId, version, kind, targetMonth?, monthlyAmount? }` creates or replaces the target; returns `{ id, version }`. |
+| `POST` | `/api/accounts/{id}/payoff-target/delete` | `{ commandId, version }`; `404` when no target exists. |
+
+`kind` is `payByDate` (requires `targetMonth` `YYYY-MM`, from the current calendar month up to 50 years ahead; no `monthlyAmount`) or `monthlyAmount` (requires a positive `monthlyAmount` with at most two decimals; no `targetMonth`). Saving requires an open credit account; cash accounts and past months return `400`. `target.payoffAmount` is the card debt (`max(-balance, 0)` over all entries) recorded on every save and shown as the "Pay off" headline; `createdAt` is kept across edits and `updatedAt` changes.
+
+`progress` is calculated by the server for the requested Plan month (it initializes that month like `GET /api/budget/{month}`):
+
+| Field | Rule |
+|---|---|
+| `neededForPayoff` | `max(-card balance through the end of the month, 0)` |
+| `availableForPayment` | payment category Available in that month (negative counts as 0 below) |
+| `assignedThisMonth` | payment category Assigned in that month |
+| `toGo` | `max(needed - max(available, 0), 0)` |
+| `payByDate` `monthsRemaining` | months from the viewed month to `targetMonth` inclusive; `1` when the target month has passed (`isPastDue` is then true while money is still to go) |
+| `payByDate` `assignThisMonth` | `max(0, roundUpToCent((needed - (available - assigned)) / monthsRemaining) - assigned)`, capped at `toGo` |
+| `payByDate` `percent` | `floor(min(available / needed, 1) × 100)`; `100` when nothing is owed |
+| `monthlyAmount` `assignThisMonth` | month target `min(monthlyAmount, assigned + toGo)`; `max(monthTarget - assigned, 0)` |
+| `monthlyAmount` `percent` | `floor(min(assigned / monthTarget, 1) × 100)`; `100` when the month target is 0 |
+| `status` | `funded` when `toGo` is 0, `onTrack` when `assignThisMonth` is 0, otherwise `behind` |
+
+Worked example (October 2026, target March 2027, balance −2,674.47, Available 500.40, Assigned 0): needed 2,674.47, to go 2,174.07, percent 18, six months remaining, assign `ceil(2,174.07 / 6)` = 362.35.
 
 ## Register and payees
 

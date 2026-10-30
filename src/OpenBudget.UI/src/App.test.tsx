@@ -17,6 +17,9 @@ beforeEach(()=>{
   vi.stubGlobal('fetch',vi.fn(async(path:string,init?:RequestInit)=>{
     if(path==='/api/auth/session')return response({id:'u1',userName:'alice',email:'alice@example.test',isAdministrator:true});
     if(path==='/api/accounts')return response({version:1,accounts:focusAccounts});
+    if(path.startsWith('/api/accounts/card-1/payoff-target/'))return response({accountId:'card-1',month:path.slice(-7),version:1,target:null,progress:null});
+    if(path==='/api/accounts/card-1/payoff-target'&&init?.method==='PUT'){writes.push({path,...JSON.parse(String(init.body))});return response({id:'card-1',version:2});}
+    if(path.startsWith('/api/accounts/card-1/credit-summary/'))return response({accountId:'card-1',month:path.slice(-7),priorBalance:-2674.07,spendingAndOutflows:-134.40,interestCharges:0,paymentsAndInflows:134,currentBalance:-2674.47});
     if(path==='/api/budgets'&&init?.method==='POST')return response({id:'new-budget',name:JSON.parse(String(init.body)).name,currency:'EUR',version:1,isArchived:false,createdAt:'2026-10-01T00:00:00Z'});
     if(path.startsWith('/api/budgets/')&&init?.method==='DELETE'){const id=path.split('/')[3];ownedBudgets=ownedBudgets.filter(item=>item.id!==id);archivedBudgets=archivedBudgets.filter(item=>item.id!==id);return new Response(null,{status:204});}
     if(path.startsWith('/api/budgets/')&&path.endsWith('/archive')){const id=path.split('/')[3];const budget=ownedBudgets.find(item=>item.id===id);if(budget){ownedBudgets=ownedBudgets.filter(item=>item.id!==id);archivedBudgets.push({...budget,isArchived:true,version:budget.version+1});}return new Response(null,{status:204});}
@@ -203,6 +206,40 @@ it('collapses and expands cash accounts while retaining the total',async()=>{
   expect(screen.queryByText('No Accounts')).not.toBeInTheDocument();
 });
 
+it('groups credit accounts under CREDIT and shows the card payment category details',async()=>{
+  const account={isClosed:false,unclearedBalance:0,isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0};
+  focusAccounts=[{...account,id:'cash-1',name:'Salary',balance:4325.87,clearedBalance:4325.87,accountType:'checking'},{...account,id:'card-1',name:'Mastercard',balance:-2674.47,clearedBalance:-2674.47,accountType:'creditCard'}];
+  const october=budget('2026-10',0,0,15);
+  october.groups.unshift({id:'credit-card-payments',name:'Credit Card Payments',sortOrder:0,isArchived:false,categories:[{id:'ccp-card-1',name:'Mastercard',assigned:0,activity:0.40,available:500.40,target:0,icon:'💳',snoozed:false,sortOrder:0,isArchived:false}]});
+  months['2026-10']=october;
+  render(<App/>);await saved();
+  const credit=screen.getByRole('button',{name:/CREDIT/});
+  expect(credit).toHaveTextContent('-€2,674.47');
+  expect(document.getElementById('credit-account-list')).toContainElement(screen.getByRole('button',{name:/Mastercard -€2,674.47/}));
+  expect(document.getElementById('cash-account-list')).not.toContainElement(screen.getByRole('button',{name:/Mastercard -€2,674.47/}));
+  expect(screen.getByRole('button',{name:/CASH/})).toHaveTextContent('€4,325.87');
+  const paymentRow=screen.getByRole('button',{name:'Move available money from Mastercard'}).closest('.category-row') as HTMLElement;
+  expect(paymentRow.querySelector('.available-cell')).toHaveClass('underfunded');
+  expect(screen.getByText('Payment')).toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:'Add category to Credit Card Payments'})).not.toBeInTheDocument();
+  await userEvent.click(within(paymentRow).getByRole('button',{name:'Edit assigned for Mastercard'}));
+  const details=await screen.findByRole('region',{name:'Mastercard payment'});
+  expect(details).toHaveTextContent('Underfunded');
+  expect(details).toHaveTextContent('assign €2,174.07 more');
+  expect(await within(details).findByText('Prior Balance')).toBeInTheDocument();
+  expect(details).toHaveTextContent('Spending and Outflows-€134.40');
+  expect(details).toHaveTextContent('Payments and Inflows€134.00');
+  const createTarget=within(details).getByRole('button',{name:'Create a Debt Payoff Target'});
+  await waitFor(()=>expect(createTarget).toBeEnabled());
+  await userEvent.click(createTarget);
+  const editor=within(details).getByRole('form',{name:'Debt payoff target'});
+  await userEvent.click(within(editor).getByRole('button',{name:'Save Target'}));
+  await waitFor(()=>expect(writes.some(write=>write.path==='/api/accounts/card-1/payoff-target')).toBe(true));
+  expect(writes.find(write=>write.path==='/api/accounts/card-1/payoff-target')).toMatchObject({kind:'payByDate',monthlyAmount:null,version:1});
+  await waitFor(()=>expect(within(details).queryByRole('form',{name:'Debt payoff target'})).not.toBeInTheDocument());
+  expect(screen.queryByText('Debt payoff targets arrive with Goals and targets.')).not.toBeInTheDocument();
+});
+
 it('shows only the no accounts message and add action when the account list is empty',async()=>{
   render(<App/>);await saved();
   expect(await screen.findByText('No Accounts')).toBeInTheDocument();
@@ -236,7 +273,8 @@ it('resizes and collapses the desktop sidebar while preserving its width',async(
 it('opens the account creation form from beneath CASH',async()=>{
   render(<App/>);await saved();
   await userEvent.click(screen.getByRole('button',{name:'Add Account'}));
-  expect(await screen.findByRole('dialog',{name:'Add cash account'})).toBeInTheDocument();
+  expect(await screen.findByRole('dialog',{name:'Select Account Type'})).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button',{name:'Checking'}));
   expect(screen.getByLabelText('Account name')).toBeInTheDocument();
 });
 

@@ -173,6 +173,7 @@ it('distinguishes an empty account list, empty filters, and a failed load with r
 it('creates an account with opening balance and notifies the Plan sidebar', async () => {
   const onChanged = show(); const user = userEvent.setup(); await ready();
   await user.click(screen.getByRole('button', { name: 'Add account' }));
+  await user.click(within(screen.getByRole('dialog', { name: 'Select Account Type' })).getByRole('button', { name: 'Checking' }));
   const dialog = screen.getByRole('dialog');
   await user.type(within(dialog).getByLabelText('Account name'), 'Wallet');
   await user.clear(within(dialog).getByLabelText('Opening balance'));
@@ -183,11 +184,30 @@ it('creates an account with opening balance and notifies the Plan sidebar', asyn
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 
+it('offers cash and credit account types and records a credit balance owed as debt', async () => {
+  show(); const user = userEvent.setup(); await ready();
+  await user.click(screen.getByRole('button', { name: 'Add account' }));
+  const picker = screen.getByRole('dialog', { name: 'Select Account Type' });
+  expect(within(picker).getByRole('region', { name: 'Cash Accounts' })).toHaveTextContent('A cash account holds funds you already own and can spend immediately.');
+  const credit = within(picker).getByRole('region', { name: 'Credit Accounts' });
+  expect(within(credit).getAllByRole('button').map(button => button.textContent)).toEqual(['Credit Card', 'Line of Credit']);
+  await user.click(within(credit).getByRole('button', { name: 'Credit Card' }));
+  const form = screen.getByRole('dialog', { name: 'Add Credit Card account' });
+  await user.click(within(form).getByRole('button', { name: 'Back' }));
+  await user.click(within(screen.getByRole('dialog', { name: 'Select Account Type' })).getByRole('button', { name: 'Credit Card' }));
+  await user.type(screen.getByLabelText('Account name'), 'Mastercard');
+  await user.clear(screen.getByLabelText('Current balance owed'));
+  await user.type(screen.getByLabelText('Current balance owed'), '250');
+  await user.click(screen.getByRole('button', { name: 'Save account' }));
+  await waitFor(() => expect(mutations[0]).toEqual({ path: '/api/accounts', body: expect.objectContaining({ name: 'Mastercard', accountType: 'creditCard', openingBalance: -250 }) }));
+});
+
 it('retries a lost response with the identical command id and body', async () => {
   const onPendingChange = vi.fn();
   render(<AccountsPage selectedAccount="" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()} onPendingChange={onPendingChange} />);
   const user = userEvent.setup(); await ready(); failMutation = 'network';
   await user.click(screen.getByRole('button', { name: 'Add account' }));
+  await user.click(screen.getByRole('button', { name: 'Checking' }));
   await user.type(screen.getByLabelText('Account name'), 'Wallet');
   await user.click(screen.getByRole('button', { name: 'Save account' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Connection lost');
@@ -204,6 +224,7 @@ it('retries a lost response with the identical command id and body', async () =>
 it('keeps edits on conflict and requires a reload before resubmitting', async () => {
   show(); const user = userEvent.setup(); await ready(); failMutation = 'conflict';
   await user.click(screen.getByRole('button', { name: 'Add account' }));
+  await user.click(screen.getByRole('button', { name: 'Checking' }));
   await user.type(screen.getByLabelText('Account name'), 'Wallet');
   await user.click(screen.getByRole('button', { name: 'Save account' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('changed in another session');

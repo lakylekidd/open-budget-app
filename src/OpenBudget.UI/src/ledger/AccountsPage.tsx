@@ -1,5 +1,5 @@
 import { Fragment as ReactFragment, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
-import { type Account, type Accounts, type Audit, type CategoryOption, type Entry, type Register, type Schedules, type ScheduledItem, ApiError, formatMoney, loadCategories, parseMoney, requestJson, today } from './api';
+import { type Account, type Accounts, type Audit, type CategoryOption, type Entry, type Register, type Schedules, type ScheduledItem, ApiError, formatMoney, loadCategories, parseMoney, requestJson, today, type AccountType, accountTypeLabel, accountTypeSections, isCreditAccount } from './api';
 import { LedgerDialog } from './LedgerDialog';
 import { TransactionForm } from './TransactionForm';
 import { AccountHeader, RegisterIcon, TransactionRow } from './AccountRegister';
@@ -11,7 +11,7 @@ import { ManagePayees } from './Payees';
 import { TransactionSelectionBar } from './TransactionSelectionBar';
 import './ledger.css';
 
-type Dialog = { kind: 'account'; account?: Account } | { kind: 'transaction'; entry?: Entry } | { kind: 'transfer'; entry?: Entry; from?: string; to?: string }
+type Dialog = { kind: 'account'; account?: Account; accountType?: AccountType } | { kind: 'transaction'; entry?: Entry } | { kind: 'transfer'; entry?: Entry; from?: string; to?: string }
   | { kind: 'reconcile'; account: Account } | { kind: 'delete'; entry: Entry } | { kind: 'history' };
 
 export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMenu, onPendingChange, createAccountRequest, editAccountRequest, focusTransaction }: {
@@ -321,10 +321,10 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     </div>
     {managePayees&&<ManagePayees accounts={accounts.accounts} categories={categories} onPendingChange={setPayeePending} onClose={()=>setManagePayees(false)} onChanged={()=>{setRefresh(n=>n+1);onChanged();}} onShowTransactions={payee=>{setPayeeFilter(payee.id);setSearch('');setCategory('');setStatus('');setReviewFilter(false);setManagePayees(false);setPage(1);}}/>}
     {selected.length>0&&!inline&&!dialog&&<TransactionSelectionBar key={selected.map(t=>t.id).join(',')} entries={selected} accounts={accounts.accounts} flags={flags} disabled={disabled} scheduled={selected.some(t=>schedules?.items.some(s=>s.occurrenceId===t.id))} onClear={()=>setSelectedIds([])} onRenameFlags={renameFlags} onApply={action=>mutate('/api/transactions/selection','POST',{ids:selected.map(t=>t.id),...action})}/>}
-    {dialog && <LedgerDialog title={dialog.kind === 'account' ? dialog.account ? 'Edit Account' : 'Add cash account' : dialog.kind === 'transaction' ? dialog.entry ? 'Edit transaction' : 'Add transaction' : dialog.kind === 'transfer' ? dialog.entry ? 'Edit transfer' : 'Transfer money' : dialog.kind === 'reconcile' ? 'Reconcile account' : dialog.kind === 'history' ? 'Audit history' : 'Delete transaction'} onClose={close}>
+    {dialog && <LedgerDialog onBack={dialog.kind === 'account' && !dialog.account && dialog.accountType ? () => setDialog({ kind: 'account' }) : undefined} title={dialog.kind === 'account' ? dialog.account ? 'Edit Account' : dialog.accountType ? `Add ${accountTypeLabel(dialog.accountType)} account` : 'Select Account Type' : dialog.kind === 'transaction' ? dialog.entry ? 'Edit transaction' : 'Add transaction' : dialog.kind === 'transfer' ? dialog.entry ? 'Edit transfer' : 'Transfer money' : dialog.kind === 'reconcile' ? 'Reconcile account' : dialog.kind === 'history' ? 'Audit history' : 'Delete transaction'} onClose={close}>
       {feedback}
       {dialog.kind === 'transaction' && <TransactionForm accounts={accounts.accounts} selectedAccount={selectedAccount} entry={dialog.entry} busy={disabled} onSubmit={async fields => { await mutate(`/api/transactions${dialog.entry ? `/${dialog.entry.id}` : ''}`, dialog.entry ? 'PUT' : 'POST', fields); }} />}
-      {dialog.kind === 'account' && (dialog.account ? <EditAccountForm account={dialog.account} busy={disabled} onCancel={close} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account!.id}`, 'PUT', fields); }}/> : <AccountForm busy={disabled} onSubmit={async fields => { await mutate('/api/accounts', 'POST', fields); }}/>) }
+      {dialog.kind === 'account' && (dialog.account ? <EditAccountForm account={dialog.account} busy={disabled} onCancel={close} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account!.id}`, 'PUT', fields); }}/> : dialog.accountType ? <AccountForm key={dialog.accountType} accountType={dialog.accountType} busy={disabled} onSubmit={async fields => { await mutate('/api/accounts', 'POST', fields); }}/> : <AccountTypeList onSelect={accountType => setDialog({ kind: 'account', accountType })}/>) }
       {dialog.kind === 'transfer' && <TransferForm accounts={openAccounts} selectedAccount={selectedAccount} dialog={dialog} busy={disabled} onSubmit={async fields => { await mutate(`/api/transfers${dialog.entry ? `/${dialog.entry.id}` : ''}`, dialog.entry ? 'PUT' : 'POST', fields); }} />}
       {dialog.kind === 'reconcile' && <ReconcileForm account={accounts.accounts.find(a => a.id === dialog.account.id) ?? dialog.account} busy={disabled} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account.id}/reconcile`, 'POST', fields); }} />}
       {dialog.kind === 'delete' && <><p>Delete this entry{dialog.entry.transferId ? ' and its linked transfer entry' : ''}? Balances and budget activity will be recalculated. The audit history is retained.</p><button disabled={disabled} className="button-primary" onClick={() => mutate(`/api/transactions/${dialog.entry.id}/delete`, 'POST', {})}>Confirm deletion</button></>}
@@ -334,14 +334,22 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   </section>;
 }
 
-function AccountForm({ account, busy, onSubmit }: { account?: Account; busy: boolean; onSubmit: (fields: object) => Promise<void> }) {
-  const [name, setName] = useState(account?.name ?? ''); const [date, setDate] = useState(today());
-  const [accountType, setAccountType] = useState<string>(account?.accountType ?? 'checking');
-  const [amount, setAmount] = useState('0'); const [closed, setClosed] = useState(account?.isClosed ?? false); const [error, setError] = useState('');
-  return <form className="ledger-form" onSubmit={async e => { e.preventDefault(); const parsed = parseMoney(amount); if (parsed === null) { setError('Enter a balance with at most two decimal places.'); return; } await onSubmit(account ? { name, accountType, isClosed: closed } : { name, accountType, date, openingBalance: parsed }); }}>
+function AccountTypeList({ onSelect }: { onSelect: (type: AccountType) => void }) {
+  return <div className="account-type-list">{accountTypeSections.map(section => <section key={section.title} aria-label={section.title}>
+    <h3>{section.title}</h3><p>{section.description}</p>
+    {section.types.map(type => <button type="button" key={type.value} onClick={() => onSelect(type.value)}>{type.label}</button>)}
+  </section>)}</div>;
+}
+
+function AccountForm({ accountType, busy, onSubmit }: { accountType: AccountType; busy: boolean; onSubmit: (fields: object) => Promise<void> }) {
+  const credit = isCreditAccount({ accountType });
+  const [name, setName] = useState(''); const [date, setDate] = useState(today());
+  const [amount, setAmount] = useState('0'); const [error, setError] = useState('');
+  return <form className="ledger-form" onSubmit={async e => { e.preventDefault(); const parsed = parseMoney(amount); if (parsed === null || credit && parsed < 0) { setError(credit ? 'Enter the amount you owe as a positive balance with at most two decimal places.' : 'Enter a balance with at most two decimal places.'); return; } await onSubmit({ name, accountType, date, openingBalance: credit && parsed !== 0 ? -parsed : parsed }); }}>
     <label>Account name<input required maxLength={120} value={name} onChange={e => setName(e.target.value)} /></label>
-    <label>Account type<select value={accountType} onChange={e => setAccountType(e.target.value)}><option value="checking">Checking</option><option value="savings">Savings</option><option value="cash">Cash</option></select></label>
-    {!account ? <><label>Opening date<input required min="1900-01-01" max="9998-12-31" type="date" value={date} onChange={e => setDate(e.target.value)} /></label><label>Opening balance<input required inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} /></label><p>The opening balance is recorded once as a cleared ledger entry and contributes to Ready to Assign.</p></> : <label className="checkbox-label"><input type="checkbox" checked={closed} onChange={e => setClosed(e.target.checked)} />Closed account</label>}
+    <label>Opening date<input required min="1900-01-01" max="9998-12-31" type="date" value={date} onChange={e => setDate(e.target.value)} /></label>
+    <label>{credit ? 'Current balance owed' : 'Opening balance'}<input required inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} /></label>
+    <p>{credit ? 'The balance owed is recorded once as existing debt. It does not change Ready to Assign; assign money to this account’s payment category to pay it off.' : 'The opening balance is recorded once as a cleared ledger entry and contributes to Ready to Assign.'}</p>
     {error && <p role="alert">{error}</p>}<button className="button-primary" disabled={busy}>Save account</button>
   </form>;
 }

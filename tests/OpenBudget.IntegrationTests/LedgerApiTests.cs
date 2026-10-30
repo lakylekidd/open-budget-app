@@ -89,6 +89,107 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
     }
 
     [Fact]
+    public async Task Credit_card_spending_funds_payment_category_and_unfunded_spending_becomes_debt()
+    {
+        await using var app = await fixture.CreateAppAsync(); var client = app.CreateClient();
+        var cash = await AddAccount(client, 500);
+        var card = (await Post<MutationDto>(client, "/api/accounts", new CreateAccountRequest(Guid.NewGuid(), (await Accounts(client)).Version, "Mastercard", Date, -200, "creditCard"))).Id;
+        var payment = CreditCardRules.PaymentCategoryId(card);
+        var budget = await Budget(client);
+        Assert.Equal(500, budget.ReadyToAssign);
+        var group = budget.Groups.Single(g => g.Id == CreditCardRules.PaymentGroupId);
+        Assert.Equal(0, group.SortOrder);
+        Assert.Equal("Mastercard", Assert.Single(group.Categories).Name);
+
+        var editable = Editable(budget);
+        budget = await Put<BudgetDto>(client, "/api/budget/2026-10", editable with { Groups = editable.Groups.Select(g => g with { Categories = g.Categories.Select(c => c.Id == "groceries" ? c with { Assigned = 30 } : c).ToList() }).ToList() });
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/transactions", await Request(client, card, -40))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/transactions", await Request(client, cash, -40, payment))).StatusCode);
+        await AddTransaction(client, card, -40, "groceries");
+        budget = await Budget(client);
+        Assert.Equal(470, budget.ReadyToAssign);
+        Assert.Equal(-10, Category(budget, "groceries").Available);
+        Assert.Equal(10, Category(budget, "groceries").CreditOverspending);
+        Assert.Equal(30, Category(budget, payment).Available);
+
+        await Post<MutationDto>(client, "/api/transfers", new TransferRequest(Guid.NewGuid(), (await Accounts(client)).Version, cash, card, Date, 30, "Card payment"));
+        budget = await Budget(client);
+        Assert.Equal(0, Category(budget, payment).Available);
+        Assert.Equal(470, budget.ReadyToAssign);
+        Assert.Equal(-210, (await Accounts(client)).Accounts.Single(a => a.Id == card).Balance);
+        Assert.Equal(470, (await Get<BudgetDto>(client, "/api/budget/2026-11")).ReadyToAssign);
+
+        editable = Editable(budget);
+        budget = await Put<BudgetDto>(client, "/api/budget/2026-10", editable with { Groups = editable.Groups.Select(g => g with { Categories = g.Categories.Select(c => c.Id == "groceries" ? c with { Assigned = 40 } : c).ToList() }).ToList() });
+        Assert.Equal(0, Category(budget, "groceries").Available);
+        Assert.Equal(10, Category(budget, payment).Available);
+        Assert.Equal(460, (await Get<BudgetDto>(client, "/api/budget/2026-11")).ReadyToAssign);
+        Assert.Equal(10, Category(await Get<BudgetDto>(client, "/api/budget/2026-11"), payment).Available);
+
+        var summary = await Get<CreditSummaryDto>(client, $"/api/accounts/{card}/credit-summary/2026-10");
+        Assert.Equal(0, summary.PriorBalance); Assert.Equal(-240, summary.SpendingAndOutflows); Assert.Equal(30, summary.PaymentsAndInflows); Assert.Equal(-210, summary.CurrentBalance);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync($"/api/accounts/{cash}", new UpdateAccountRequest(Guid.NewGuid(), (await Accounts(client)).Version, "Checking", false, "creditCard"))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Credit_payoff_target_is_versioned_replay_safe_and_reports_monthly_progress()
+    {
+        await using var app = await fixture.CreateAppAsync(); var client = app.CreateClient();
+        var cash = await AddAccount(client, 3000);
+        var card = (await Post<MutationDto>(client, "/api/accounts", new CreateAccountRequest(Guid.NewGuid(), (await Accounts(client)).Version, "Mastercard", Date, -2174.07m, "creditCard"))).Id;
+        var editable = Editable(await Budget(client));
+        await Put<BudgetDto>(client, "/api/budget/2026-10", editable with { Groups = editable.Groups.Select(g => g with { Categories = g.Categories.Select(c => c.Id == "groceries" ? c with { Assigned = 500.40m } : c).ToList() }).ToList() });
+        await AddTransaction(client, card, -500.40m, "groceries");
+        var empty = await Get<CreditPayoffDto>(client, $"/api/accounts/{card}/payoff-target/2026-10");
+        Assert.Null(empty.Target); Assert.Null(empty.Progress);
+        Assert.Equal((await Accounts(client)).Version, empty.Version);
+
+        var create = new SaveCreditPayoffTargetRequest(Guid.NewGuid(), empty.Version, "payByDate", "2027-03");
+        var created = await Put<MutationDto>(client, $"/api/accounts/{card}/payoff-target", create);
+        Assert.Equal(created, await Put<MutationDto>(client, $"/api/accounts/{card}/payoff-target", create));
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync($"/api/accounts/{card}/payoff-target", create with { TargetMonth = "2027-04" })).StatusCode);
+        var summary = await Get<CreditPayoffDto>(client, $"/api/accounts/{card}/payoff-target/2026-10");
+        Assert.Equal(created.Version, summary.Version);
+        Assert.Equal(new CreditPayoffTargetDto("payByDate", "2027-03", null, 2674.47m, summary.Target!.CreatedAt, summary.Target.UpdatedAt), summary.Target);
+        var progress = summary.Progress!;
+        Assert.Equal(2674.47m, progress.NeededForPayoff); Assert.Equal(500.40m, progress.AvailableForPayment); Assert.Equal(2174.07m, progress.ToGo);
+        Assert.Equal(18, progress.Percent); Assert.Equal(362.35m, progress.AssignThisMonth); Assert.Equal(6, progress.MonthsRemaining); Assert.Equal("behind", progress.Status);
+        var november = (await Get<CreditPayoffDto>(client, $"/api/accounts/{card}/payoff-target/2026-11")).Progress!;
+        Assert.Equal(5, november.MonthsRemaining); Assert.Equal(434.82m, november.AssignThisMonth);
+
+        // Invalid, stale and non-credit requests leave the target and ledger version untouched.
+        var version = created.Version;
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync($"/api/accounts/{card}/payoff-target", new SaveCreditPayoffTargetRequest(Guid.NewGuid(), version, "payByDate", "2026-09"))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync($"/api/accounts/{card}/payoff-target", new SaveCreditPayoffTargetRequest(Guid.NewGuid(), version, "monthlyAmount", null, 10.001m))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync($"/api/accounts/{cash}/payoff-target", new SaveCreditPayoffTargetRequest(Guid.NewGuid(), version, "payByDate", "2027-03"))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync($"/api/accounts/{cash}/payoff-target/2026-10")).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync($"/api/accounts/{card}/payoff-target", new SaveCreditPayoffTargetRequest(Guid.NewGuid(), version - 1, "monthlyAmount", null, 300))).StatusCode);
+        Assert.Equal(version, (await Accounts(client)).Version);
+        Assert.Equal("payByDate", (await Get<CreditPayoffDto>(client, $"/api/accounts/{card}/payoff-target/2026-10")).Target!.Kind);
+
+        var edited = await Put<MutationDto>(client, $"/api/accounts/{card}/payoff-target", new SaveCreditPayoffTargetRequest(Guid.NewGuid(), version, "monthlyAmount", null, 300));
+        var monthly = await Get<CreditPayoffDto>(client, $"/api/accounts/{card}/payoff-target/2026-10");
+        Assert.Equal("monthlyAmount", monthly.Target!.Kind); Assert.Null(monthly.Target.TargetMonth); Assert.Equal(300, monthly.Target.MonthlyAmount);
+        Assert.Equal(summary.Target.CreatedAt, monthly.Target.CreatedAt);
+        Assert.Equal(300, monthly.Progress!.AssignThisMonth); Assert.Equal(0, monthly.Progress.Percent); Assert.Null(monthly.Progress.MonthsRemaining);
+
+        var delete = new DeleteCreditPayoffTargetRequest(Guid.NewGuid(), edited.Version);
+        var deleted = await Post<MutationDto>(client, $"/api/accounts/{card}/payoff-target/delete", delete);
+        Assert.Equal(deleted, await Post<MutationDto>(client, $"/api/accounts/{card}/payoff-target/delete", delete));
+        Assert.Null((await Get<CreditPayoffDto>(client, $"/api/accounts/{card}/payoff-target/2026-10")).Target);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsJsonAsync($"/api/accounts/{card}/payoff-target/delete", new DeleteCreditPayoffTargetRequest(Guid.NewGuid(), deleted.Version))).StatusCode);
+
+        await using var db = app.CreateDb();
+        Assert.Empty(await db.CreditPayoffTargets.IgnoreQueryFilters().ToListAsync());
+        var audit = await db.LedgerCommands.IgnoreQueryFilters().Where(c => c.ResourceId == card && c.Kind.StartsWith("payoffTarget.")).OrderBy(c => c.Version).ToListAsync();
+        Assert.Equal(new[] { "payoffTarget.save/" + card, "payoffTarget.save/" + card, "payoffTarget.delete/" + card }, audit.Select(c => c.Kind).ToArray());
+        Assert.Contains("2027-03", audit[1].BeforeJson); Assert.Contains("300", audit[1].AfterJson);
+        // Targets never change Plan or ledger amounts.
+        Assert.Equal(500.40m, Category(await Budget(client), CreditCardRules.PaymentCategoryId(card)).Available);
+        Assert.Equal(0, Category(await Budget(client), CreditCardRules.PaymentCategoryId(card)).Target);
+    }
+
+    [Fact]
     public async Task Transfers_are_paired_atomic_neutral_editable_deletable_and_idempotent()
     {
         await using var app = await fixture.CreateAppAsync(); var client = app.CreateClient();

@@ -138,6 +138,16 @@ public static class LedgerModel
             e.Property(x => x.Fingerprint).HasMaxLength(64);
             e.HasIndex(x => new { x.ResourceId, x.Version });
         });
+        model.Entity<CreditPayoffTargetEntity>(e =>
+        {
+            e.HasKey(x => x.AccountId); e.Property(x => x.BudgetId).HasMaxLength(100);
+            e.Property(x => x.Kind).HasMaxLength(20);
+            e.Property(x => x.TargetMonth).HasMaxLength(7);
+            e.Property(x => x.MonthlyAmount).HasPrecision(14, 2);
+            e.Property(x => x.PayoffAmount).HasPrecision(14, 2);
+            e.HasOne<AccountEntity>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => x.BudgetId);
+        });
         model.Entity<ReconciliationEntity>(e =>
         {
             e.HasKey(x => x.Id); e.Property(x => x.BudgetId).HasMaxLength(100);

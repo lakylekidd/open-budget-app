@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace OpenBudget.Api;
 
-public sealed class BudgetService(BudgetDbContext db)
+public sealed class BudgetService(BudgetDbContext db, LedgerProjection projection)
 {
     private const int MaxGroups = 100;
     private const int MaxCategoriesPerGroup = 500;
@@ -105,6 +105,7 @@ public sealed class BudgetService(BudgetDbContext db)
 
         var previousReadyToAssign = CalculateReadyToAssign(budget);
         var previousAvailable = budget.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.Available);
+        var previousCreditOverspending = budget.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.CreditOverspending);
         var previousCategories = budget.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => (c.Name, c.Assigned));
         var orderingChanged = false;
 
@@ -127,8 +128,12 @@ public sealed class BudgetService(BudgetDbContext db)
 
             foreach (var categoryRequest in groupRequest.Categories)
             {
+                if (CreditCardRules.IsPaymentCategory(categoryRequest.Id) != (groupRequest.Id == CreditCardRules.PaymentGroupId))
+                    return BudgetUpdateResult.Invalid("Credit card payment categories stay in the Credit Card Payments group, which holds only them.");
                 if (!currentCategories.TryGetValue(categoryRequest.Id, out var category))
                 {
+                    if (CreditCardRules.IsPaymentCategory(categoryRequest.Id))
+                        return BudgetUpdateResult.Invalid("Credit card payment categories are created with their credit account.");
                     if (categoryRequest.Assigned != 0)
                         return BudgetUpdateResult.Invalid("A new category must start with zero assigned.");
                     category = new CategoryEntity { BudgetId = budgetId, BudgetMonth = request.Month, GroupId = groupRequest.Id, Id = categoryRequest.Id };
@@ -183,7 +188,8 @@ public sealed class BudgetService(BudgetDbContext db)
             previousReadyToAssign,
             CalculateReadyToAssign(budget),
             previousAvailable,
-            budget.Groups.SelectMany(g => g.Categories));
+            budget.Groups.SelectMany(g => g.Categories),
+            previousCreditOverspending);
         if (carryChanges.HasChanges)
         {
             var laterMonths = await db.Budgets.Where(b => b.BudgetId == budgetId && string.Compare(b.Month, budget.Month) > 0)
@@ -193,15 +199,22 @@ public sealed class BudgetService(BudgetDbContext db)
             {
                 var oldReadyToAssign = CalculateReadyToAssign(later);
                 var oldAvailable = later.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.Available);
+                var oldCreditOverspending = later.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.CreditOverspending);
                 if (BudgetCarryForward.Apply(later, carryChanges.ReadyToAssignDelta, carryChanges.AvailableDeltas, source)) later.Version++;
                 carryChanges = BudgetCarryForward.CalculateChanges(
                     oldReadyToAssign,
                     CalculateReadyToAssign(later),
                     oldAvailable,
-                    later.Groups.SelectMany(g => g.Categories));
+                    later.Groups.SelectMany(g => g.Categories),
+                    oldCreditOverspending);
                 source = later;
             }
         }
+
+        // Assigning to a category with credit overspending funds that card spending, so payment
+        // categories and their carry-forward must be recalculated with the new assignments.
+        if (await projection.HasCreditAccountsAsync(budgetId, cancellationToken))
+            await projection.RecalculateAsync(budgetId, cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(actorUserId))
             RecordPlanActions(budget, actorUserId, previousCategories);

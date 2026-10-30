@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef } from 'react';
 
-export function LedgerDialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+export function LedgerDialog({ title, onClose, onBack, children }: { title: string; onClose: () => void; onBack?: () => void; children: React.ReactNode }) {
   const id = useId();
   const ref = useRef<HTMLElement>(null);
   const close = useRef(onClose);
@@ -20,6 +20,6 @@ export function LedgerDialog({ title, onClose, children }: { title: string; onCl
     return () => { document.removeEventListener('keydown', keydown); previous?.focus(); };
   }, []);
   return <div className="modal-backdrop"><section ref={ref} tabIndex={-1} className="ledger-dialog" role="dialog" aria-modal="true" aria-labelledby={id} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();close.current();}}}>
-    <div className="ledger-dialog-heading"><h2 id={id}>{title}</h2><button type="button" aria-label="Close dialog" onClick={onClose}>×</button></div>{children}
+    <div className="ledger-dialog-heading">{onBack && <button type="button" className="ledger-dialog-back" aria-label="Back" onClick={onBack}>‹</button>}<h2 id={id}>{title}</h2><button type="button" aria-label="Close dialog" onClick={onClose}>×</button></div>{children}
   </section></div>;
 }

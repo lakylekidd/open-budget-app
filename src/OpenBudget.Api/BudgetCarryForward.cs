@@ -10,8 +10,11 @@ public static class BudgetCarryForward
 
     public static decimal OpeningAvailable(decimal available) => Math.Max(available, 0);
 
+    // Negative Available reduces the next month's Ready to Assign, except credit overspending, which is card debt.
+    public static decimal UncoveredOverspending(decimal available, decimal creditOverspending) => Math.Min(available + creditOverspending, 0);
+
     public static decimal OpeningReadyToAssign(BudgetEntity source) => decimal.Round(
-        BudgetService.CalculateReadyToAssign(source) + source.Groups.SelectMany(group => group.Categories).Sum(category => Math.Min(category.Available, 0)),
+        BudgetService.CalculateReadyToAssign(source) + source.Groups.SelectMany(group => group.Categories).Sum(category => UncoveredOverspending(category.Available, category.CreditOverspending)),
         2,
         MidpointRounding.ToEven);
 
@@ -19,7 +22,8 @@ public static class BudgetCarryForward
         decimal previousReadyToAssign,
         decimal currentReadyToAssign,
         IReadOnlyDictionary<string, decimal> previousAvailable,
-        IEnumerable<CategoryEntity> currentCategories)
+        IEnumerable<CategoryEntity> currentCategories,
+        IReadOnlyDictionary<string, decimal>? previousCreditOverspending = null)
     {
         var availableDeltas = new Dictionary<string, decimal>(StringComparer.Ordinal);
         var readyToAssignDelta = currentReadyToAssign - previousReadyToAssign;
@@ -28,7 +32,8 @@ public static class BudgetCarryForward
         {
             var oldAvailable = previousAvailable.GetValueOrDefault(category.Id);
             availableDeltas[category.Id] = OpeningAvailable(category.Available) - OpeningAvailable(oldAvailable);
-            readyToAssignDelta += Math.Min(category.Available, 0) - Math.Min(oldAvailable, 0);
+            readyToAssignDelta += UncoveredOverspending(category.Available, category.CreditOverspending)
+                - UncoveredOverspending(oldAvailable, previousCreditOverspending?.GetValueOrDefault(category.Id) ?? 0);
         }
 
         return new Changes(decimal.Round(readyToAssignDelta, 2, MidpointRounding.ToEven), availableDeltas);

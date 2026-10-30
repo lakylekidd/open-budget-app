@@ -55,7 +55,11 @@ public sealed partial class LedgerService
     {
         var error = LedgerRules.Validate(new(Guid.NewGuid(), 1, accountId, date, template.Amount, template.Payee, template.Memo, template.CategoryId, "uncleared", template.Splits));
         if (error is not null) throw new LedgerException(error);
-        await OpenAccountAsync(accountId, ct);
+        var account = await OpenAccountAsync(accountId, ct);
+        if (toAccountId is null && CreditCardRules.IsCredit(account.AccountType) && template.CategoryId is null && template.Splits?.Count is not > 0)
+            throw new LedgerException("Credit account transactions require a category.");
+        if ((template.Splits ?? []).Select(s => s.CategoryId).Append(template.CategoryId).Any(CreditCardRules.IsPaymentCategory))
+            throw new LedgerException("Credit card payment categories are funded automatically. Record a card payment as a transfer.");
         if (toAccountId is not null)
         {
             if (toAccountId == accountId || template.Amount >= 0 || template.CategoryId is not null || template.Splits?.Count > 0)

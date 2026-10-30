@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { type Account, type CategoryOption, type Entry, type Split, loadCategoryBudget, parseMoney, today } from './api';
+import { type Account, type CategoryOption, type Entry, type Split, loadCategoryBudget, parseMoney, today, isCreditAccount } from './api';
 import { type ViewOptions } from './ViewOptions';
 import { RegisterIcon } from './AccountRegister';
 import { TransactionDatePicker } from './TransactionDatePicker';
@@ -34,6 +34,7 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
     if(out===null||income===null||out<0||income<0||out>0&&income>0||out===0&&income===0&&!entry?.isOpening){setError('Enter one nonzero outflow or inflow with at most two decimal places.');return false;}
     const amount=income-out;const parsed=splits.map(s=>{const splitOut=s.outflow.trim()?parseRegisterMoney(s.outflow):0;const splitIn=s.inflow.trim()?parseRegisterMoney(s.inflow):0;return {categoryId:s.categoryId,payee:s.payee,memo:s.memo,amount:splitIn===null||splitOut===null||splitOut<0||splitIn<0||splitOut>0&&splitIn>0?null:splitIn-splitOut};});
     if(!transfer&&(parsed.some(s=>!s.categoryId||s.amount===null||s.amount===0)||splits.length&&Math.round(parsed.reduce((sum,s)=>sum+(s.amount??0)*100,0))!==Math.round(amount*100))){setError('Split amounts must equal the signed transaction amount. Choose a category and one valid amount for every split.');return false;}
+    if(!transfer&&!splits.length&&!categoryId&&!entry?.isOpening&&isCreditAccount(accounts.find(a=>a.id===accountId))){setError('Credit account transactions require a category.');return false;}
     if(requiresConfirmation&&!confirmed){setError('Confirm the reconciled transaction warning before saving.');return false;}
     return onSave({accountId,date,amount,payee:transfer?'':payee,memo,categoryId:transfer||splits.length?null:categoryId||null,splits:transfer?[]:parsed as Split[],status,repeat,toAccountId:transfer?.id??null,confirmReconciledEdit:confirmed,onlyOnce},another);
   }
