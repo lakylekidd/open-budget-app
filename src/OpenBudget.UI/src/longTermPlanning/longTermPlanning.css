@@ -101,7 +101,7 @@
    overflow-y:clip (not hidden) so the sticky label column keeps sticking while scrolling sideways. */
 .lt-group-rows{display:flex;flex-direction:column;overflow-y:clip}
 .lt-group-rows.closing{pointer-events:none}
-.lt-collapse-controls{display:flex;gap:6px;margin-bottom:auto}
+.lt-collapse-controls{display:flex;gap:6px;margin-bottom:8px}
 .lt-collapse-controls button{height:26px;padding:0 10px;border:1px solid #3a3c5a;border-radius:5px;background:#1b1d36;color:#d9d9ee;font-size:12px;font-weight:600;cursor:pointer}
 .lt-collapse-controls button:hover:not(:disabled){background:#26284a;color:#fff}
 .lt-collapse-controls button:focus-visible{outline:2px solid #8f8bff;outline-offset:2px}
