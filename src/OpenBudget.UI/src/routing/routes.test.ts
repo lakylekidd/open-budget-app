@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  accountSlugs, budgetIdFromLocation, budgetKeyFor, findBudgetByKey, formatRoute, initialPageFromLocation, isSafeReturnPath, monthFromLocation,
+  accountSlugs, budgetIdFromLocation, budgetKeyFor, budgetSlugFor, budgetSlugs, findBudgetByKey, findBudgetBySegment, formatRoute, initialPageFromLocation, isSafeReturnPath, monthFromLocation,
   parseRoute, pathForState, rememberReturnPath, resolveAccountSlug, resolveRoute, routeNotices, slugify, takeReturnPath, titleForState,
   type BudgetRoute,
 } from './routes';
@@ -9,6 +9,7 @@ import { base64Url, sha256 } from './sha256';
 const hex = (bytes: Uint8Array) => Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
 const budgets = [{ id: 'default', name: 'Household' }, { id: '6f1c2a7e-0d4b-4b7e-9a35-2b6f0c1d9e88', name: 'Travel' }];
 const key = budgetKeyFor('default');
+const slug = 'household';
 
 describe('sha256', () => {
   it('matches the FIPS 180-4 test vectors', () => {
@@ -28,7 +29,7 @@ describe('sha256', () => {
   });
 });
 
-describe('budget keys', () => {
+describe('legacy budget keys', () => {
   it('derives a short, stable, URL-safe key that does not expose the budget id', () => {
     expect(key).toMatch(/^[A-Za-z0-9_-]{11}$/);
     expect(budgetKeyFor('default')).toBe(key);
@@ -46,6 +47,8 @@ describe('budget keys', () => {
   it('reads the budget from the address bar', () => {
     expect(budgetIdFromLocation(budgets, `/${budgetKeyFor(budgets[1].id)}/account/all`)).toBe(budgets[1].id);
     expect(budgetIdFromLocation(budgets, `/${key}/nonsense`)).toBe('default');
+    expect(budgetIdFromLocation(budgets, '/household/plan')).toBe('default');
+    expect(budgetIdFromLocation(budgets, '/travel/nonsense')).toBe(budgets[1].id);
     expect(budgetIdFromLocation(budgets, '/AAAAAAAAAAA/plan')).toBeUndefined();
     expect(budgetIdFromLocation(budgets, '/')).toBeUndefined();
   });
@@ -165,6 +168,114 @@ describe('account slugs', () => {
   });
 });
 
+describe('budget slugs', () => {
+  it('derives a readable slug from the budget name', () => {
+    expect(slugify('My Household Budget', 'budget')).toBe('my-household-budget');
+    expect(budgetSlugFor([{ id: 'b1', name: 'My Household Budget' }], 'b1')).toBe('my-household-budget');
+  });
+
+  it('shares one slugify implementation between accounts and budgets', () => {
+    const items = [{ id: 'a1b2c3d4', name: 'Épargne & Co.' }];
+    expect(accountSlugs(items).get('a1b2c3d4')).toBe(budgetSlugs(items).get('a1b2c3d4'));
+    expect(budgetSlugs(items).get('a1b2c3d4')).toBe(slugify('Épargne & Co.'));
+  });
+
+  it('handles diacritics, punctuation, unicode letters, whitespace and length', () => {
+    expect(slugify('Crème Brûlée — Café Münster!', 'budget')).toBe('creme-brulee-cafe-munster');
+    expect(slugify('Søren & Æsop: Straße', 'budget')).toBe('soren-aesop-strasse');
+    expect(slugify("  --Mom's   (2026)  budget--  ", 'budget')).toBe('mom-s-2026-budget');
+    expect(slugify('Ａｂｃ １２３', 'budget')).toBe('abc-123');
+    expect(slugify('Budget́ é', 'budget')).toBe('budget-e');
+    expect(slugify('2026', 'budget')).toBe('2026');
+    expect(slugify(`${'word '.repeat(30)}`, 'budget').length).toBeLessThanOrEqual(48);
+    expect(slugify(`${'a'.repeat(47)} b`, 'budget')).toBe('a'.repeat(47));
+  });
+
+  it('falls back to "budget" for empty, whitespace, symbol-only and non-Latin names', () => {
+    for (const name of ['', '   ', '!!!', '💰💰', '---', '日本の家計', 'Бюджет'])
+      expect(budgetSlugs([{ id: 'b1', name }]).get('b1')).toBe('budget');
+  });
+
+  it('disambiguates budgets whose names slugify identically with the shortest unique id prefix', () => {
+    const list = [
+      { id: '3f9a1111-0000-4000-8000-000000000001', name: 'Household' },
+      { id: '3f9b2222-0000-4000-8000-000000000002', name: 'household!' },
+      { id: '3f9a1999-0000-4000-8000-000000000003', name: 'HOUSEHOLD' },
+      { id: 'c0ffee00-0000-4000-8000-000000000004', name: 'Travel' },
+    ];
+    const slugs = budgetSlugs(list);
+    expect(slugs.get(list[0].id)).toBe('household-3f9a11');
+    expect(slugs.get(list[1].id)).toBe('household-3f9b');
+    expect(slugs.get(list[2].id)).toBe('household-3f9a19');
+    expect(slugs.get(list[3].id)).toBe('travel');
+    expect(new Set(slugs.values()).size).toBe(list.length);
+  });
+
+  it('is deterministic regardless of list order', () => {
+    const list = [{ id: 'aaaa0001', name: 'Home' }, { id: 'bbbb0002', name: 'Home' }, { id: 'cccc0003', name: '日本' }, { id: 'dddd0004', name: '中国' }];
+    const forward = budgetSlugs(list);
+    const reversed = budgetSlugs([...list].reverse());
+    list.forEach(item => expect(reversed.get(item.id)).toBe(forward.get(item.id)));
+    expect(forward.get('cccc0003')).toBe('budget-cccc');
+    expect(forward.get('dddd0004')).toBe('budget-dddd');
+  });
+
+  it('never lets a budget take a reserved first segment', () => {
+    const slugs = budgetSlugs([{ id: 'a1b2c3d4', name: 'Admin' }, { id: 'e5f6a7b8', name: 'API' }, { id: '0123abcd', name: 'Login' }]);
+    expect(slugs.get('a1b2c3d4')).toBe('admin-a1b2');
+    expect(slugs.get('e5f6a7b8')).toBe('api-e5f6');
+    expect(slugs.get('0123abcd')).toBe('login-0123');
+  });
+
+  it('resolves the current slug, the legacy hashed key, and suffixed links after a rename', () => {
+    const before = [{ id: '3f9a1111', name: 'Home' }, { id: '7c2e2222', name: 'Home' }];
+    const oldLink = budgetSlugs(before).get('3f9a1111')!;
+    expect(oldLink).toBe('home-3f9a');
+    const renamed = [{ id: '3f9a1111', name: 'Family' }, before[1]];
+    expect(findBudgetBySegment(renamed, 'family')?.id).toBe('3f9a1111');
+    expect(findBudgetBySegment(renamed, oldLink)?.id).toBe('3f9a1111');
+    expect(findBudgetBySegment(renamed, 'HOME')?.id).toBe('7c2e2222');
+    expect(findBudgetBySegment(renamed, budgetKeyFor('7c2e2222'))?.id).toBe('7c2e2222');
+  });
+
+  it('does not resolve a stale unsuffixed slug, an ambiguous prefix or an unknown segment', () => {
+    const list = [{ id: '3f9a1111', name: 'Family' }, { id: '3f9a2222', name: 'Travel' }];
+    expect(findBudgetBySegment(list, 'home')).toBeUndefined();
+    expect(findBudgetBySegment(list, 'home-3f9a')).toBeUndefined();
+    expect(findBudgetBySegment(list, 'nothing-here')).toBeUndefined();
+    expect(findBudgetBySegment([], 'family')).toBeUndefined();
+  });
+
+  it('never resolves a budget that is not in the visible list (slugs are presentational, not access)', () => {
+    const visible = [{ id: 'mine-0001', name: 'Mine' }];
+    expect(findBudgetBySegment(visible, 'theirs')).toBeUndefined();
+    expect(findBudgetBySegment(visible, budgetKeyFor('theirs-0002'))).toBeUndefined();
+    expect(findBudgetBySegment(visible, 'theirs-0002')).toBeUndefined();
+    expect(resolveRoute(parseRoute('/theirs/plan'), { budgets: visible, fallbackBudgetId: 'mine-0001', accounts: [] }))
+      .toEqual({ target: { budgetId: 'mine-0001', page: 'Plan', accountId: '' }, notice: routeNotices.budgetNotFound });
+  });
+
+  it('resolves a slug a budget used earlier in the session through aliases', () => {
+    const renamed = [{ id: '3f9a1111', name: 'Family' }];
+    expect(findBudgetBySegment(renamed, 'home')).toBeUndefined();
+    expect(findBudgetBySegment(renamed, 'home', new Map([['home', '3f9a1111']]))?.id).toBe('3f9a1111');
+    expect(findBudgetBySegment(renamed, 'home', new Map([['home', 'not-visible']]))).toBeUndefined();
+  });
+
+  it('redirects a legacy hashed key to the slug path', () => {
+    const resolution = resolveRoute(parseRoute(`/${budgetKeyFor(budgets[1].id)}/long-term/2030`), { budgets, fallbackBudgetId: 'default', accounts: [] });
+    expect(resolution.target).toMatchObject({ budgetId: budgets[1].id, page: 'Long-Term Planning', year: 2030 });
+    expect(resolution.notice).toBeUndefined();
+    expect(pathForState({ budgetId: budgets[1].id, budgets, page: 'Long-Term Planning', accountId: '', month: '2026-10', defaultMonth: '2026-10', year: 2030, defaultYear: 2026, accounts: [] })).toBe('/travel/long-term/2030');
+  });
+
+  it('keeps slugs round-trippable through parseRoute and formatRoute', () => {
+    expect(parseRoute('/my-household-budget/plan/2026-11')).toEqual({ kind: 'budget', budgetKey: 'my-household-budget', page: 'Plan', month: '2026-11' });
+    expect(formatRoute({ kind: 'budget', budgetKey: 'my-household-budget', page: 'Plan' })).toBe('/my-household-budget/plan');
+    expect(parseRoute(`/${'a'.repeat(48)}-3f9a11/plan`)).toMatchObject({ kind: 'budget', page: 'Plan' });
+  });
+});
+
 describe('resolveRoute', () => {
   const accounts = [{ id: 'acc-visa-0001', name: 'Visa' }];
   const context = { budgets, fallbackBudgetId: 'default', accounts };
@@ -196,18 +307,18 @@ describe('resolveRoute', () => {
 });
 
 describe('pathForState and titles', () => {
-  const base = { budgetId: 'default', page: 'Plan', accountId: '', month: '2026-10', defaultMonth: '2026-10', year: 2026, defaultYear: 2026, accounts: [{ id: 'acc-1', name: 'Main Checking' }] };
+  const base = { budgetId: 'default', budgets, page: 'Plan', accountId: '', month: '2026-10', defaultMonth: '2026-10', year: 2026, defaultYear: 2026, accounts: [{ id: 'acc-1', name: 'Main Checking' }] };
 
   it('formats canonical paths, omitting default month and year', () => {
-    expect(pathForState(base)).toBe(`/${key}/plan`);
-    expect(pathForState({ ...base, month: '2026-11' })).toBe(`/${key}/plan/2026-11`);
-    expect(pathForState({ ...base, page: 'Long-Term Planning' })).toBe(`/${key}/long-term`);
-    expect(pathForState({ ...base, page: 'Long-Term Planning', year: 2027, month: '2026-11' })).toBe(`/${key}/long-term/2027`);
-    expect(pathForState({ ...base, page: 'Accounts' })).toBe(`/${key}/account/all`);
-    expect(pathForState({ ...base, page: 'Accounts', accountId: 'acc-1' })).toBe(`/${key}/account/main-checking`);
-    expect(pathForState({ ...base, page: 'Budget Together' })).toBe(`/${key}/together`);
-    expect(pathForState({ ...base, page: 'Reflect' })).toBe(`/${key}/reflect`);
-    expect(pathForState({ ...base, page: 'Wishlist' })).toBe(`/${key}/wishlist`);
+    expect(pathForState(base)).toBe(`/${slug}/plan`);
+    expect(pathForState({ ...base, month: '2026-11' })).toBe(`/${slug}/plan/2026-11`);
+    expect(pathForState({ ...base, page: 'Long-Term Planning' })).toBe(`/${slug}/long-term`);
+    expect(pathForState({ ...base, page: 'Long-Term Planning', year: 2027, month: '2026-11' })).toBe(`/${slug}/long-term/2027`);
+    expect(pathForState({ ...base, page: 'Accounts' })).toBe(`/${slug}/account/all`);
+    expect(pathForState({ ...base, page: 'Accounts', accountId: 'acc-1' })).toBe(`/${slug}/account/main-checking`);
+    expect(pathForState({ ...base, page: 'Budget Together' })).toBe(`/${slug}/together`);
+    expect(pathForState({ ...base, page: 'Reflect' })).toBe(`/${slug}/reflect`);
+    expect(pathForState({ ...base, page: 'Wishlist' })).toBe(`/${slug}/wishlist`);
   });
 
   it('waits while the budget or the selected account is not known yet', () => {
