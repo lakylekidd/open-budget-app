@@ -20,7 +20,20 @@ public static class CreditCardRules
     public static string PaymentCategoryId(Guid accountId) => PaymentCategoryPrefix + accountId.ToString("D");
     public static bool IsPaymentCategory(string? categoryId) => categoryId?.StartsWith(PaymentCategoryPrefix, StringComparison.Ordinal) == true;
 
-    public sealed record Flows(IReadOnlyDictionary<string, decimal> PaymentActivity, IReadOnlyDictionary<string, decimal> CreditOverspending);
+    // Per-card breakdown of a month's flows; see docs/credit-card-activity.md for the exact definitions.
+    //   Spending        = categorized card outflows (zero or negative);
+    //   Returns         = categorized card inflows (zero or positive);
+    //   FundedSpending  = spending covered by category funds, plus the part of spending a same-category return offsets;
+    //   Payments        = transfers with the card (a payment into the card is negative, a transfer out is positive).
+    // PaymentActivity = FundedSpending + Payments - Returns, so the breakdown always reconciles with the Plan grid.
+    public sealed record CardFlow(decimal Spending, decimal Returns, decimal FundedSpending, decimal Payments)
+    {
+        public decimal PaymentsAndReturns => Payments - Returns;
+        public decimal TotalActivity => FundedSpending + PaymentsAndReturns;
+    }
+
+    public sealed record Flows(IReadOnlyDictionary<string, decimal> PaymentActivity, IReadOnlyDictionary<string, decimal> CreditOverspending,
+        IReadOnlyDictionary<Guid, CardFlow>? Cards = null);
 
     // fundsBeforeCredit returns a category's opening + assigned + legacy + non-credit activity for the month.
     public static Flows Project(IEnumerable<TransactionEntity> monthEntries, IReadOnlySet<Guid> creditAccounts, Func<string, decimal> fundsBeforeCredit)
@@ -28,11 +41,15 @@ public static class CreditCardRules
         var payments = new Dictionary<string, decimal>(StringComparer.Ordinal);
         var overspending = new Dictionary<string, decimal>(StringComparer.Ordinal);
         var nets = new Dictionary<string, SortedDictionary<Guid, decimal>>(StringComparer.Ordinal);
+        var cards = new Dictionary<Guid, (decimal Spending, decimal Returns, decimal Funded, decimal Payments)>();
+        var gross = new Dictionary<(string CategoryId, Guid AccountId), (decimal Out, decimal In)>();
         foreach (var entry in monthEntries.Where(t => !t.IsDeleted && creditAccounts.Contains(t.AccountId)))
         {
             if (entry.TransferId is not null)
             {
                 Add(payments, PaymentCategoryId(entry.AccountId), -entry.Amount);
+                var transfer = cards.GetValueOrDefault(entry.AccountId);
+                cards[entry.AccountId] = transfer with { Payments = transfer.Payments - entry.Amount };
                 continue;
             }
             var parts = entry.Splits.Count > 0 ? entry.Splits.Select(s => (s.CategoryId, s.Amount))
@@ -41,6 +58,8 @@ public static class CreditCardRules
             {
                 if (!nets.TryGetValue(categoryId, out var byAccount)) nets[categoryId] = byAccount = [];
                 byAccount[entry.AccountId] = byAccount.GetValueOrDefault(entry.AccountId) + amount;
+                var totals = gross.GetValueOrDefault((categoryId, entry.AccountId));
+                gross[(categoryId, entry.AccountId)] = amount < 0 ? totals with { Out = totals.Out + amount } : totals with { In = totals.In + amount };
             }
         }
         foreach (var (categoryId, byAccount) in nets.OrderBy(x => x.Key, StringComparer.Ordinal))
@@ -58,11 +77,18 @@ public static class CreditCardRules
                 var covered = Math.Min(-net, remaining);
                 remaining -= covered;
                 Add(payments, PaymentCategoryId(accountId), covered);
+                var card = cards.GetValueOrDefault(accountId);
+                cards[accountId] = card with { Funded = card.Funded + covered };
                 unfunded += -net - covered;
             }
             if (unfunded > 0) overspending[categoryId] = unfunded;
         }
-        return new(payments, overspending);
+        foreach (var ((_, accountId), (spent, returned)) in gross)
+        {
+            var card = cards.GetValueOrDefault(accountId);
+            cards[accountId] = card with { Spending = card.Spending + spent, Returns = card.Returns + returned, Funded = card.Funded + Math.Min(returned, -spent) };
+        }
+        return new(payments, overspending, cards.ToDictionary(x => x.Key, x => new CardFlow(x.Value.Spending, x.Value.Returns, x.Value.Funded, x.Value.Payments)));
     }
 
     // Keeps the payment group and one payment category per credit account present and named after the account.

@@ -20,6 +20,9 @@ public sealed record ReconcileRequest(Guid CommandId, long Version, decimal Stat
 public sealed record MutationDto(Guid Id, long Version);
 public sealed record CreditSummaryDto(Guid AccountId, string Month, decimal PriorBalance, decimal SpendingAndOutflows, decimal InterestCharges,
     decimal PaymentsAndInflows, decimal CurrentBalance);
+// Month breakdown of one credit card's categorized activity; definitions live in docs/credit-card-activity.md.
+public sealed record CreditActivityDto(Guid AccountId, string Month, decimal Spending, decimal Returns, decimal TotalSpending,
+    decimal FundedSpending, decimal PaymentsAndReturns, decimal TotalActivity);
 public sealed record SaveCreditPayoffTargetRequest(Guid CommandId, long Version, string Kind, string? TargetMonth = null, decimal? MonthlyAmount = null);
 public sealed record DeleteCreditPayoffTargetRequest(Guid CommandId, long Version);
 public sealed record CreditPayoffTargetDto(string Kind, string? TargetMonth, decimal? MonthlyAmount, decimal PayoffAmount, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);

@@ -154,6 +154,8 @@ Credit account transactions without a category or split are rejected with `Credi
 
 `GET /api/accounts/{id}/credit-summary/{YYYY-MM}` returns `priorBalance` (before the month), `spendingAndOutflows`, `interestCharges` (currently always 0), `paymentsAndInflows` and `currentBalance` for a credit account. Monthly category DTOs include read-only `creditOverspending`.
 
+`GET /api/accounts/{id}/credit-activity/{YYYY-MM}` returns the month breakdown shown in the credit payment category Activity popup: `spending`, `returns`, `totalSpending`, `fundedSpending`, `paymentsAndReturns` and `totalActivity`. Read-only, scoped to the active budget (an account outside it is 404); a non-credit account or malformed month is 400. Definitions: [credit card activity](credit-card-activity.md).
+
 ### Debt payoff targets
 
 Each credit account may have one debt payoff target on its payment category. Targets are ledger commands: they require `commandId` and the current ledger `version`, replay an identical command, reject a reused command ID with a different body (`409`) or a stale version (`409`), write an audit receipt (`payoffTarget.save/{accountId}`, `payoffTarget.delete/{accountId}`) and increment the ledger version. They never change Plan amounts, category `target` values or ledger balances.

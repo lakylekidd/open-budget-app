@@ -345,6 +345,26 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
         return new(id, month, prior, outflows, 0, inflows, prior + outflows + inflows);
     }
 
+    // Reuses CreditCardRules.Project with the same fund inputs the ledger projection uses, so TotalActivity equals the
+    // payment category's Plan activity.
+    public async Task<CreditActivityDto> GetCreditActivityAsync(Guid id, string month, CancellationToken ct)
+    {
+        var account = await db.Accounts.AsNoTracking().SingleOrDefaultAsync(a => a.Id == id, ct) ?? throw new LedgerException("Account not found.", 404);
+        if (!CreditCardRules.IsCredit(account.AccountType)) throw new LedgerException("Only credit accounts have an activity summary.");
+        if (!DateOnly.TryParseExact($"{month}-01", "yyyy-MM-dd", out var start)) throw new LedgerException("Month must use YYYY-MM format.");
+        var end = start.AddMonths(1);
+        var creditIds = (await db.Accounts.AsNoTracking().Where(a => CreditCardRules.CreditTypes.Contains(a.AccountType)).Select(a => a.Id).ToListAsync(ct)).ToHashSet();
+        var entries = await db.Transactions.AsNoTracking().Include(t => t.Splits).Where(t => !t.IsDeleted && t.Date >= start && t.Date < end).ToListAsync(ct);
+        var categories = (await db.Budgets.AsNoTracking().Where(b => b.BudgetId == db.ActiveBudgetId && b.Month == month)
+            .Include(b => b.Groups).ThenInclude(g => g.Categories).SingleOrDefaultAsync(ct))?.Groups.SelectMany(g => g.Categories)
+            .ToDictionary(c => c.Id, StringComparer.Ordinal) ?? [];
+        var cashActivity = LedgerRules.Activity(entries.Where(t => !creditIds.Contains(t.AccountId)));
+        var flows = CreditCardRules.Project(entries, creditIds, categoryId => categories.TryGetValue(categoryId, out var c)
+            ? c.OpeningAvailable + c.Assigned + c.LegacyActivity + cashActivity.GetValueOrDefault(categoryId) : 0);
+        var card = flows.Cards!.GetValueOrDefault(id) ?? new CreditCardRules.CardFlow(0, 0, 0, 0);
+        return new(id, month, card.Spending, card.Returns, card.Spending + card.Returns, card.FundedSpending, card.PaymentsAndReturns, card.TotalActivity);
+    }
+
     public Task<List<string>> GetPayeesAsync(CancellationToken ct) =>
         db.Payees.AsNoTracking().Where(p => !p.IsHidden).OrderBy(p => p.Name).Select(p => p.Name).ToListAsync(ct);
 

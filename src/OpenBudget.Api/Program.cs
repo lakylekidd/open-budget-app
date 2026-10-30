@@ -241,6 +241,8 @@ app.MapPost("/api/accounts", (CreateAccountRequest request, LedgerService ledger
 app.MapPut("/api/accounts/{id:guid}", (Guid id, UpdateAccountRequest request, LedgerService ledger, CancellationToken ct) => ledger.UpdateAccountAsync(id, request, ct));
 app.MapGet("/api/accounts/{id:guid}/credit-summary/{month}", (Guid id, string month, LedgerService ledger, LedgerGate gate, CancellationToken ct) =>
     gate.RunAsync(() => ledger.GetCreditSummaryAsync(id, month, ct), ct));
+app.MapGet("/api/accounts/{id:guid}/credit-activity/{month}", (Guid id, string month, LedgerService ledger, LedgerGate gate, CancellationToken ct) =>
+    gate.RunAsync(() => ledger.GetCreditActivityAsync(id, month, ct), ct));
 app.MapGet("/api/accounts/{id:guid}/payoff-target/{month}", (Guid id, string month, LedgerService ledger, LedgerGate gate, CancellationToken ct) =>
     gate.RunAsync(() => ledger.GetPayoffTargetAsync(id, month, ct), ct));
 app.MapPut("/api/accounts/{id:guid}/payoff-target", (Guid id, SaveCreditPayoffTargetRequest request, LedgerService ledger, CancellationToken ct) => ledger.SavePayoffTargetAsync(id, request, ct));
