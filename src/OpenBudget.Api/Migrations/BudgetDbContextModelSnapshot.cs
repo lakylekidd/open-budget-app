@@ -1758,6 +1758,9 @@ namespace OpenBudget.Api.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
 
+                    b.Property<Guid?>("PurchaseTransactionId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTimeOffset?>("PurchasedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1782,6 +1785,8 @@ namespace OpenBudget.Api.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("BudgetId");
+
+                    b.HasIndex("PurchaseTransactionId");
 
                     b.HasIndex("BucketId", "Status", "SortOrder");
 

@@ -2,17 +2,24 @@ import { useEffect, useState } from 'react';
 import { MoneyInput } from '../MoneyInput';
 import { type Account, type CategoryOption, type Entry, type Split, isCreditAccount, isLoanAccount, loadCategoryBudget, parseMoney, requestJson, today } from './api';
 import { CategoryPicker, inflowCategoryId } from './CategoryPicker';
+import { TransactionModeToggle, WishlistLockedCategory, WishlistPurchasePicker, findWishlistChoice, wishlistPrefill, type TransactionMode, type WishlistChoice, type WishlistContext } from './WishlistPurchase';
 
-export type TransactionFields = { accountId: string; date: string; amount: number; payee: string; memo: string; categoryId: string | null; status: string; splits: Split[] };
+export type TransactionFields = { accountId: string; date: string; amount: number; payee: string; memo: string; categoryId: string | null; status: string; splits: Split[]; wishlistItemId?: string };
 
-export function TransactionForm({ accounts, entry, selectedAccount, busy, onSubmit }: {
+export function TransactionForm({ accounts, entry, selectedAccount, busy, onSubmit, wishlist, initialWishlistItemId }: {
   accounts: Account[]; entry?: Entry; selectedAccount: string; busy: boolean; onSubmit: (fields: TransactionFields) => Promise<void>;
+  /** Entitled + enabled Wishlist for this budget; enables the Regular/Wishlist switch when adding. */
+  wishlist?: WishlistContext | null; initialWishlistItemId?: string;
 }) {
+  const initialChoice = wishlist && !entry && initialWishlistItemId ? findWishlistChoice(wishlist.overview, initialWishlistItemId) : null;
+  const initialFill = initialChoice ? wishlistPrefill(initialChoice) : null;
+  const [mode, setMode] = useState<TransactionMode>(initialChoice ? 'wishlist' : 'regular');
+  const [choice, setChoice] = useState<WishlistChoice | null>(initialChoice);
   const [accountId, setAccountId] = useState(entry?.accountId ?? (selectedAccount || accounts.find(a => !a.isClosed)?.id || ''));
   const [date, setDate] = useState(entry?.date ?? today());
-  const [amount, setAmount] = useState(String(entry?.amount ?? ''));
-  const [payee, setPayee] = useState(entry?.payee ?? '');
-  const [memo, setMemo] = useState(entry?.memo ?? '');
+  const [amount, setAmount] = useState(initialFill ? (-initialFill.outflow).toFixed(2) : String(entry?.amount ?? ''));
+  const [payee, setPayee] = useState(initialFill?.payee ?? entry?.payee ?? '');
+  const [memo, setMemo] = useState(initialFill?.memo ?? entry?.memo ?? '');
   const [categoryId, setCategoryId] = useState(entry?.categoryId ?? (entry && entry.amount > 0 && !entry.transferId && !entry.isOpening && !entry.splits.length ? inflowCategoryId : ''));
   const [status, setStatus] = useState<string>(entry?.status ?? 'uncleared');
   const [splits, setSplits] = useState((entry?.splits ?? []).map(s => ({ categoryId: s.categoryId, amount: String(s.amount) })));
@@ -33,6 +40,13 @@ export function TransactionForm({ accounts, entry, selectedAccount, busy, onSubm
     event.preventDefault(); setError('');
     const parsed = parseMoney(amount);
     if (parsed === null || parsed === 0) { setError('Enter a nonzero amount with at most two decimal places.'); return; }
+    if (wishlistMode) {
+      if (!choice) { setError('Choose a Wishlist bucket with an item to buy.'); return; }
+      if (parsed > 0) { setError('A Wishlist purchase is spending: enter a negative amount.'); return; }
+      if (loan) { setError('Loan accounts cannot record Wishlist purchases. Choose another account.'); return; }
+      await onSubmit({ accountId, date, amount: parsed, payee, memo, categoryId: choice.bucket.categoryId, status, splits: [], wishlistItemId: choice.item.id });
+      return;
+    }
     const parsedSplits = splits.map(s => ({ categoryId: s.categoryId, amount: parseMoney(s.amount) }));
     if (parsedSplits.some(s => !s.categoryId || s.amount === null || s.amount === 0) || (splits.length && Math.round(parsedSplits.reduce((sum, s) => sum + (s.amount ?? 0) * 100, 0)) !== Math.round(parsed * 100))) {
       setError('Choose a category for each split. Split amounts must equal the signed transaction amount.'); return;
@@ -45,14 +59,23 @@ export function TransactionForm({ accounts, entry, selectedAccount, busy, onSubm
   const credit = isCreditAccount(accounts.find(a => a.id === accountId));
   // Loan activity (interest, fees, corrections) changes only the debt, so it never takes a category.
   const loan = isLoanAccount(accounts.find(a => a.id === accountId));
+  const showModes = Boolean(wishlist) && !entry && !splits.length;
+  const wishlistMode = showModes && mode === 'wishlist';
+  function choose(next: WishlistChoice) {
+    const fill = wishlistPrefill(next);
+    setChoice(next); setPayee(fill.payee); setMemo(fill.memo); setAmount((-fill.outflow).toFixed(2));
+  }
   const categoryProps = { categories, readyToAssign, loading: categoryState === 'loading', error: categoryState === 'error' };
   return <form onSubmit={submit} className="ledger-form">
+    {showModes && <TransactionModeToggle mode={mode} disabled={busy} onChange={next => { setMode(next); setError(''); if (next === 'wishlist' && !choice && wishlist) { const first = findWishlistChoice(wishlist.overview); if (first) choose(first); } }} />}
+    {wishlistMode && wishlist && <WishlistPurchasePicker overview={wishlist.overview} choice={choice} disabled={busy} onChoose={choose} />}
     <p>{loan ? 'Use a negative amount for interest or fees that increase the debt and a positive amount for corrections that reduce it. Record payments as transfers.' : 'Use a negative amount for spending and a positive amount for income or refunds.'}</p>
     <label>Account<select value={accountId} disabled={busy || entry?.isOpening} onChange={e => setAccountId(e.target.value)} required>{accounts.filter(a => !a.isClosed).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
     <label>Date<input type="date" min="1900-01-01" max="9998-12-31" required value={date} onChange={e => setDate(e.target.value)} /></label>
     <label>Amount<MoneyInput required value={amount} onChange={raw => setAmount(raw)} placeholder="-25.00" /></label>
     <label>Payee<input list="ledger-payees" value={payee} maxLength={160} onChange={e => setPayee(e.target.value)} /><datalist id="ledger-payees">{payees.map(p => <option key={p} value={p} />)}</datalist></label>
-    {!entry?.isOpening && !loan && <>
+    {wishlistMode && <p className="ledger-hint">Category <WishlistLockedCategory choice={choice} /> The amount can differ from the listed cost.</p>}
+    {!entry?.isOpening && !loan && !wishlistMode && <>
       {categoryState === 'loading' && <p role="status">Loading categories…</p>}
       {categoryState === 'error' && <p role="alert">Could not load categories. Change the date to retry.</p>}
       {!splits.length && <CategoryPicker {...categoryProps} value={categoryId} onChange={setCategoryId} />}

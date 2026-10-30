@@ -24,7 +24,11 @@ export type WishlistItem = {
   createdAt: string;
   purchasedAt: string | null;
   removedAt: string | null;
+  // Set when the purchase was recorded as a ledger transaction ("Record purchase"); amount is the positive spending.
+  purchase?: WishlistPurchase | null;
 };
+
+export type WishlistPurchase = { transactionId: string; accountId: string; date: string; amount: number };
 
 export type WishlistBucket = {
   id: string;

@@ -178,6 +178,8 @@ public sealed class WishlistService(BudgetDbContext db, BudgetService budgets, T
                 item.SortOrder = active.Count;
                 item.PurchasedAt = null;
                 item.RemovedAt = null;
+                // Restoring from history keeps any recorded transaction; it only unlinks it from the item.
+                item.PurchaseTransactionId = null;
             }
             else
             {
@@ -233,6 +235,8 @@ public sealed class WishlistService(BudgetDbContext db, BudgetService budgets, T
         var month = requestedMonth ?? CurrentMonth();
         var buckets = state.ActiveBuckets;
         var items = await db.WishlistItems.AsNoTracking().Where(x => x.BudgetId == budgetId).ToListAsync(ct);
+        var purchases = await WishlistPurchases.LoadAsync(db, budgetId, items, ct);
+        WishlistItemDto ToDto(WishlistItemEntity x) => WishlistService.ToDto(x, purchases);
         var available = new Dictionary<string, decimal>(StringComparer.Ordinal);
         if (state.Settings.IsEnabled)
         {
@@ -314,8 +318,9 @@ public sealed class WishlistService(BudgetDbContext db, BudgetService budgets, T
         for (var index = 0; index < items.Count; index++) items[index].SortOrder = index;
     }
 
-    private static WishlistItemDto ToDto(WishlistItemEntity x) =>
-        new(x.Id, x.BucketId, x.Name, x.Url, x.Cost, x.Description, x.SortOrder, x.Status, x.CreatedAt, x.PurchasedAt, x.RemovedAt);
+    private static WishlistItemDto ToDto(WishlistItemEntity x, IReadOnlyDictionary<Guid, WishlistPurchaseDto> purchases) =>
+        new(x.Id, x.BucketId, x.Name, x.Url, x.Cost, x.Description, x.SortOrder, x.Status, x.CreatedAt, x.PurchasedAt, x.RemovedAt,
+            x.PurchaseTransactionId is { } transactionId ? purchases.GetValueOrDefault(transactionId) : null);
 
     private string CurrentMonth() => clock.GetLocalNow().ToString("yyyy-MM", CultureInfo.InvariantCulture);
 
@@ -355,6 +360,7 @@ public sealed class WishlistService(BudgetDbContext db, BudgetService budgets, T
             Run(id, principal, http, ct, () => service.SetItemStatusAsync(id, itemId, WishlistRules.RemovedStatus, request, ct))).RequireEntitlement(WishlistRules.EntitlementKey);
         group.MapPost("/items/{itemId:guid}/restore", (string id, Guid itemId, WishlistVersionRequest request, ClaimsPrincipal principal, HttpContext http, WishlistService service, CancellationToken ct) =>
             Run(id, principal, http, ct, () => service.SetItemStatusAsync(id, itemId, WishlistRules.ActiveStatus, request, ct))).RequireEntitlement(WishlistRules.EntitlementKey);
+        WishlistPurchases.MapEndpoint(group);
     }
 
     // Owners and joined editors of an active budget; the gate transaction commits only successful results.

@@ -13,17 +13,22 @@ import { LoanAccountForm } from './LoanAccountForm';
 import { LoanAccountPage } from './LoanAccountPage';
 import { ManagePayees } from './Payees';
 import { TransactionSelectionBar } from './TransactionSelectionBar';
+import { wishlistPurchasePath, type WishlistContext } from './WishlistPurchase';
 import './ledger.css';
 
-type Dialog = { kind: 'account'; account?: Account; accountType?: AccountType } | { kind: 'transaction'; entry?: Entry } | { kind: 'transfer'; entry?: Entry; from?: string; to?: string }
+type Dialog = { kind: 'account'; account?: Account; accountType?: AccountType } | { kind: 'transaction'; entry?: Entry; wishlistItemId?: string } | { kind: 'transfer'; entry?: Entry; from?: string; to?: string }
   | { kind: 'reconcile'; account: Account } | { kind: 'loanActivity'; account: Account; mode?: 'payment' | 'other' } | { kind: 'delete'; entry: Entry } | { kind: 'history' };
 
-export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMenu, onPendingChange, createAccountRequest, editAccountRequest, focusTransaction, onOpenCategory, liveRefresh }: {
+export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMenu, onPendingChange, createAccountRequest, editAccountRequest, focusTransaction, onOpenCategory, liveRefresh, wishlist, wishlistPurchaseRequest }: {
   selectedAccount: string; onSelectAccount: (id: string) => void; onChanged: () => void; onMenu: () => void; onPendingChange?: (pending: boolean) => void; createAccountRequest?: number; editAccountRequest?: {id:string;token:number};
   onOpenCategory?: (categoryId: string, editTarget: boolean) => void;
   /** Bumped when another session changes this budget's ledger; refreshes unless the user is mid-edit (the 30s poll retries). */
   liveRefresh?: number;
-  focusTransaction?: { id: string; accountId: string; date: string; scheduled: boolean; projected?: Entry; splitIndex?: number; source?: 'Plan' | 'Long-Term Planning' } | null;
+  focusTransaction?: { id: string; accountId: string; date: string; scheduled: boolean; projected?: Entry; splitIndex?: number; source?: 'Plan' | 'Long-Term Planning' | 'Wishlist' } | null;
+  /** Entitled + enabled Wishlist for this budget (null otherwise): enables Wishlist purchases when adding transactions. */
+  wishlist?: WishlistContext | null;
+  /** "Record purchase" from the Wishlist screen: opens the add-transaction dialog prefilled for that item. */
+  wishlistPurchaseRequest?: { itemId: string; token: number } | null;
 }) {
   const [managePayees,setManagePayees]=useState(false);
   const [payeePending,setPayeePending]=useState(false);const [payeeFilter,setPayeeFilter]=useState<string|null>(null);
@@ -32,6 +37,7 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   const [schedules, setSchedules] = useState<Schedules | null>(null);
   const [schedulePage, setSchedulePage] = useState(1);
   const handledEdit = useRef<number | null>(null);
+  const handledPurchase = useRef<number | null>(null);
   const handledCreate = useRef(0);
   useEffect(() => {
     if (createAccountRequest && createAccountRequest !== handledCreate.current) {
@@ -209,6 +215,11 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   const changed=useRef(onChanged);changed.current=onChanged;
   useEffect(()=>{const timer=window.setInterval(()=>{if(inline||dialog||viewOpen||moreOpen||busy||uncertain||conflict||document.querySelector('.ledger-dialog,.flag-picker,.approval-picker,.transaction-calendar'))return;setRefresh(value=>value+1);changed.current();},30000);return()=>window.clearInterval(timer);},[inline,dialog,viewOpen,moreOpen,busy,uncertain,conflict]);
   useEffect(()=>{if(!liveRefresh||inline||dialog||viewOpen||moreOpen||busy||uncertain||conflict||document.querySelector('.ledger-dialog,.flag-picker,.approval-picker,.transaction-calendar'))return;setRefresh(value=>value+1);},[liveRefresh]);
+  useEffect(() => {
+    if (!wishlistPurchaseRequest || wishlistPurchaseRequest.token === handledPurchase.current || loading || !wishlist) return;
+    handledPurchase.current = wishlistPurchaseRequest.token;
+    setInline(null); setDialog({ kind: 'transaction', wishlistItemId: wishlistPurchaseRequest.itemId });
+  }, [wishlistPurchaseRequest, loading, wishlist]);
   const reload = useCallback(() => { setError(''); setConflict(false); setRefresh(value => value + 1); }, []);
   async function mutate(path: string, method: string, fields: object) {
     if (inFlight.current || conflict || loading || viewInFlight.current) return false;
@@ -261,7 +272,8 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   async function saveInline(fields:InlineFields,another:boolean) {
     let path='/api/transactions';let method='POST';let payload:object=fields;
     const transfer=fields.toAccountId;
-    if(inline?.schedule) {
+    if(fields.wishlistItemId&&wishlist&&!inline?.entry) {path=wishlistPurchasePath(wishlist.budgetId,fields.wishlistItemId);payload={accountId:fields.accountId,date:fields.date,amount:fields.amount,payee:fields.payee,memo:fields.memo,categoryId:fields.categoryId,status:fields.status,splits:[]};}
+    else if(inline?.schedule) {
       const item=inline.schedule;
       const incoming=Boolean(item.toAccountId&&fields.accountId===item.toAccountId);
       const scheduleFields={...fields,accountId:incoming?fields.toAccountId:fields.accountId,toAccountId:incoming?fields.accountId:fields.toAccountId,amount:incoming?-fields.amount:fields.amount};
@@ -275,7 +287,7 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     return saved;
   }
   async function renameFlags(next:Flag[]){return mutate('/api/flags','PUT',{flags:next});}
-  function editor() {return inline&&<InlineTransactionEditor key={inline.key} entry={inline.entry} selectedAccount={selectedAccount} accounts={accounts.accounts} view={view} busy={disabled} onSave={saveInline} onCancel={()=>setInline(null)} repeat={inline.schedule?.repeat} transferAccountId={inline.transferAccountId} scheduled={Boolean(inline.schedule)} onShowPayeeTransactions={payee=>{setPayeeFilter(payee.id);setSearch('');setCategory('');setStatus('');setReviewFilter(false);setInline(null);setPage(1);}} onCategoriesChanged={()=>{void loadCategories(today()).then(setCategories).catch(()=>setError('Could not refresh category filters. Reload to retry.'));onChanged();}} onPayeesPending={setPayeePending} onPayeesChanged={()=>{setRefresh(n=>n+1);onChanged();}} postingError={inline.schedule?.postingError} requiresConfirmation={!inline.schedule&&Boolean(inline.entry?.isLocked||inline.entry?.status==='reconciled')}/>;}
+  function editor() {return inline&&<InlineTransactionEditor key={inline.key} entry={inline.entry} selectedAccount={selectedAccount} accounts={accounts.accounts} view={view} busy={disabled} onSave={saveInline} onCancel={()=>setInline(null)} repeat={inline.schedule?.repeat} transferAccountId={inline.transferAccountId} scheduled={Boolean(inline.schedule)} onShowPayeeTransactions={payee=>{setPayeeFilter(payee.id);setSearch('');setCategory('');setStatus('');setReviewFilter(false);setInline(null);setPage(1);}} onCategoriesChanged={()=>{void loadCategories(today()).then(setCategories).catch(()=>setError('Could not refresh category filters. Reload to retry.'));onChanged();}} onPayeesPending={setPayeePending} onPayeesChanged={()=>{setRefresh(n=>n+1);onChanged();}} postingError={inline.schedule?.postingError} requiresConfirmation={!inline.schedule&&Boolean(inline.entry?.isLocked||inline.entry?.status==='reconciled')} wishlist={wishlist}/>;}
   function clearFilters() {
     setPayeeFilter(null);setReviewFilter(false);setSearch(''); setCategory(''); setStatus(''); setPage(1);
     if (from || to || !view.showReconciled) void applyView({ ...view, datePreset:'allDates', showReconciled:true }).catch(err => setError(err.message));
@@ -342,7 +354,7 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     {selected.length>0&&!inline&&!dialog&&<TransactionSelectionBar key={selected.map(t=>t.id).join(',')} entries={selected} accounts={accounts.accounts} flags={flags} disabled={disabled} scheduled={selected.some(t=>schedules?.items.some(s=>s.occurrenceId===t.id))} onClear={()=>setSelectedIds([])} onRenameFlags={renameFlags} onApply={action=>mutate('/api/transactions/selection','POST',{ids:selected.map(t=>t.id),...action})}/>}
     {dialog && <LedgerDialog onBack={dialog.kind === 'account' && !dialog.account && dialog.accountType ? () => setDialog({ kind: 'account' }) : undefined} title={dialog.kind === 'loanActivity' ? 'Add Activity' : dialog.kind === 'account' ? dialog.account ? 'Edit Account' : dialog.accountType ? isLoanAccount({ accountType: dialog.accountType }) ? 'Add Unlinked Account' : `Add ${accountTypeLabel(dialog.accountType)} account` : 'Select Account Type' : dialog.kind === 'transaction' ? dialog.entry ? 'Edit transaction' : 'Add transaction' : dialog.kind === 'transfer' ? dialog.entry ? 'Edit transfer' : 'Transfer money' : dialog.kind === 'reconcile' ? 'Reconcile account' : dialog.kind === 'history' ? 'Audit history' : 'Delete transaction'} onClose={close}>
       {feedback}
-      {dialog.kind === 'transaction' && <TransactionForm accounts={accounts.accounts} selectedAccount={selectedAccount} entry={dialog.entry} busy={disabled} onSubmit={async fields => { await mutate(`/api/transactions${dialog.entry ? `/${dialog.entry.id}` : ''}`, dialog.entry ? 'PUT' : 'POST', fields); }} />}
+      {dialog.kind === 'transaction' && <TransactionForm accounts={accounts.accounts} selectedAccount={selectedAccount} entry={dialog.entry} busy={disabled} wishlist={wishlist} initialWishlistItemId={dialog.wishlistItemId} onSubmit={async ({ wishlistItemId, ...fields }) => { await mutate(wishlistItemId && wishlist && !dialog.entry ? wishlistPurchasePath(wishlist.budgetId, wishlistItemId) : `/api/transactions${dialog.entry ? `/${dialog.entry.id}` : ''}`, dialog.entry ? 'PUT' : 'POST', fields); }} />}
       {dialog.kind === 'account' && (dialog.account ? isLoanAccount(dialog.account) ? <EditLoanAccountForm account={dialog.account} busy={disabled} onCancel={close} onOpenCategory={id => { setDialog(null); onOpenCategory?.(id, false); }} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account!.id}`, 'PUT', fields); }}/>
         : <EditAccountForm account={dialog.account} busy={disabled} onCancel={close} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account!.id}`, 'PUT', fields); }}/>
         : dialog.accountType && isLoanAccount({ accountType: dialog.accountType }) ? <LoanAccountForm key={dialog.accountType} accountType={dialog.accountType as LoanAccountType} busy={disabled} onSubmit={async fields => { await mutate('/api/accounts', 'POST', fields); }}/>

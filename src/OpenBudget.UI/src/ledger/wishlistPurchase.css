@@ -1,0 +1,15 @@
+/* Regular / Wishlist add-transaction mode (dark theme, compact segmented control). */
+.transaction-mode-toggle{display:inline-flex;gap:2px;padding:2px;border-radius:7px;background:#25273d;border:1px solid #3c3e53;width:max-content}
+.transaction-mode-toggle button{height:26px;padding:0 12px;border-radius:5px;color:#c4c5cf;font-size:13px;font-weight:600}
+.transaction-mode-toggle button[aria-checked=true]{background:#5b54ff;color:#fff}
+.transaction-mode-toggle button:disabled{opacity:.55}
+.wishlist-purchase-picker{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 10px;align-items:center;font-size:13px;max-width:560px}
+.wishlist-purchase-picker select{min-width:0;height:30px;padding:0 8px;color:#fff;background:#0c0d22;border:1px solid #55566e;border-radius:5px}
+.wishlist-purchase-picker select option:disabled{color:#77798c}
+.wishlist-purchase-buying,.wishlist-purchase-empty{grid-column:1/-1;margin:0;color:#e3e1ff}
+.wishlist-purchase-buying strong{color:#fff}
+.wishlist-locked-category{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:0 8px;border-radius:5px;background:#2c2c4d;color:#e3e1ff;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.wishlist-locked-category:before{content:'🔒';font-size:11px}
+.register-inline-footer .transaction-mode-row{display:flex;flex-wrap:wrap;align-items:flex-start;gap:10px;margin-bottom:8px}
+.ledger-form .transaction-mode-toggle{margin-bottom:4px}
+@media(max-width:480px){.wishlist-purchase-picker{grid-template-columns:1fr}}

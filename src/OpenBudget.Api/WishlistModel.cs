@@ -39,6 +39,9 @@ public sealed class WishlistItemEntity
     public DateTimeOffset UpdatedAt { get; set; }
     public DateTimeOffset? PurchasedAt { get; set; }
     public DateTimeOffset? RemovedAt { get; set; }
+    // The ledger transaction that recorded this purchase ("Record purchase"); null for a plain Mark purchased.
+    // Deleting that transaction returns the item to the wishlist. Not a foreign key: transactions are soft-deleted.
+    public Guid? PurchaseTransactionId { get; set; }
 }
 
 public static class WishlistModel
@@ -71,6 +74,7 @@ public static class WishlistModel
             entity.Property(x => x.Cost).HasPrecision(14, 2);
             entity.HasIndex(x => new { x.BucketId, x.Status, x.SortOrder });
             entity.HasIndex(x => x.BudgetId);
+            entity.HasIndex(x => x.PurchaseTransactionId);
             entity.HasOne<WishlistBucketEntity>().WithMany().HasForeignKey(x => x.BucketId).OnDelete(DeleteBehavior.Cascade);
         });
         // Wishlist is a paid-tier entitlement by default: Plus and Pro allowed, Free denied (administrators can override per user).
