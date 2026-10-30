@@ -238,6 +238,12 @@ app.MapGet("/api/accounts/{id:guid}/payoff-target/{month}", (Guid id, string mon
     gate.RunAsync(() => ledger.GetPayoffTargetAsync(id, month, ct), ct));
 app.MapPut("/api/accounts/{id:guid}/payoff-target", (Guid id, SaveCreditPayoffTargetRequest request, LedgerService ledger, CancellationToken ct) => ledger.SavePayoffTargetAsync(id, request, ct));
 app.MapPost("/api/accounts/{id:guid}/payoff-target/delete", (Guid id, DeleteCreditPayoffTargetRequest request, LedgerService ledger, CancellationToken ct) => ledger.DeletePayoffTargetAsync(id, request, ct));
+app.MapGet("/api/accounts/{id:guid}/loan", (Guid id, LedgerService ledger, LedgerGate gate, CancellationToken ct) =>
+    gate.RunAsync(() => ledger.GetLoanAsync(id, ct), ct));
+app.MapGet("/api/accounts/{id:guid}/loan/simulation", (Guid id, decimal? payment, string? payoffMonth, decimal? extra, LedgerService ledger, LedgerGate gate, CancellationToken ct) =>
+    gate.RunAsync(() => ledger.SimulateLoanAsync(id, payment, payoffMonth, extra, ct), ct));
+app.MapPut("/api/accounts/{id:guid}/loan", (Guid id, SaveLoanTermsRequest request, LedgerService ledger, CancellationToken ct) => ledger.SaveLoanTermsAsync(id, request, ct));
+app.MapPost("/api/accounts/{id:guid}/loan/balance", (Guid id, LoanBalanceRequest request, LedgerService ledger, CancellationToken ct) => ledger.ConfirmLoanBalanceAsync(id, request, ct));
 app.MapPost("/api/accounts/{id:guid}/reconcile", (Guid id, ReconcileRequest request, LedgerService ledger, CancellationToken ct) => ledger.ReconcileAsync(id, request, ct));
 app.MapGet("/api/transactions", async (Guid? accountId, Guid? transferId, string? search, DateOnly? from, DateOnly? to, string? categoryId, string? status,
     int? page, int? pageSize, bool? includeReconciled, bool? needsAttention, Guid? payeeId, LedgerService ledger, LedgerGate gate, CancellationToken ct) =>

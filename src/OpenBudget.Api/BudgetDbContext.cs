@@ -29,6 +29,7 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
     public DbSet<LedgerCommandEntity> LedgerCommands => Set<LedgerCommandEntity>();
     public DbSet<ReconciliationEntity> Reconciliations => Set<ReconciliationEntity>();
     public DbSet<CreditPayoffTargetEntity> CreditPayoffTargets => Set<CreditPayoffTargetEntity>();
+    public DbSet<LoanTermsEntity> LoanTerms => Set<LoanTermsEntity>();
     public DbSet<CategoryTargetEntity> CategoryTargets => Set<CategoryTargetEntity>();
     public DbSet<ApplicationSettingEntity> ApplicationSettings => Set<ApplicationSettingEntity>();
     public DbSet<SmtpSettingsEntity> SmtpSettings => Set<SmtpSettingsEntity>();
@@ -191,6 +192,7 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
         modelBuilder.Entity<LedgerCommandEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
         modelBuilder.Entity<ReconciliationEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
         modelBuilder.Entity<CreditPayoffTargetEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
+        modelBuilder.Entity<LoanTermsEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
         modelBuilder.Entity<CategoryTargetEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
         modelBuilder.Entity<RegisterViewEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
         modelBuilder.Entity<FlagDefinitionEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
@@ -226,6 +228,7 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
                 case LedgerCommandEntity row: row.BudgetId = budgetContext.BudgetId; break;
                 case ReconciliationEntity row: row.BudgetId = budgetContext.BudgetId; break;
                 case CreditPayoffTargetEntity row: row.BudgetId = budgetContext.BudgetId; break;
+                case LoanTermsEntity row: row.BudgetId = budgetContext.BudgetId; break;
                 case CategoryTargetEntity row: row.BudgetId = budgetContext.BudgetId; break;
                 case RegisterViewEntity row: row.BudgetId = budgetContext.BudgetId; break;
                 case FlagDefinitionEntity row: row.BudgetId = budgetContext.BudgetId; break;

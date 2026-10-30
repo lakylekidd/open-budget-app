@@ -1,6 +1,6 @@
 # Milestone 5 — Credit cards and debt payoff planning
 
-**Status:** Credit-card slice implemented (accounts, payment categories, credit overspending, payment transfers, payment details) plus debt payoff targets for card payment categories (pay off by date or a fixed monthly amount, versioned ledger commands, server-calculated monthly progress). Loan terms and the payoff planner remain planned.
+**Status:** Credit-card slice implemented (accounts, payment categories, credit overspending, payment transfers, payment details) plus debt payoff targets for card payment categories (pay off by date or a fixed monthly amount, versioned ledger commands, server-calculated monthly progress). Mortgages, loans and contracts implemented: seven loan types (Mortgage, Auto Loan, Student Loan, Personal Loan, Medical Debt, Other Debt, Contract), versioned loan terms, paired Plan categories in a Loans group (payments are spending from the pair; unpaired payments reduce Ready to Assign), estimated (unposted) interest, balance confirmation/correction, a loan account page with progress chart and monthly activity, a read-only payoff simulator (payment ↔ payoff date, one-time extra) and contract schedules with discounts. Payment frequency is monthly only; actual interest is recorded manually through Add Activity. See [API](../api.md#mortgages-loans-and-contracts).
 
 ## Goal
 

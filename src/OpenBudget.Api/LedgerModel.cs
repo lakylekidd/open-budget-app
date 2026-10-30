@@ -148,6 +148,22 @@ public static class LedgerModel
             e.HasOne<AccountEntity>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => x.BudgetId);
         });
+        model.Entity<LoanTermsEntity>(e =>
+        {
+            e.HasKey(x => x.AccountId); e.Property(x => x.BudgetId).HasMaxLength(100);
+            e.Property(x => x.InterestRate).HasPrecision(6, 3);
+            e.Property(x => x.MinimumPayment).HasPrecision(14, 2);
+            e.Property(x => x.EscrowAmount).HasPrecision(14, 2);
+            e.Property(x => x.OriginalBalance).HasPrecision(14, 2);
+            e.Property(x => x.UpfrontCost).HasPrecision(14, 2);
+            e.Property(x => x.MonthlyServiceCost).HasPrecision(14, 2);
+            e.Property(x => x.DeviceTotal).HasPrecision(14, 2);
+            e.Property(x => x.DiscountedServiceCost).HasPrecision(14, 2);
+            e.Property(x => x.PairedCategoryId).HasMaxLength(100);
+            e.Ignore(x => x.Contract);
+            e.HasOne<AccountEntity>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => new { x.BudgetId, x.PairedCategoryId }).IsUnique().HasFilter("\"PairedCategoryId\" IS NOT NULL");
+        });
         model.Entity<ReconciliationEntity>(e =>
         {
             e.HasKey(x => x.Id); e.Property(x => x.BudgetId).HasMaxLength(100);

@@ -1,6 +1,6 @@
 import { Fragment as ReactFragment, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { MoneyInput } from '../MoneyInput';
-import { type Account, type Accounts, type Audit, type CategoryOption, type Entry, type Register, type Schedules, type ScheduledItem, ApiError, formatMoney, loadCategories, parseMoney, requestJson, today, type AccountType, accountTypeLabel, accountTypeSections, isCreditAccount } from './api';
+import { type Account, type Accounts, type Audit, type CategoryOption, type Entry, type Register, type Schedules, type ScheduledItem, ApiError, formatMoney, loadCategories, parseMoney, requestJson, today, type AccountType, accountTypeLabel, accountTypeSections, isCreditAccount, isLoanAccount, type LoanAccountType } from './api';
 import { LedgerDialog } from './LedgerDialog';
 import { TransactionForm } from './TransactionForm';
 import { AccountHeader, RegisterIcon, TransactionRow } from './AccountRegister';
@@ -8,15 +8,19 @@ import { defaultColumnWidths, defaultView, viewDates, ViewOptionsPanel, type Col
 import { InlineTransactionEditor, type InlineFields } from './InlineTransactionEditor';
 import { defaultFlags, type Flag } from './Flags';
 import { EditAccountForm } from './EditAccountForm';
+import { EditLoanAccountForm } from './EditLoanAccountForm';
+import { LoanAccountForm } from './LoanAccountForm';
+import { LoanAccountPage } from './LoanAccountPage';
 import { ManagePayees } from './Payees';
 import { TransactionSelectionBar } from './TransactionSelectionBar';
 import './ledger.css';
 
 type Dialog = { kind: 'account'; account?: Account; accountType?: AccountType } | { kind: 'transaction'; entry?: Entry } | { kind: 'transfer'; entry?: Entry; from?: string; to?: string }
-  | { kind: 'reconcile'; account: Account } | { kind: 'delete'; entry: Entry } | { kind: 'history' };
+  | { kind: 'reconcile'; account: Account } | { kind: 'loanActivity'; account: Account; mode?: 'payment' | 'other' } | { kind: 'delete'; entry: Entry } | { kind: 'history' };
 
-export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMenu, onPendingChange, createAccountRequest, editAccountRequest, focusTransaction }: {
+export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMenu, onPendingChange, createAccountRequest, editAccountRequest, focusTransaction, onOpenCategory }: {
   selectedAccount: string; onSelectAccount: (id: string) => void; onChanged: () => void; onMenu: () => void; onPendingChange?: (pending: boolean) => void; createAccountRequest?: number; editAccountRequest?: {id:string;token:number};
+  onOpenCategory?: (categoryId: string, editTarget: boolean) => void;
   focusTransaction?: { id: string; accountId: string; date: string; scheduled: boolean; projected?: Entry; splitIndex?: number; source?: 'Plan' | 'Long-Term Planning' } | null;
 }) {
   const [managePayees,setManagePayees]=useState(false);
@@ -274,7 +278,11 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     if (from || to || !view.showReconciled) void applyView({ ...view, datePreset:'allDates', showReconciled:true }).catch(err => setError(err.message));
   }
   const selectedActions = selectedIds.length > 0 && <div className="register-selected-actions"><strong>Selected transaction</strong><button disabled={disabled || chosenEditLocked} onClick={() => chosen && void edit(chosen)}>Edit selected</button><button disabled={disabled || chosenLocked || !!chosenSchedule} onClick={() => chosen && open({kind:'delete',entry:chosen})}>Delete selected</button>{chosenSchedule&&<><button disabled={disabled||chosenSchedule.isPaused} onClick={()=>void scheduleAction(chosenSchedule,'post',chosenSchedule.transaction.date>today()?today():undefined)}>Enter Now</button><button disabled={disabled||chosenSchedule.isPaused} onClick={()=>void scheduleAction(chosenSchedule,'skip')}>Skip</button><button disabled={disabled||chosenSchedule.isPaused} onClick={()=>{const d=new Date(chosenSchedule.transaction.date+'T12:00:00');d.setDate(d.getDate()+1);void scheduleAction(chosenSchedule,'snooze',`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);}}>Snooze one day</button><button disabled={disabled} onClick={()=>void scheduleAction(chosenSchedule,chosenSchedule.isPaused?'resume':'pause')}>{chosenSchedule.isPaused?'Resume':'Pause'}</button><button disabled={disabled} onClick={()=>void scheduleAction(chosenSchedule,'end')}>End schedule</button></>}<button onClick={() => setSelectedIds([])}>Clear selection</button></div>;
+  const loanPage = current && isLoanAccount(current);
   return <section className="ledger-page account-register-page" aria-label="Accounts and transactions">
+    {loanPage ? <>{!dialog && feedback}<LoanAccountPage account={current} refresh={refresh} disabled={disabled} onMenu={onMenu}
+      onEdit={() => open({ kind: 'account', account: current })} onAddActivity={() => open({ kind: 'loanActivity', account: current })}
+      onMutate={mutate} onOpenCategory={id => onOpenCategory?.(id, false)} onCreateTarget={id => onOpenCategory?.(id, true)} /></> : <>
       {focusTransaction && focusTransaction.accountId === selectedAccount && <div className="account-focus-banner" role="status">Showing the transaction selected from the {focusTransaction.source ?? 'Plan'} screen. <button onClick={() => setSelectedIds([focusTransaction.id])}>Highlight transaction</button></div>}
       {needsCategory > 0 && <div className="account-attention-banner"><span><span className="transaction-info">i</span> {needsCategory} new {needsCategory === 1 ? 'transaction' : 'transactions'} to approve or categorize.</span><button className="button-primary" onClick={() => { setReviewFilter(true);setCategory(''); setPage(1); }}>View</button></div>}
     <AccountHeader current={current} accounts={accounts.accounts} disabled={disabled} loading={loading && !register} onMenu={onMenu}
@@ -326,13 +334,23 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
         : register && !register.items.length && <p className="ledger-empty">No transactions match these filters.</p>}
       {filtered && <div className="register-hidden-message"><p>Some transactions are hidden by filters.</p><button disabled={disabled} onClick={clearFilters}>View All</button></div>}
       {register && (register.total > 25 || page > 1) && <nav className="register-pagination" aria-label="Transaction pages"><button disabled={page === 1 || loading} onClick={() => setPage(p => p - 1)}>Previous</button><span>Page {page} · {register.total} transactions</span><button disabled={page * 25 >= register.total || loading} onClick={() => setPage(p => p + 1)}>Next</button></nav>}
-    </div>
+    </div></>}
     {managePayees&&<ManagePayees accounts={accounts.accounts} categories={categories} onPendingChange={setPayeePending} onClose={()=>setManagePayees(false)} onChanged={()=>{setRefresh(n=>n+1);onChanged();}} onShowTransactions={payee=>{setPayeeFilter(payee.id);setSearch('');setCategory('');setStatus('');setReviewFilter(false);setManagePayees(false);setPage(1);}}/>}
     {selected.length>0&&!inline&&!dialog&&<TransactionSelectionBar key={selected.map(t=>t.id).join(',')} entries={selected} accounts={accounts.accounts} flags={flags} disabled={disabled} scheduled={selected.some(t=>schedules?.items.some(s=>s.occurrenceId===t.id))} onClear={()=>setSelectedIds([])} onRenameFlags={renameFlags} onApply={action=>mutate('/api/transactions/selection','POST',{ids:selected.map(t=>t.id),...action})}/>}
-    {dialog && <LedgerDialog onBack={dialog.kind === 'account' && !dialog.account && dialog.accountType ? () => setDialog({ kind: 'account' }) : undefined} title={dialog.kind === 'account' ? dialog.account ? 'Edit Account' : dialog.accountType ? `Add ${accountTypeLabel(dialog.accountType)} account` : 'Select Account Type' : dialog.kind === 'transaction' ? dialog.entry ? 'Edit transaction' : 'Add transaction' : dialog.kind === 'transfer' ? dialog.entry ? 'Edit transfer' : 'Transfer money' : dialog.kind === 'reconcile' ? 'Reconcile account' : dialog.kind === 'history' ? 'Audit history' : 'Delete transaction'} onClose={close}>
+    {dialog && <LedgerDialog onBack={dialog.kind === 'account' && !dialog.account && dialog.accountType ? () => setDialog({ kind: 'account' }) : undefined} title={dialog.kind === 'loanActivity' ? 'Add Activity' : dialog.kind === 'account' ? dialog.account ? 'Edit Account' : dialog.accountType ? isLoanAccount({ accountType: dialog.accountType }) ? 'Add Unlinked Account' : `Add ${accountTypeLabel(dialog.accountType)} account` : 'Select Account Type' : dialog.kind === 'transaction' ? dialog.entry ? 'Edit transaction' : 'Add transaction' : dialog.kind === 'transfer' ? dialog.entry ? 'Edit transfer' : 'Transfer money' : dialog.kind === 'reconcile' ? 'Reconcile account' : dialog.kind === 'history' ? 'Audit history' : 'Delete transaction'} onClose={close}>
       {feedback}
       {dialog.kind === 'transaction' && <TransactionForm accounts={accounts.accounts} selectedAccount={selectedAccount} entry={dialog.entry} busy={disabled} onSubmit={async fields => { await mutate(`/api/transactions${dialog.entry ? `/${dialog.entry.id}` : ''}`, dialog.entry ? 'PUT' : 'POST', fields); }} />}
-      {dialog.kind === 'account' && (dialog.account ? <EditAccountForm account={dialog.account} busy={disabled} onCancel={close} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account!.id}`, 'PUT', fields); }}/> : dialog.accountType ? <AccountForm key={dialog.accountType} accountType={dialog.accountType} busy={disabled} onSubmit={async fields => { await mutate('/api/accounts', 'POST', fields); }}/> : <AccountTypeList onSelect={accountType => setDialog({ kind: 'account', accountType })}/>) }
+      {dialog.kind === 'account' && (dialog.account ? isLoanAccount(dialog.account) ? <EditLoanAccountForm account={dialog.account} busy={disabled} onCancel={close} onOpenCategory={id => { setDialog(null); onOpenCategory?.(id, false); }} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account!.id}`, 'PUT', fields); }}/>
+        : <EditAccountForm account={dialog.account} busy={disabled} onCancel={close} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account!.id}`, 'PUT', fields); }}/>
+        : dialog.accountType && isLoanAccount({ accountType: dialog.accountType }) ? <LoanAccountForm key={dialog.accountType} accountType={dialog.accountType as LoanAccountType} busy={disabled} onSubmit={async fields => { await mutate('/api/accounts', 'POST', fields); }}/>
+        : dialog.accountType ? <AccountForm key={dialog.accountType} accountType={dialog.accountType} busy={disabled} onSubmit={async fields => { await mutate('/api/accounts', 'POST', fields); }}/> : <AccountTypeList onSelect={accountType => setDialog({ kind: 'account', accountType })}/>) }
+      {dialog.kind === 'loanActivity' && <div className="loan-activity-dialog">
+        <div className="loan-activity-tabs" role="tablist" aria-label="Activity type">
+          <button type="button" role="tab" aria-selected={dialog.mode !== 'other'} onClick={() => setDialog({ ...dialog, mode: 'payment' })}>Payment</button>
+          <button type="button" role="tab" aria-selected={dialog.mode === 'other'} onClick={() => setDialog({ ...dialog, mode: 'other' })}>Interest, fee or correction</button></div>
+        {dialog.mode === 'other' ? <TransactionForm accounts={[dialog.account]} selectedAccount={dialog.account.id} busy={disabled} onSubmit={async fields => { await mutate('/api/transactions', 'POST', fields); }} />
+          : <TransferForm key="loan-payment" accounts={openAccounts} selectedAccount="" dialog={{ kind: 'transfer', from: openAccounts.find(a => !isLoanAccount(a) && !isCreditAccount(a))?.id ?? openAccounts.find(a => a.id !== dialog.account.id)?.id, to: dialog.account.id }} busy={disabled} onSubmit={async fields => { await mutate('/api/transfers', 'POST', fields); }} />}
+      </div>}
       {dialog.kind === 'transfer' && <TransferForm accounts={openAccounts} selectedAccount={selectedAccount} dialog={dialog} busy={disabled} onSubmit={async fields => { await mutate(`/api/transfers${dialog.entry ? `/${dialog.entry.id}` : ''}`, dialog.entry ? 'PUT' : 'POST', fields); }} />}
       {dialog.kind === 'reconcile' && <ReconcileForm account={accounts.accounts.find(a => a.id === dialog.account.id) ?? dialog.account} busy={disabled} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account.id}/reconcile`, 'POST', fields); }} />}
       {dialog.kind === 'delete' && <><p>Delete this entry{dialog.entry.transferId ? ' and its linked transfer entry' : ''}? Balances and budget activity will be recalculated. The audit history is retained.</p><button disabled={disabled} className="button-primary" onClick={() => mutate(`/api/transactions/${dialog.entry.id}/delete`, 'POST', {})}>Confirm deletion</button></>}
@@ -368,7 +386,7 @@ function TransferForm({ accounts, selectedAccount, dialog, busy, onSubmit }: { a
   const [amount, setAmount] = useState(dialog.entry ? String(Math.abs(dialog.entry.amount)) : '');
   const [date, setDate] = useState(dialog.entry?.date ?? today()); const [memo, setMemo] = useState(dialog.entry?.memo ?? ''); const [error, setError] = useState('');
   return <form className="ledger-form" onSubmit={async e => { e.preventDefault(); const parsed = parseMoney(amount); if (parsed === null || parsed <= 0 || from === to) { setError('Choose different accounts and a positive amount with at most two decimal places.'); return; } await onSubmit({ fromAccountId: from, toAccountId: to, amount: parsed, date, memo }); }}>
-    <p>Both account entries are saved together. Transfers do not change budget income or spending.</p>
+    <p>{isLoanAccount(accounts.find(a => a.id === to)) || isLoanAccount(accounts.find(a => a.id === from)) ? 'A payment into a loan spends from its paired Plan category (or Ready to Assign when unpaired) and reduces the debt.' : 'Both account entries are saved together. Transfers do not change budget income or spending.'}</p>
     <label>From account<select required value={from} onChange={e => setFrom(e.target.value)}>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
     <label>To account<select required value={to} onChange={e => setTo(e.target.value)}>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
     <label>Date<input type="date" required min="1900-01-01" max="9998-12-31" value={date} onChange={e => setDate(e.target.value)} /></label><label>Amount<MoneyInput required value={amount} onChange={raw => setAmount(raw)} /></label>

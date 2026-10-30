@@ -251,6 +251,32 @@ it('groups credit accounts under CREDIT and shows the card payment category deta
   expect(screen.queryByText('Debt payoff targets arrive with Goals and targets.')).not.toBeInTheDocument();
 });
 
+it('groups loan accounts under a collapsible LOANS section after CREDIT',async()=>{
+  const account={isClosed:false,unclearedBalance:0,isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0};
+  focusAccounts=[{...account,id:'cash-1',name:'Salary',balance:4325.87,clearedBalance:4325.87,accountType:'checking'},{...account,id:'card-1',name:'Mastercard',balance:-100,clearedBalance:-100,accountType:'creditCard'},
+    {...account,id:'loan-1',name:'Mortgage',balance:-389651.68,clearedBalance:-389651.68,accountType:'mortgage'},{...account,id:'loan-2',name:'Phone',balance:-675.08,clearedBalance:-675.08,accountType:'contract'}];
+  render(<App/>);await saved();
+  const headings=Array.from(document.querySelectorAll('.account-type')).map(button=>button.textContent);
+  expect(headings.map(text=>text?.replace(/[-€\d.,]/g,''))).toEqual(['CASH','CREDIT','LOANS']);
+  const loans=screen.getByRole('button',{name:/LOANS/});
+  expect(loans).toHaveTextContent('-€390,326.76');
+  expect(loans.querySelector('strong')).toHaveClass('negative-account-balance');
+  const list=document.getElementById('loan-account-list')!;
+  expect(list).toContainElement(screen.getByRole('button',{name:/Mortgage -€389,651.68/}));
+  expect(list).toContainElement(screen.getByRole('button',{name:/Phone -€675.08/}));
+  expect(document.getElementById('credit-account-list')).not.toContainElement(screen.getByRole('button',{name:/Mortgage -€389,651.68/}));
+  await userEvent.click(loans);
+  expect(loans).toHaveAttribute('aria-expanded','false');
+  expect(list).not.toBeVisible();
+});
+
+it('hides the LOANS section when there are no loan accounts',async()=>{
+  const account={isClosed:false,unclearedBalance:0,isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0};
+  focusAccounts=[{...account,id:'cash-1',name:'Salary',balance:10,clearedBalance:10,accountType:'checking'}];
+  render(<App/>);await saved();
+  expect(screen.queryByRole('button',{name:/LOANS/})).not.toBeInTheDocument();
+});
+
 it('shows only the no accounts message and add action when the account list is empty',async()=>{
   render(<App/>);await saved();
   expect(await screen.findByText('No Accounts')).toBeInTheDocument();
