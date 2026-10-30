@@ -268,7 +268,7 @@ function BudgetApplication() {
     const controller = new AbortController();
     loadedMonth.current = null;
     setSaveState('loading');
-    setHistory([]); setFuture([]); setEditingId(null); setAssignmentError(''); setSelectedIds([]);
+    setHistory([]); setFuture([]); setEditingId(null); setAssignmentError('');
     fetch(`/api/budgets/${selectedBudgetId}/months/${data.month}`, { signal: controller.signal })
       .then(async response => {
         if (!response.ok) throw new Error(`Budget load failed (${response.status})`);
@@ -279,7 +279,11 @@ function BudgetApplication() {
         lastSaved.current = JSON.stringify(budget);
         setConflictBudget(null);
         setData(budget);
-        setHistory([]);setFuture([]);setEditingId(null);setAssignmentError('');setSelectedIds([]);
+        setHistory([]);setFuture([]);setEditingId(null);setAssignmentError('');
+        // Keep the category selection while browsing months; drop categories this month does not have.
+        const monthCategoryIds = new Set(budget.groups.flatMap(group => group.categories.map(category => category.id)));
+        setSelectedIds(current => current.filter(id => monthCategoryIds.has(id)));
+        setSelectedCategoryId(current => current && monthCategoryIds.has(current) ? current : null);
         setSaveState('saved');
       })
       .catch(error => {
@@ -317,7 +321,7 @@ function BudgetApplication() {
     if (!budgetsLoaded || !selectedBudgetId) return;
     const controller = new AbortController();
     const { from, to } = monthBounds(data.month);
-    setUpcomingLoading(true); setUpcomingError(''); setUpcomingItems([]); setSelectedCategoryId(null);
+    setUpcomingLoading(true); setUpcomingError(''); setUpcomingItems([]);
     const load = async () => {
       try {
         const first = await requestJson<Schedules>(`/api/schedules?${new URLSearchParams({ from, to, page: '1', pageSize: '100' })}`, { signal: controller.signal });
@@ -824,6 +828,7 @@ function BudgetApplication() {
     }
     const selected = ownedBudgets.find(budget => budget.id === id);
     if (!selected) return;
+    setSelectedIds([]); setSelectedCategoryId(null);
     loadedMonth.current = null;
     lastSaved.current = null;
     setPlan(selected);

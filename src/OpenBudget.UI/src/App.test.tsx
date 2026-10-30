@@ -206,6 +206,17 @@ it('collapses and expands cash accounts while retaining the total',async()=>{
   expect(screen.queryByText('No Accounts')).not.toBeInTheDocument();
 });
 
+it('keeps the selected category while moving between months',async()=>{
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('checkbox',{name:'Select Electricity'}));
+  await userEvent.click(screen.getByRole('button',{name:'Next month'}));
+  expect(await screen.findByRole('button',{name:'Nov 2026'})).toBeInTheDocument();
+  await waitFor(()=>expect(screen.getByRole('checkbox',{name:'Select Electricity'})).toBeChecked());
+  await userEvent.click(screen.getByRole('button',{name:'Previous month'}));
+  expect(await screen.findByRole('button',{name:'Oct 2026'})).toBeInTheDocument();
+  await waitFor(()=>expect(screen.getByRole('checkbox',{name:'Select Electricity'})).toBeChecked());
+});
+
 it('groups credit accounts under CREDIT and shows the card payment category details',async()=>{
   const account={isClosed:false,unclearedBalance:0,isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0};
   focusAccounts=[{...account,id:'cash-1',name:'Salary',balance:4325.87,clearedBalance:4325.87,accountType:'checking'},{...account,id:'card-1',name:'Mastercard',balance:-2674.47,clearedBalance:-2674.47,accountType:'creditCard'}];
