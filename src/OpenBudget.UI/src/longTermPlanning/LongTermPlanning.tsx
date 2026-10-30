@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { longTermYearStore, useRoutedLongTermYear } from '../routing/longTermYear';
 import { parseAssignment } from '../budgetMoney';
 import { MoneyInput } from '../MoneyInput';
@@ -62,8 +62,12 @@ function plannedExpenseTone(metric: Metric, value: number | null | undefined) {
   return metric === 'plannedExpenses' && (value ?? 0) > 0 ? 'lt-planned-expense-positive' : '';
 }
 
-// Matches the .lt-group-rows height transition in longTermPlanning.css.
-const ROW_ANIMATION_MS = 260;
+// Group rows slide open/shut over a duration that grows gently with their height, so big groups don't snap.
+function rowAnimationMs(height: number) {
+  return Math.round(Math.min(480, 240 + height * 0.25));
+}
+const ROW_EXPAND_EASING = 'cubic-bezier(.25,.8,.35,1)';
+const ROW_COLLAPSE_EASING = 'cubic-bezier(.45,0,.55,1)';
 
 function prefersReducedMotion() {
   return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -86,8 +90,11 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
   const [loadError, setLoadError] = useState('');
   const [reloadToken, setReloadToken] = useState(0);
   const [collapsed, setCollapsed] = useState<string[]>([]);
-  const [rowMotion, setRowMotion] = useState<Record<string, 'enter' | 'exit'>>({});
-  const rowMotionTimers = useRef(new Map<string, number>());
+  // Groups whose rows are sliding shut: still rendered, but already shown as collapsed.
+  const [closingGroups, setClosingGroups] = useState<string[]>([]);
+  const groupRowsRefs = useRef(new Map<string, HTMLDivElement>());
+  const groupRowsAnimations = useRef(new Map<string, Animation>());
+  const pendingExpand = useRef<{ groupId: string; fromHeight: number } | null>(null);
   const [editing, setEditing] = useState<EditingValue | null>(null);
   const [pendingChange, setPendingChange] = useState<PlanningChange | null>(null);
   const [conflict, setConflict] = useState<ConflictState | null>(null);
@@ -100,31 +107,54 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
   const [activityDialog, setActivityDialog] = useState<ActivityDialog | null>(null);
 
   useEffect(() => () => onPendingChange?.(false), [onPendingChange]);
-  useEffect(() => () => rowMotionTimers.current.forEach(timer => window.clearTimeout(timer)), []);
+  useEffect(() => () => groupRowsAnimations.current.forEach(animation => animation.cancel()), []);
 
-  // Group rows sit in a wrapper whose height slides open or shut, pushing the groups below. Expanding mounts the rows
-  // shut ('enter') and opens them on the next frames; collapsing slides them shut ('exit') before unmounting them.
+  // Expanding: rows are mounted at full height, so slide them in from the current height before the first paint.
+  useLayoutEffect(() => {
+    const pending = pendingExpand.current;
+    if (!pending) return;
+    pendingExpand.current = null;
+    const element = groupRowsRefs.current.get(pending.groupId);
+    if (!element || typeof element.animate !== 'function') return;
+    const height = element.scrollHeight;
+    const animation = element.animate([{ height: `${pending.fromHeight}px` }, { height: `${height}px` }],
+      { duration: rowAnimationMs(height - pending.fromHeight), easing: ROW_EXPAND_EASING });
+    groupRowsAnimations.current.set(pending.groupId, animation);
+    animation.onfinish = () => { if (groupRowsAnimations.current.get(pending.groupId) === animation) groupRowsAnimations.current.delete(pending.groupId); };
+  });
+
+  // Collapsing slides the group's rows shut (pulling the groups below up) and only then unmounts them; expanding mounts
+  // them and slides them open. Toggling mid-slide reverses from the current height.
   function toggleGroup(groupId: string) {
-    const collapsing = !collapsed.includes(groupId) && rowMotion[groupId] !== 'exit';
-    const clearMotion = () => setRowMotion(current => { const next = { ...current }; delete next[groupId]; return next; });
-    window.clearTimeout(rowMotionTimers.current.get(groupId));
-    if (prefersReducedMotion()) {
-      clearMotion();
-      setCollapsed(values => collapsing ? [...values, groupId] : values.filter(id => id !== groupId));
+    const element = groupRowsRefs.current.get(groupId);
+    const running = groupRowsAnimations.current.get(groupId);
+    const currentHeight = element ? element.getBoundingClientRect().height : 0;
+    running?.cancel();
+    groupRowsAnimations.current.delete(groupId);
+    const collapsing = !collapsed.includes(groupId) && !closingGroups.includes(groupId);
+    const animate = !prefersReducedMotion() && !!element && typeof element.animate === 'function';
+    if (!collapsing) {
+      setClosingGroups(values => values.filter(id => id !== groupId));
+      setCollapsed(values => values.filter(id => id !== groupId));
+      if (!prefersReducedMotion()) pendingExpand.current = { groupId, fromHeight: running ? currentHeight : 0 };
       return;
     }
-    if (collapsing) {
-      setRowMotion(current => ({ ...current, [groupId]: 'exit' }));
-      rowMotionTimers.current.set(groupId, window.setTimeout(() => {
-        setCollapsed(values => [...values, groupId]);
-        clearMotion();
-      }, ROW_ANIMATION_MS));
-    } else {
-      setCollapsed(values => values.filter(id => id !== groupId));
-      setRowMotion(current => ({ ...current, [groupId]: 'enter' }));
-      requestAnimationFrame(() => requestAnimationFrame(clearMotion));
+    if (!animate) {
+      setCollapsed(values => [...values, groupId]);
+      return;
     }
+    setClosingGroups(values => [...values, groupId]);
+    const animation = element!.animate([{ height: `${currentHeight}px` }, { height: '0px' }],
+      { duration: rowAnimationMs(currentHeight), easing: ROW_COLLAPSE_EASING, fill: 'forwards' });
+    groupRowsAnimations.current.set(groupId, animation);
+    animation.onfinish = () => {
+      if (groupRowsAnimations.current.get(groupId) !== animation) return;
+      groupRowsAnimations.current.delete(groupId);
+      setCollapsed(values => values.includes(groupId) ? values : [...values, groupId]);
+      setClosingGroups(values => values.filter(id => id !== groupId));
+    };
   }
+
 
   const now = new Date();
   const currentMonth = monthText(now.getFullYear(), now.getMonth() + 1);
@@ -386,8 +416,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
             </div>
 
             {displayedPlan.groups.map(group => {
-              const motion = rowMotion[group.id];
-              const isCollapsed = collapsed.includes(group.id) || motion === 'exit';
+              const isCollapsed = collapsed.includes(group.id) || closingGroups.includes(group.id);
               return <div className="lt-group-block" role="rowgroup" key={group.id}>
                 <div className="lt-grid-row lt-group-row" role="row">
                   <div className="lt-label-cell lt-sticky-label lt-group-label" role="rowheader">
@@ -399,7 +428,8 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
                     <div className="lt-subrow lt-planned-subrow" data-subrow="planned">{plannedMetrics.map(metric => renderGroupMetric(group, monthIndex, metric))}</div>
                   </div>)}
                 </div>
-                {!collapsed.includes(group.id) && <div className={`lt-group-rows${motion ? '' : ' open'}`} role="none"><div className="lt-group-rows-inner" role="none">
+                {!collapsed.includes(group.id) && <div className={`lt-group-rows${closingGroups.includes(group.id) ? ' closing' : ''}`} role="none"
+                  ref={element => { if (element) groupRowsRefs.current.set(group.id, element); else groupRowsRefs.current.delete(group.id); }}>
                 {group.categories.map(category => <div className="lt-grid-row lt-category-row" role="row" key={category.id}>
                   <div className="lt-label-cell lt-sticky-label" role="rowheader">
                     <strong title={category.name}>{category.name}</strong>
@@ -410,7 +440,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
                     <div className="lt-subrow lt-actual-subrow" data-subrow="actual">{actualMetrics.map(metric => renderMetric(category, monthIndex, metric))}</div>
                   </div>)}
                 </div>)}
-                </div></div>}
+                </div>}
               </div>;
             })}
           </div>

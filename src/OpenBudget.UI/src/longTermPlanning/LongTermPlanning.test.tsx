@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { LongTermPlanning } from './LongTermPlanning';
@@ -212,6 +212,35 @@ it('colors planned expenses orange only when they are above zero', async () => {
   expect(expenseLine(container.querySelector('.lt-group-row .lt-month-values')!)).toHaveClass('lt-planned-expense-positive');
 });
 
+it('slides group rows shut before removing them and slides them open from zero height', async () => {
+  const animations: { keyframes: Keyframe[]; options: KeyframeAnimationOptions; animation: { cancel: () => void; onfinish: (() => void) | null } }[] = [];
+  const animate = vi.fn(function (keyframes: Keyframe[], options: KeyframeAnimationOptions) {
+    const animation = { cancel: vi.fn(), onfinish: null as (() => void) | null };
+    animations.push({ keyframes, options, animation });
+    return animation;
+  });
+  Object.defineProperty(HTMLElement.prototype, 'animate', { configurable: true, value: animate });
+  try {
+    const user = userEvent.setup();
+    const { container } = render(<LongTermPlanning />);
+    await annualGrid(new Date().getFullYear());
+
+    await user.click(screen.getByRole('button', { name: 'Collapse Everyday' }));
+    expect(screen.getByRole('button', { name: 'Expand Everyday' })).toHaveAttribute('aria-expanded', 'false');
+    expect(container.querySelector('.lt-group-rows')).toHaveClass('closing');
+    expect(animations.at(-1)!.keyframes.at(-1)).toEqual({ height: '0px' });
+    expect(animations.at(-1)!.options.duration).toBeGreaterThanOrEqual(240);
+    act(() => animations.at(-1)!.animation.onfinish!());
+    expect(container.querySelector('.lt-group-rows')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Expand Everyday' }));
+    expect(container.querySelector('.lt-group-rows')).not.toHaveClass('closing');
+    expect(animations.at(-1)!.keyframes[0]).toEqual({ height: '0px' });
+  } finally {
+    delete (HTMLElement.prototype as { animate?: unknown }).animate;
+  }
+});
+
 it('navigates years, previews remaining to be assigned, and preserves later overrides', async () => {
   const user = userEvent.setup();
   render(<LongTermPlanning />);
@@ -257,13 +286,12 @@ it('keeps group totals for collapsed categories and aggregates every subcategory
   expect(groupRow.querySelector('svg.disclosure-chevron')).toHaveClass('open');
   await user.click(screen.getByRole('button', { name: 'Collapse Everyday' }));
   expect(groupRow.querySelector('svg.disclosure-chevron')).not.toHaveClass('open');
-  expect(container.querySelector('.lt-group-rows')).not.toHaveClass('open');
   await waitFor(() => expect(container.querySelector('.lt-category-row')).not.toBeInTheDocument());
   expect(groupRow.querySelectorAll('.lt-month-values')[0]).toHaveTextContent('€600.00');
 
   await user.click(screen.getByRole('button', { name: 'Expand Everyday' }));
   expect(container.querySelectorAll('.lt-group-rows .lt-category-row').length).toBeGreaterThan(1);
-  await waitFor(() => expect(container.querySelector('.lt-group-rows')).toHaveClass('open'));
+  expect(container.querySelector('.lt-group-rows')).not.toHaveClass('closing');
 });
 
 it('shows loading failures and offers a retry instead of showing sample forecasts', async () => {
