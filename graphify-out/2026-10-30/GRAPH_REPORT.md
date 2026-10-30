@@ -1,17 +1,17 @@
 # Graph Report - ynab-clone  (2026-10-30)
 
 ## Corpus Check
-- 313 files · ~272,535 words
+- 314 files · ~278,545 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 18 file(s) not represented in the graph (top: .css 9, .ttf 4, (none) 3)
 
 ## Summary
-- 3490 nodes · 11044 edges · 143 communities (118 shown, 25 thin omitted)
-- Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 1063 edges (avg confidence: 0.87)
+- 3493 nodes · 11187 edges · 132 communities (113 shown, 19 thin omitted)
+- Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 1080 edges (avg confidence: 0.87)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `91127311`
+- Built from commit: `db5e3a6e`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -20,57 +20,57 @@
 - DateTimeOffset
 - CategoryTargetService
 - CategoryTarget.tsx
-- api.ts
+- DateOnly
 - http
 - compilerOptions
 - http
-- App.tsx
+- .AddOpenBudgetIdentity
 - OpenBudget.IntegrationTests.csproj
 - Fact
 - MembershipEntitlements.cs
 - PostgresFixture.cs
 - Task
-- List
+- LongTermPlanningDto
 - CancellationToken
 - Authentication.cs
 - RegisterViewEntity
 - TransactionEntity
-- WishlistRulesTests
-- IReadOnlyDictionary
+- vitest
+- WishlistService
 - routes.ts
 - API reference
-- WishlistItemEntity
+- Wishlist slice
 - BudgetDbContext
-- Milestone 2a — Multi-User Authentication & Administration
+- TestApp
 - CreditPayoffTarget.tsx
 - Task
 - BudgetChangeInterceptor
-- MembershipEntitlements.cs
+- AdminPanel.tsx
 - BudgetContracts.cs
 - Testing and acceptance coverage
 - Agent Instructions
-- DateOnly
+- JsonElement
 - docs/README.md
 - TestApp
-- .CreateAsync
+- AgentTokenEntity
 - Milestone 1 — Reliable budget core and month lifecycle
 - Milestone 2 — Accounts and transaction register
 - WishlistPage.tsx
-- BudgetDbContext.cs
+- LongTermPlanning.tsx
 - Milestone 7 — File import, matching, and portable data
 - MigrationBuilder
 - system_text_json
 - Milestone 4 — Scheduled transactions and cash-flow awareness
 - RenameFlagsRequest
-- vitest
+- package.json
 - microsoft_entityframeworkcore
-- .Calculate
-- WishlistService
+- .GetYearAsync
+- WishlistItemEntity
 - SafeTransactionImageUrlFetcher
 - .Calculate
 - LoanAccountPage.tsx
-- TestApp
-- LongTermPlanning.tsx
+- BudgetUpdateDto
+- AppRouting.test.tsx
 - Milestone 5 — Credit cards and debt payoff planning
 - Milestone 6 — Focused plan views and reports
 - Milestone 8 — Identity, multiple budgets, and household sharing
@@ -82,8 +82,8 @@
 - YNAB Web app: reverse-engineering notes
 - LoanApiTests
 - Milestone 0 — Local application foundation
-- react
-- WishlistApiTests
+- AccountsPage
+- McpToolDefinition
 - CategoryTargetRules
 - .Validate
 - BudgetCarryForwardTests
@@ -91,113 +91,108 @@
 - ScheduleEntity
 - Payees.tsx
 - Documentation
-- PayeeRuleDto
+- List
 - .Calculate
-- AgentTokens.tsx
-- McpToolDefinition
-- LedgerGate
-- PlanActionEntity
-- Theory
+- vitest
+- McpToolCatalog
+- Milestone 13 — Wishlist
+- .UpdateMonthAsync
+- .HandleAuthenticateAsync
 - Milestone 12 — Icons and suggested icons
 - CategoryEntity
-- .UpdateMonthAsync
-- AccountsPage
-- JsonObject
-- SmtpSettingsEntity
+- IReadOnlyList
+- Authentication.cs
+- McpToolCatalog
+- AccountEmailSettingsService
 - .CallToolAsync
 - OpenBudget.Api
-- AgentTokenEntity
+- LongTermPlanning
 - LedgerContracts.cs
-- .Configure
-- .IsBlocked
+- ModelBuilder
+- AgentTokens.tsx
 - Task
 - ScheduledTransactions
 - McpToolContext
-- WishlistBucketEntity
+- Current PostgreSQL schema
 - LoanTermsEntity
 - WishlistPurchaseApiTests
-- LedgerContracts.cs
+- .BudgetId
 - TransactionImageApiTests
 - CategoryTargetEntity
-- App.test.tsx
-- .BudgetId
-- Current PostgreSQL schema
-- JsonElement
-- TransactionImageService
-- ImageMetadataStripper
-- TransactionImagesDialog
-- devDependencies
-- AppRouting.test.tsx
+- RegisterViewDto
 - liveUpdates.test.tsx
-- BudgetInvitationEntity
-- AccountEntity
-- .ToDtoAsync
-- evaluateMoneyExpression
+- BudgetEntity
+- AgentTokenAuthenticationHandler
 - MCP server for personal AI agents
-- WishlistApp.test.tsx
-- InlineTransactionEditor.tsx
-- IReadOnlyList
-- LedgerRulesTests
-- .RenameFlagsAsync
-- Developer setup
-- UserMembershipEntity
-- ModelBuilder
-- .Describe
-- .Validate
+- TransactionImageService
+- BudgetMemberEntity
+- .IsBlocked
+- TransactionImageEntity
+- budgetKeyFor
+- AuthGate
+- PlanActionEntity
+- LongTermPlanning.test.tsx
+- BudgetPlanEntity
+- BudgetInvitationEntity
+- TransactionImageUrlFetcherOptions
+- WishlistSettingsEntity
 - CreditPayoffTargetEntity
-- Milestone 3 — Goals, templates, and guided assignment
-- AdminAuditLogEntity
-- LedgerModel.cs
-- AccountRegisterPresentation
+- CategoryGroupEntity
+- AccountEntity
+- LedgerRulesTests
+- Theory
+- Developer setup
+- Effect
+- .Validate
 
 ## God Nodes (most connected - your core abstractions)
 1. `OpenBudget.Api` - 119 edges
-2. `BudgetDbContext` - 107 edges
-3. `BudgetApplication()` - 100 edges
-4. `LedgerService` - 74 edges
+2. `BudgetDbContext` - 112 edges
+3. `BudgetApplication()` - 101 edges
+4. `MutationDto` - 86 edges
 5. `OpenBudget.Api.Migrations` - 71 edges
 6. `LedgerApiTests` - 69 edges
-7. `MutationDto` - 68 edges
+7. `BudgetDto` - 60 edges
 8. `LedgerException` - 58 edges
-9. `BudgetDto` - 52 edges
-10. `TransactionEntity` - 49 edges
+9. `LedgerService` - 55 edges
+10. `AccountsPage()` - 53 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Target progress` --references--> `CategoryDto`  [INFERRED]
-  docs/api.md → src/OpenBudget.Api/BudgetContracts.cs
-- `Importing an accepted normalized row` --references--> `TransactionRequest`  [INFERRED]
-  docs/api.md → src/OpenBudget.Api/LedgerContracts.cs
-- `Current feature inventory` --references--> `LoanTerms`  [INFERRED]
-  docs/architecture.md → src/OpenBudget.UI/src/ledger/loans.ts
 - `Enable/disable semantics` --references--> `Wishlist`  [INFERRED]
   docs/milestones/milestone-13-wishlist.md → src/OpenBudget.Api/Migrations/20261030124559_Wishlist.Designer.cs
 - `Entitlement and enablement` --references--> `Wishlist`  [INFERRED]
   docs/milestones/milestone-13-wishlist.md → src/OpenBudget.Api/Migrations/20261030124559_Wishlist.Designer.cs
+- `Target progress` --references--> `CategoryDto`  [INFERRED]
+  docs/api.md → src/OpenBudget.Api/BudgetContracts.cs
+- `Importing an accepted normalized row` --references--> `TransactionRequest`  [INFERRED]
+  docs/api.md → src/OpenBudget.Api/LedgerContracts.cs
+- `Wishlist purchase transactions (2026-10-30)` --references--> `focusNextField()`  [INFERRED]
+  docs/milestones/milestone-13-wishlist.md → src/OpenBudget.UI/src/ledger/focusNext.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (143 total, 25 thin omitted)
+## Communities (132 total, 19 thin omitted)
 
 ### Community 0 - "BudgetApplication"
-Cohesion: 0.05
-Nodes (37): BudgetApplication(), addFunds(), applyAssignmentChanges(), applyAutoAssignOption(), applyMove(), applyRoute(), cancelClosePlans(), canLeaveCurrentView() (+29 more)
+Cohesion: 0.03
+Nodes (77): accountSections, App(), BudgetApplication(), addFunds(), applyAssignmentChanges(), applyAutoAssignOption(), applyMove(), applyRoute() (+69 more)
 
 ### Community 1 - "DateTimeOffset"
-Cohesion: 0.06
-Nodes (16): BudgetInvitationDto, BudgetPersonDto, BudgetSharingDto, InviteBudgetMemberRequest, PlanActionDto, IdentityFoundation, AdminLifecycle, BudgetOwnershipAndMembership (+8 more)
+Cohesion: 0.05
+Nodes (19): Owned budgets and memberships, Agent tokens and MCP audit, BudgetInvitationDto, BudgetPersonDto, BudgetSharingDto, PlanActionDto, IdentityFoundation, AdminLifecycle (+11 more)
 
 ### Community 2 - "CategoryTargetService"
-Cohesion: 0.24
-Nodes (5): CategoryTargetCommandResult, CategoryTargetDto, CategoryTargetResultDto, DeleteCategoryTargetRequest, CategoryTargetService
+Cohesion: 0.19
+Nodes (7): CategoryDto, CategoryGroupDto, CategoryTargetCommandResult, CategoryTargetDto, CategoryTargetResultDto, DeleteCategoryTargetRequest, CategoryTargetService
 
 ### Community 3 - "CategoryTarget.tsx"
-Cohesion: 0.08
-Nodes (34): BehaviorPicker(), choose(), keys(), CategoryTargetCard(), CategoryTargetEditor(), describe(), Money, MoneyField() (+26 more)
+Cohesion: 0.07
+Nodes (39): react, BehaviorPicker(), choose(), keys(), CategoryTargetCard(), CategoryTargetEditor(), describe(), Money (+31 more)
 
-### Community 4 - "api.ts"
+### Community 4 - "DateOnly"
 Cohesion: 0.09
-Nodes (25): Dialog, checking, savings, Accounts, accountTypeSections, Audit, Entry, Register (+17 more)
+Nodes (9): ContractItem, Total, ContractPosition, Remaining, CashLedger, MembershipSubscriptionMetadata, CategoryTargets, LoanAccounts (+1 more)
 
 ### Community 5 - "http"
 Cohesion: 0.13
@@ -211,109 +206,109 @@ Nodes (17): compilerOptions, allowImportingTsExtensions, isolatedModules, jsx, l
 Cohesion: 0.13
 Nodes (15): ASPNETCORE_ENVIRONMENT, applicationUrl, commandName, dotnetRunMessages, environmentVariables, launchBrowser, applicationUrl, commandName (+7 more)
 
-### Community 8 - "App.tsx"
-Cohesion: 0.07
-Nodes (31): accountSections, App(), BudgetPlan, BudgetState, Category, CategoryGroup, CategoryTransactionDialog, currency (+23 more)
+### Community 8 - ".AddOpenBudgetIdentity"
+Cohesion: 0.15
+Nodes (8): AccountEmailContent, AccountEmailTemplates, IAccountEmailSender, SmtpAccountEmailSender, TestAccountEmailSender, FailSending, IsConfigured, Messages
 
 ### Community 9 - "OpenBudget.IntegrationTests.csproj"
-Cohesion: 0.08
-Nodes (24): net10.0, Aspire.Hosting.JavaScript (13.6.2), Aspire.Hosting.PostgreSQL (13.6.2), coverlet.collector (6.0.4), Microsoft.AspNetCore.Identity.EntityFrameworkCore (10.0.13), Microsoft.AspNetCore.Mvc.Testing (10.0.13), Microsoft.EntityFrameworkCore.Design (10.0.13), Microsoft.EntityFrameworkCore.Relational (10.0.13) (+16 more)
+Cohesion: 0.07
+Nodes (25): Aspire.Hosting.JavaScript (13.6.2), Aspire.Hosting.PostgreSQL (13.6.2), Microsoft.AspNetCore.Identity.EntityFrameworkCore (10.0.13), Microsoft.AspNetCore.Mvc.Testing (10.0.13), Microsoft.EntityFrameworkCore.Design (10.0.13), Microsoft.EntityFrameworkCore.Relational (10.0.13), ModelContextProtocol.AspNetCore (2.2.0), Npgsql.EntityFrameworkCore.PostgreSQL (10.0.3) (+17 more)
 
 ### Community 12 - "Fact"
-Cohesion: 0.19
-Nodes (11): Milestone 2 acceptance map, MutationDto, ReconcileRequest, SplitDto, StatusRequest, TransferRequest, UpdateAccountRequest, SavePayeesRequest (+3 more)
+Cohesion: 0.18
+Nodes (12): Milestone 2 acceptance map, BudgetDto, DeleteTransactionRequest, MutationDto, ReconcileRequest, ReviewTransactionRequest, StatusRequest, UpdateAccountRequest (+4 more)
 
 ### Community 13 - "MembershipEntitlements.cs"
-Cohesion: 0.11
-Nodes (13): `BudgetPlans`, MembershipPlanEntitlementEntity, EntitlementKey, IsEnabled, MembershipPlanId, UserEntitlementOverrideEntity, EntitlementKey, IsEnabled (+5 more)
+Cohesion: 0.14
+Nodes (9): `BudgetPlans`, UserEntitlementOverrideEntity, EntitlementKey, IsEnabled, UserId, EntitlementAuthorizationHandler, EntitlementEndpointExtensions, EntitlementRequirement (+1 more)
 
 ### Community 15 - "Task"
-Cohesion: 0.09
-Nodes (14): IAccountEmailSender, SmtpAccountEmailSender, BudgetOwnershipService, OwnedBudgetDto, BudgetRequestContext, BudgetId, BudgetSharingService, LedgerProjection (+6 more)
+Cohesion: 0.13
+Nodes (8): BudgetLimitDto, BudgetOwnershipService, OwnedBudgetDto, BudgetRequestContext, BudgetId, BudgetSharingService, WishlistPurchases, OwnedBudgetListDto
 
-### Community 16 - "List"
-Cohesion: 0.19
-Nodes (8): BudgetUpdateDto, CategoryGroupUpdateDto, CategoryUpdateDto, CreateOwnedBudgetRequest, CreateAccountRequest, TransactionDto, LongTermPlanningActivityDto, BudgetOwnershipApiTests
+### Community 16 - "LongTermPlanningDto"
+Cohesion: 0.34
+Nodes (5): Milestone 11 acceptance map, LongTermPlanningDto, LongTermPlanningApiTests, PlanningConflictBody, ImageResponseExtensions
 
 ### Community 17 - "CancellationToken"
-Cohesion: 0.07
-Nodes (9): LedgerService, LedgerException, StatusCode, LedgerRules, Change, LedgerService, Entries, CreatedPairCategory (+1 more)
+Cohesion: 0.08
+Nodes (8): AccountDto, AuditDto, LedgerException, StatusCode, LedgerRules, Change, LedgerService, Entries
 
 ### Community 18 - "Authentication.cs"
-Cohesion: 0.05
-Nodes (36): Milestone 2a final verification (2026-10-23), AccountEmailContent, AccountEmailSettingsService, AccountEmailTemplates, SendTestEmailRequest, SmtpConnectionSettings, SmtpSettingsDto, UpdateSmtpSettingsRequest (+28 more)
+Cohesion: 0.14
+Nodes (16): Milestone 2a final verification (2026-10-23), ChangePasswordRequest, LoginRequest, OpenBudgetUser, CreatedAt, IsBootstrapAdministrator, IsSuspended, LastLoginAt (+8 more)
 
 ### Community 19 - "RegisterViewEntity"
-Cohesion: 0.12
-Nodes (15): RegisterViewDto, RegisterViewEntity, BudgetId, ColumnWidthsJson, DatePreset, FromMonth, Scope, ShowFlags (+7 more)
+Cohesion: 0.15
+Nodes (13): RegisterViewEntity, BudgetId, ColumnWidthsJson, DatePreset, FromMonth, Scope, ShowFlags, ShowImages (+5 more)
 
 ### Community 20 - "TransactionEntity"
-Cohesion: 0.06
-Nodes (35): PayeeEntity, BudgetId, CategoryMode, DefaultCategoryId, Id, IsHidden, Name, NormalizedName (+27 more)
+Cohesion: 0.07
+Nodes (27): SplitEntity, Amount, CategoryId, Memo, Payee, Position, TransactionId, TransactionEntity (+19 more)
 
-### Community 21 - "WishlistRulesTests"
-Cohesion: 0.10
-Nodes (12): Milestone 13 Wishlist acceptance map (2026-10-30), Wishlist purchase transactions, WishlistBucketEntity, BudgetId, CreatedAt, Id, IsDeleted, Name (+4 more)
+### Community 21 - "vitest"
+Cohesion: 0.05
+Nodes (35): @testing-library/react, @testing-library/user-event, vitest, plans, registerColumnOrder(), checking, savings, show() (+27 more)
 
-### Community 22 - "IReadOnlyDictionary"
-Cohesion: 0.18
-Nodes (4): Changes, HasChanges, CreditCardRules, Flows
+### Community 22 - "WishlistService"
+Cohesion: 0.08
+Nodes (22): Projection, NeverPaidOff, WishlistBucketDto, WishlistBucketOrderRequest, WishlistItemDto, WishlistItemOrderRequest, WishlistItemRequest, WishlistProgressDto (+14 more)
 
 ### Community 23 - "routes.ts"
-Cohesion: 0.08
-Nodes (46): AuthBrand(), AuthGate(), login(), refreshSession(), Session, accountSlugFor(), accountSlugs(), AppPage (+38 more)
+Cohesion: 0.10
+Nodes (41): URL routing, account(), accountSlugFor(), accountSlugs(), AppPage, AppRoute, budgetIdFromLocation(), BudgetRoute (+33 more)
 
 ### Community 24 - "API reference"
 Cohesion: 0.07
-Nodes (27): API reference, Approval and attention, Assignment rollover and earlier-month edits, Authentication, Boundaries, Budget collaboration and Plan history, Cash accounts and reconciliation, Credit accounts and card payments (+19 more)
+Nodes (28): API reference, Approval and attention, Assignment rollover and earlier-month edits, Authentication, Boundaries, Budget collaboration and Plan history, Cash accounts and reconciliation, Credit accounts and card payments (+20 more)
 
-### Community 25 - "WishlistItemEntity"
-Cohesion: 0.11
-Nodes (17): WishlistItemEntity, BucketId, BudgetId, Cost, CreatedAt, Description, Id, Name (+9 more)
+### Community 25 - "Wishlist slice"
+Cohesion: 0.15
+Nodes (3): Wishlist slice, WishlistPurchaseRules, WishlistPurchaseRulesTests
 
 ### Community 26 - "BudgetDbContext"
 Cohesion: 0.04
-Nodes (38): MCP server and live updates, BudgetDbContext, Accounts, ActiveBudgetId, AdminAuditLogs, ApplicationSettings, BudgetInvitations, BudgetMembers (+30 more)
+Nodes (50): MCP server and live updates, BudgetDbContext, Accounts, ActiveBudgetId, AdminAuditLogs, ApplicationSettings, BudgetInvitations, BudgetMembers (+42 more)
 
-### Community 27 - "Milestone 2a — Multi-User Authentication & Administration"
-Cohesion: 0.10
-Nodes (20): 10. Definition of Done, 1. Authentication & Login, 2. Permanent Administrator Accounts, 3. Registration & User Lifecycle, 4.1 Dashboard, 4.2 User Management, 4.3 Application Settings, 4. Separate Administration Panel (+12 more)
+### Community 27 - "TestApp"
+Cohesion: 0.17
+Nodes (10): Agent access (MCP) and live updates acceptance map, CreateAgentTokenRequest, Program, McpServerApiTests, McpTestKit, TestApp, Clock, ConnectionString (+2 more)
 
 ### Community 28 - "CreditPayoffTarget.tsx"
-Cohesion: 0.08
-Nodes (27): Invitation, Person, Sharing, CreditPaymentDetails(), mutate(), card, progress, renderPanel() (+19 more)
+Cohesion: 0.09
+Nodes (24): CreditPaymentDetails(), mutate(), card, progress, renderPanel(), CreditPayoff, currentMonth(), kindLabels (+16 more)
 
 ### Community 30 - "BudgetChangeInterceptor"
-Cohesion: 0.05
-Nodes (22): LedgerCommandEntity, AfterJson, BeforeJson, BudgetId, CreatedAt, Fingerprint, Id, Kind (+14 more)
+Cohesion: 0.07
+Nodes (12): BudgetChangeEvent, BudgetChangeInterceptor, BudgetChangePublisher, Subscription, BudgetId, Channel, Id, UserId (+4 more)
 
-### Community 31 - "MembershipEntitlements.cs"
-Cohesion: 0.12
-Nodes (22): AdminAudit, AdminPanel(), action(), inviteUser(), saveEmailSettings(), saveMembership(), saveMode(), AdminSummary (+14 more)
+### Community 31 - "AdminPanel.tsx"
+Cohesion: 0.05
+Nodes (43): 10. Definition of Done, 1. Authentication & Login, 2. Permanent Administrator Accounts, 3. Registration & User Lifecycle, 4.1 Dashboard, 4.2 User Management, 4.3 Application Settings, 4. Separate Administration Panel (+35 more)
 
 ### Community 32 - "BudgetContracts.cs"
-Cohesion: 0.23
-Nodes (5): BudgetPlanDto, BudgetPlanUpdateDto, BudgetPlanUpdateResult, CategoryDto, CategoryGroupDto
+Cohesion: 0.40
+Nodes (3): BudgetPlanDto, BudgetPlanUpdateDto, BudgetPlanUpdateResult
 
 ### Community 33 - "Testing and acceptance coverage"
-Cohesion: 0.12
-Nodes (16): Account register presentation verification (2026-10-21), Account View Options verification (2026-10-21), Assignment rollover regression verification (2026-10-21), Commands and isolation, Floating selection bar and actions (2026-10-22), Grouped category picker verification (2026-10-21), Inline register, scheduling, account editing and approval verification (2026-10-21), Milestone 11 verification (2026-10-22) (+8 more)
+Cohesion: 0.07
+Nodes (23): Account register presentation verification (2026-10-21), Account View Options verification (2026-10-21), Assignment rollover regression verification (2026-10-21), Commands and isolation, Floating selection bar and actions (2026-10-22), Grouped category picker verification (2026-10-21), Inline register, scheduling, account editing and approval verification (2026-10-21), Milestone 11 verification (2026-10-22) (+15 more)
 
 ### Community 34 - "Agent Instructions"
-Cohesion: 0.15
-Nodes (12): Agent Instructions, Before making changes, Coding Guidelines, Development Principles, Documentation, Git, Project - OpenBudget, Roadmap (+4 more)
+Cohesion: 0.14
+Nodes (13): Agent Instructions, Before making changes, Coding Guidelines, Delegating requests to worktrees and subagents, Development Principles, Documentation, Git, Project - OpenBudget (+5 more)
 
-### Community 35 - "DateOnly"
-Cohesion: 0.08
-Nodes (9): ContractItem, Total, ContractPosition, Remaining, CashLedger, MembershipSubscriptionMetadata, CategoryTargets, LoanAccounts (+1 more)
+### Community 35 - "JsonElement"
+Cohesion: 0.21
+Nodes (3): McpResultExtensions, McpTestClient, Http
 
 ### Community 36 - "docs/README.md"
 Cohesion: 0.20
 Nodes (5): Coding conventions, Documentation, Highlights, Project status, Quick start
 
-### Community 38 - ".CreateAsync"
-Cohesion: 0.09
-Nodes (11): AgentAccessSetup, AgentTokenIdentity, AgentActivityDto, AgentTokenBudgetDto, AgentTokenDto, AgentTokenService, CreatedAgentTokenDto, McpBudgetIds (+3 more)
+### Community 38 - "AgentTokenEntity"
+Cohesion: 0.08
+Nodes (25): AdminAuditLogEntity, Action, ActorUserId, CreatedAt, Id, TargetUserId, AgentTokenEntity, Budgets (+17 more)
 
 ### Community 39 - "Milestone 1 — Reliable budget core and month lifecycle"
 Cohesion: 0.20
@@ -325,23 +320,23 @@ Nodes (11): Acceptance criteria, Delivered behavior and verification, Dependenci
 
 ### Community 41 - "WishlistPage.tsx"
 Cohesion: 0.09
-Nodes (35): isWebLink(), loadWishlist(), reorder(), sendWishlistCommand(), WishlistAccess, WishlistBucket, WishlistConflictError, wishlistGroupId (+27 more)
+Nodes (37): addedAgo(), isWebLink(), loadWishlist(), reorder(), sendWishlistCommand(), WishlistAccess, WishlistBucket, WishlistConflictError (+29 more)
 
-### Community 42 - "BudgetDbContext.cs"
-Cohesion: 0.07
-Nodes (27): ApplicationSettingEntity, Key, Value, BudgetMemberEntity, BudgetId, InvitedByUserId, JoinedAt, Role (+19 more)
+### Community 42 - "LongTermPlanning.tsx"
+Cohesion: 0.12
+Nodes (22): ActivityDialog, ActivityKind, ActivitySelection, actualMetrics, ConflictState, EditingValue, LongTermPlanningProps, Metric (+14 more)
 
 ### Community 43 - "Milestone 7 — File import, matching, and portable data"
 Cohesion: 0.22
 Nodes (8): Acceptance criteria, Dependencies, Goal, Implemented prerequisite (2026-10-21), Milestone 7 — File import, matching, and portable data, Product references, User value, Vertical slice
 
 ### Community 44 - "MigrationBuilder"
-Cohesion: 0.05
-Nodes (15): InitialCreate, BudgetCore, NamedBudget, AccountViewOptions, AccountNotes, CategoryMoves, LongTermPlanning, AccountLifecycle (+7 more)
+Cohesion: 0.04
+Nodes (19): InitialCreate, BudgetCore, NamedBudget, AccountRegisterPresentation, AccountViewOptions, AccountNotes, PayeeManagement, CategoryMoves (+11 more)
 
 ### Community 45 - "system_text_json"
 Cohesion: 0.06
-Nodes (8): OpenBudget.Api.Realtime, OpenBudget.Api.Mcp, BudgetLimitDto, DeleteOwnedBudgetRequest, RenameOwnedBudgetRequest, McpServerText, AgentTokenClaims, BudgetChangeKinds
+Nodes (5): OpenBudget.Api.Realtime, OpenBudget.Api.Mcp, McpServerText, AgentTokenClaims, BudgetChangeKinds
 
 ### Community 46 - "Milestone 4 — Scheduled transactions and cash-flow awareness"
 Cohesion: 0.29
@@ -351,33 +346,37 @@ Nodes (7): Acceptance criteria, Dependencies, Goal, Milestone 4 — Scheduled tr
 Cohesion: 0.29
 Nodes (7): 1. Add the GitHub workflows, 2. Configure Coolify, 3. Create the Coolify webhook, 4. Add GitHub secrets, 5. Publish a release, GitHub Release to Coolify, Useful checks
 
-### Community 48 - "vitest"
+### Community 48 - "package.json"
 Cohesion: 0.05
-Nodes (31): jsdom, react-dom, @testing-library/jest-dom, @testing-library/react, @testing-library/user-event, @types/react, @types/react-dom, typescript (+23 more)
+Nodes (32): jsdom, @testing-library/jest-dom, @types/react, @types/react-dom, typescript, vite, @vitejs/plugin-react, dependencies (+24 more)
 
-### Community 50 - ".Calculate"
-Cohesion: 0.24
-Nodes (3): CalculatedLongTermPlanningMonth, LongTermPlanningCalculations, LongTermPlanningTests
+### Community 50 - ".GetYearAsync"
+Cohesion: 0.06
+Nodes (34): Architecture and current status, Category targets, Design limits to address, Implemented user path, Runtime topology, Security model, Technologies, Transaction image attachments (+26 more)
 
-### Community 51 - "WishlistService"
-Cohesion: 0.20
-Nodes (3): WishlistItemRequest, WishlistResult, WishlistService
+### Community 51 - "WishlistItemEntity"
+Cohesion: 0.12
+Nodes (16): WishlistItemEntity, BucketId, BudgetId, Cost, CreatedAt, Description, Id, Name (+8 more)
 
 ### Community 52 - "SafeTransactionImageUrlFetcher"
-Cohesion: 0.18
-Nodes (6): ImageFetchException, SafeTransactionImageUrlFetcher, TransactionImageUrlFetcherOptions, AllowNonDefaultPort, MaxRedirects, Timeout
+Cohesion: 0.21
+Nodes (6): ImageFetchException, SafeTransactionImageUrlFetcher, StubFetcher, Fail, Requests, Response
+
+### Community 53 - ".Calculate"
+Cohesion: 0.16
+Nodes (7): CategoryTargetDefinition, Context, MonthEnd, MonthIndex, StartIndex, CategoryTargetRulesTests, InvalidRequests
 
 ### Community 54 - "LoanAccountPage.tsx"
 Cohesion: 0.07
-Nodes (47): AccountType, accountTypeLabel(), formatMoney(), ActivityList(), CategoryActions, Chevron(), ContractSchedule(), ContractSummary() (+39 more)
+Nodes (44): AccountType, ActivityList(), CategoryActions, Chevron(), ContractSchedule(), ContractSummary(), LoanAccountPage(), MonthYearPicker() (+36 more)
 
-### Community 55 - "TestApp"
-Cohesion: 0.23
-Nodes (8): Milestone 11 acceptance map, LongTermPlanningApiTests, PlanningConflictBody, TestApp, Clock, ConnectionString, Email, Failure
+### Community 55 - "BudgetUpdateDto"
+Cohesion: 0.26
+Nodes (8): BudgetUpdateDto, CategoryGroupUpdateDto, CategoryUpdateDto, CreateOwnedBudgetRequest, DeleteOwnedBudgetRequest, RenameOwnedBudgetRequest, InviteBudgetMemberRequest, BudgetOwnershipApiTests
 
-### Community 56 - "LongTermPlanning.tsx"
-Cohesion: 0.07
-Nodes (44): openUpcoming(), ActivityDialog, ActivityKind, ActivitySelection, actualLabel(), actualMetrics, availableTone(), ConflictState (+36 more)
+### Community 56 - "AppRouting.test.tsx"
+Cohesion: 0.12
+Nodes (5): Category, emitBudgetChanged(), FakeEventSource, initialBudgets, legacyKey
 
 ### Community 57 - "Milestone 5 — Credit cards and debt payoff planning"
 Cohesion: 0.29
@@ -392,8 +391,8 @@ Cohesion: 0.25
 Nodes (7): Acceptance criteria, Dependencies, Goal, Milestone 8 — Identity, multiple budgets, and household sharing, Product reference, User value, Vertical slice
 
 ### Community 60 - "parseMoney"
-Cohesion: 0.08
-Nodes (52): Mortgages, loans and contracts, submit(), AccountForm(), TransferForm(), creditPaymentGroupId, LoanAccountType, loanAccountTypes, parseMoney() (+44 more)
+Cohesion: 0.05
+Nodes (80): Cash ledger slice, accountSectionId(), submit(), DisclosureChevron(), AccountForm(), editor(), Dialog, ReconcileForm() (+72 more)
 
 ### Community 61 - "Milestone 9 — Cross-device experience and offline resilience"
 Cohesion: 0.25
@@ -404,8 +403,8 @@ Cohesion: 0.25
 Nodes (7): Acceptance criteria, Dependencies and release gate, Goal, Milestone 10 — Optional linked-account import, Product references, User value, Vertical slice
 
 ### Community 63 - "IReadOnlyDictionary"
-Cohesion: 0.15
-Nodes (5): 5. Security model (ISO 27001 mapping), Residual risks, ApiDispatcher, BodyDetection, CanHaveBody
+Cohesion: 0.17
+Nodes (3): ApiDispatcher, BodyDetection, CanHaveBody
 
 ### Community 64 - "Milestone: Annual Long-Term Budget Planning"
 Cohesion: 0.29
@@ -417,31 +416,23 @@ Nodes (6): Account-linking code observed in the bundle, Evidence and scope, Fron
 
 ### Community 66 - "LoanApiTests"
 Cohesion: 0.07
-Nodes (7): ContractTermsRequest, Flows, LoanRules, Projection, NeverPaidOff, CreditCardRulesTests, LoanRulesTests
+Nodes (7): LedgerService, ContractDto, ContractScheduleItemDto, LoanRules, Pairing, CreatedPairCategory, LoanRulesTests
 
 ### Community 67 - "Milestone 0 — Local application foundation"
 Cohesion: 0.33
 Nodes (5): Acceptance criteria, Goal, Milestone 0 — Local application foundation, User and developer outcome, Vertical slice
 
-### Community 68 - "react"
-Cohesion: 0.07
-Nodes (46): react, AccountHeader(), balanceSummary(), ClearedIndicator(), reconciliationText(), RegisterIcon(), account, entry (+38 more)
+### Community 68 - "AccountsPage"
+Cohesion: 0.15
+Nodes (15): AccountsPage(), applyView(), beginColumnResize(), clearFilters(), finishColumnResize(), moveColumnResize(), mutate(), persistColumnWidths() (+7 more)
 
-### Community 71 - "WishlistApiTests"
-Cohesion: 0.44
-Nodes (4): WishlistBucketRequest, WishlistOverviewDto, WishlistVersionRequest, WishlistApiTests
-
-### Community 72 - "CategoryTargetRules"
-Cohesion: 0.23
-Nodes (7): CategoryTargetProgressDto, CategoryTargetDefinition, CategoryTargetRules, Context, MonthEnd, MonthIndex, StartIndex
+### Community 71 - "McpToolDefinition"
+Cohesion: 0.15
+Nodes (8): AgentPermission, Admin, Budget, Reporting, McpPermissions, McpToolDefinition, Route, McpPermissionMatrixTests
 
 ### Community 73 - ".Validate"
-Cohesion: 0.19
-Nodes (4): ImageFileNameSanitizer, ImageValidationException, TransactionImageValidator, ValidatedImage
-
-### Community 74 - "BudgetCarryForwardTests"
-Cohesion: 0.13
-Nodes (13): Backdated assignment corrections, BudgetCarryForward, BudgetEntity, BudgetId, FundsAdded, Groups, LedgerIncome, Month (+5 more)
+Cohesion: 0.15
+Nodes (4): ImageFileNameSanitizer, ImageMetadataStripper, ImageValidationException, TransactionImageValidator
 
 ### Community 75 - "OpenBudget product roadmap"
 Cohesion: 0.40
@@ -449,227 +440,211 @@ Nodes (5): Cross-cutting completion criteria, Delivery principles, Milestones, O
 
 ### Community 76 - "ScheduleEntity"
 Cohesion: 0.06
-Nodes (39): LongTermPlanningCategoryDto, LongTermPlanningCategoryMonthDto, LongTermPlanningDto, LongTermPlanningGroupDto, LongTermPlanningMonthDto, LongTermPlanningUpdateDto, LongTermPlanningUpdateResult, LongTermPlanningService (+31 more)
+Nodes (36): SplitDto, TransactionDto, LongTermPlanningActivityDto, ScheduledItemDto, SchedulesDto, ScheduleTemplateDto, ForecastOccurrence, ScheduledPlanningTotals (+28 more)
 
 ### Community 77 - "Payees.tsx"
-Cohesion: 0.08
-Nodes (29): CategoryOption, categoryGroups(), CategoryPicker(), choose(), close(), option(), outside(), inflowCategoryId (+21 more)
+Cohesion: 0.06
+Nodes (40): react-dom, CategoryOption, categoryGroups(), CategoryPicker(), choose(), close(), option(), outside() (+32 more)
 
 ### Community 78 - "Documentation"
 Cohesion: 0.67
 Nodes (3): Current release shape, Documentation, Documents
 
-### Community 79 - "PayeeRuleDto"
-Cohesion: 0.24
-Nodes (6): PayeeDto, PayeeRuleDto, PayeeRules, PayeesDto, PayeeUpdateDto, PayeeRulesTests
-
-### Community 81 - "AgentTokens.tsx"
-Cohesion: 0.12
-Nodes (11): Activity, AgentToken, AgentTokens(), BudgetOption, formatDate(), Permission, permissionHelp, readJson() (+3 more)
-
-### Community 82 - "McpToolDefinition"
-Cohesion: 0.13
-Nodes (8): AgentPermission, Admin, Budget, Reporting, McpPermissions, McpToolDefinition, Route, McpPermissionMatrixTests
-
-### Community 83 - "LedgerGate"
-Cohesion: 0.11
-Nodes (19): Category targets, Target progress, Wishlist, API, OpenBudget API and local services, Implemented: category targets (2026-10-30), Acceptance criteria, Buckets and Plan integration (+11 more)
-
-### Community 84 - "PlanActionEntity"
-Cohesion: 0.20
-Nodes (10): PlanActionEntity, ActorUserId, Amount, BudgetId, CreatedAt, FromCategoryName, Id, Kind (+2 more)
-
-### Community 85 - "Theory"
+### Community 79 - "List"
 Cohesion: 0.17
-Nodes (4): Transaction image attachments (2026-10-30), EntitlementKeyTests, RecurrenceTests, TransactionImageValidationTests
+Nodes (10): FlagDto, FlagPaletteDto, RenameFlagsRequest, SetFlagRequest, PayeeDto, PayeeRuleDto, PayeeRules, PayeesDto (+2 more)
+
+### Community 81 - "vitest"
+Cohesion: 0.06
+Nodes (55): AccountHeader(), balanceSummary(), ClearedIndicator(), ClearedSymbol(), reconciliationText(), RegisterIcon(), account, entry (+47 more)
+
+### Community 82 - "McpToolCatalog"
+Cohesion: 0.18
+Nodes (8): ApiResponse, Error, IsSuccess, McpToolCatalog, All, CommandIdArg, LedgerVersionArg, McpToolOutcome
+
+### Community 83 - "Milestone 13 — Wishlist"
+Cohesion: 0.08
+Nodes (26): Category targets, Target progress, Wishlist, API, OpenBudget API and local services, Acceptance criteria, Dependencies, Goal (+18 more)
+
+### Community 85 - ".HandleAuthenticateAsync"
+Cohesion: 0.22
+Nodes (3): AgentTokenSecrets, GeneratedToken, AgentTokenSecretsTests
 
 ### Community 86 - "Milestone 12 — Icons and suggested icons"
 Cohesion: 0.22
 Nodes (9): Acceptance criteria, Dependencies, Goal, Milestone 12 — Icons and suggested icons, Open questions, Product references, User value, Vertical slice (+1 more)
 
 ### Community 87 - "CategoryEntity"
-Cohesion: 0.08
-Nodes (25): CategoryEntity, Activity, Assigned, Available, BudgetId, BudgetMonth, CreditOverspending, GroupId (+17 more)
+Cohesion: 0.12
+Nodes (17): CategoryEntity, Activity, Assigned, Available, BudgetId, BudgetMonth, CreditOverspending, GroupId (+9 more)
 
-### Community 88 - ".UpdateMonthAsync"
-Cohesion: 0.20
-Nodes (3): Wishlist slice, BudgetUpdateResult, BudgetService
+### Community 88 - "IReadOnlyList"
+Cohesion: 0.54
+Nodes (3): PlanActionDraft, PlanActionRules, PlanActionRulesTests
 
-### Community 89 - "AccountsPage"
-Cohesion: 0.13
-Nodes (17): AccountsPage(), applyView(), beginColumnResize(), clearFilters(), finishColumnResize(), moveColumnResize(), mutate(), persistColumnWidths() (+9 more)
+### Community 89 - "Authentication.cs"
+Cohesion: 0.14
+Nodes (16): AdminAuditDto, AdminDashboardDto, AdminInviteUserRequest, AdminMembershipCountDto, AdminMembershipRequest, AdminRegistrationDto, AdminUserDto, AuthenticationSetup (+8 more)
 
-### Community 91 - "SmtpSettingsEntity"
-Cohesion: 0.22
-Nodes (9): SmtpSettingsEntity, EnableSsl, EncryptedPassword, From, Host, Id, Port, UpdatedAt (+1 more)
+### Community 91 - "AccountEmailSettingsService"
+Cohesion: 0.15
+Nodes (13): AccountEmailSettingsService, SmtpConnectionSettings, SmtpSettingsDto, UpdateSmtpSettingsRequest, SmtpSettingsEntity, EnableSsl, EncryptedPassword, From (+5 more)
+
+### Community 92 - ".CallToolAsync"
+Cohesion: 0.12
+Nodes (4): McpToolHandlers, AgentTokenIdentity, SchedulePostingService, SchedulePostingWorker
 
 ### Community 93 - "OpenBudget.Api"
-Cohesion: 0.11
-Nodes (4): OpenBudget.Tests, OpenBudget.Api, OpenBudget.UnitTests, RegisterViewTests
+Cohesion: 0.08
+Nodes (6): OpenBudget.Tests, OpenBudget.Api, OpenBudget.UnitTests, SendTestEmailRequest, RecurrenceTests, RegisterViewTests
 
-### Community 94 - "AgentTokenEntity"
-Cohesion: 0.05
-Nodes (37): Agent access (MCP) and live updates acceptance map, AgentAccessModel, AgentAuditLogEntity, BudgetId, CreatedAt, Id, Outcome, StatusCode (+29 more)
+### Community 94 - "LongTermPlanning"
+Cohesion: 0.14
+Nodes (22): actualLabel(), availableTone(), inputAmount(), LongTermPlanning(), beginEdit(), commitDraft(), groupValues(), metricValue() (+14 more)
 
 ### Community 95 - "LedgerContracts.cs"
-Cohesion: 0.23
-Nodes (6): TransactionRequest, ScheduledItemDto, SchedulesDto, MembershipEntitlementApiTests, PostgresFixture, TransactionSelectionApiTests
+Cohesion: 0.35
+Nodes (3): TransactionRequest, PostgresFixture, TransactionSelectionApiTests
 
-### Community 96 - ".Configure"
-Cohesion: 0.14
-Nodes (12): LedgerModel, LedgerStateEntity, BudgetId, Id, Version, ReconciliationEntity, AccountId, BudgetId (+4 more)
+### Community 96 - "ModelBuilder"
+Cohesion: 0.05
+Nodes (45): MembershipPlanEntitlementEntity, EntitlementKey, IsEnabled, MembershipPlanId, FlagDefinitionEntity, BudgetId, Color, Name (+37 more)
+
+### Community 97 - "AgentTokens.tsx"
+Cohesion: 0.12
+Nodes (11): Activity, AgentToken, AgentTokens(), BudgetOption, formatDate(), Permission, permissionHelp, readJson() (+3 more)
 
 ### Community 98 - "Task"
-Cohesion: 0.16
-Nodes (16): ContractDto, ContractScheduleItemDto, LoanActivityItemDto, LoanActivityMonthDto, LoanBalancePointDto, LoanBalanceRequest, LoanDto, LoanPairedCategoryDto (+8 more)
+Cohesion: 0.20
+Nodes (17): CreateAccountRequest, TransferRequest, ContractTermsRequest, LoanActivityItemDto, LoanActivityMonthDto, LoanBalancePointDto, LoanBalanceRequest, LoanDto (+9 more)
 
 ### Community 99 - "ScheduledTransactions"
 Cohesion: 0.14
 Nodes (5): Limitations and direction, Scheduling and flag storage, ScheduledTransactions, TransactionFlags, ScheduledApproval
 
 ### Community 100 - "McpToolContext"
-Cohesion: 0.16
+Cohesion: 0.15
 Nodes (5): McpToolContext, Arguments, BudgetId, CancellationToken, Token
 
-### Community 101 - "WishlistBucketEntity"
-Cohesion: 0.18
-Nodes (8): WishlistModel, WishlistSettingsEntity, BudgetId, IsEnabled, UpdatedAt, Version, WishlistState, ActiveBuckets
+### Community 101 - "Current PostgreSQL schema"
+Cohesion: 0.21
+Nodes (9): `Budgets`, Calculations and month lifecycle, `CategoryGroups` and `Categories`, Current PostgreSQL schema, Data model, Identity and account lifecycle, Ledger tables, Long-Term Planning (+1 more)
 
 ### Community 102 - "LoanTermsEntity"
 Cohesion: 0.09
 Nodes (22): LoanTermsEntity, AccountId, BalanceConfirmedAt, BudgetId, Contract, ContractMonths, ContractStartDate, CreatedAt (+14 more)
 
-### Community 104 - "LedgerContracts.cs"
-Cohesion: 0.22
-Nodes (9): AuditDto, CreditPayoffDto, CreditPayoffProgressDto, CreditPayoffTargetDto, CreditSummaryDto, DeleteCreditPayoffTargetRequest, DeleteTransactionRequest, ReviewTransactionRequest (+1 more)
+### Community 103 - "WishlistPurchaseApiTests"
+Cohesion: 0.11
+Nodes (17): Milestone 13 Wishlist acceptance map (2026-10-30), Wishlist purchase transactions, UserMembershipEntity, BillingProvider, BudgetLimitOverride, ExpiresOn, ExternalSubscriptionId, MembershipPlanId (+9 more)
+
+### Community 104 - ".BudgetId"
+Cohesion: 0.15
+Nodes (13): Current feature inventory, Backdated assignment corrections, Category targets, Credit accounts, Loan accounts, Payee management, Transaction images, Wishlist (+5 more)
 
 ### Community 105 - "TransactionImageApiTests"
-Cohesion: 0.21
-Nodes (13): AccountsDto, AuditPageDto, RegisterDto, DeleteTransactionImageRequest, ImportTransactionImageUrlRequest, TransactionImageListDto, ITransactionImageUrlFetcher, StubFetcher (+5 more)
+Cohesion: 0.17
+Nodes (13): AccountsDto, AuditPageDto, CreditPayoffDto, CreditPayoffProgressDto, CreditPayoffTargetDto, CreditSummaryDto, RegisterDto, DeleteTransactionImageRequest (+5 more)
 
 ### Community 106 - "CategoryTargetEntity"
 Cohesion: 0.11
 Nodes (16): CategoryTargetEntity, Amount, Behavior, BudgetId, CategoryId, CreatedAt, DayOfMonth, DueDate (+8 more)
 
-### Community 107 - "App.test.tsx"
-Cohesion: 0.17
-Nodes (5): Month, next(), saved(), weeklyProgress, weeklyTarget
-
-### Community 108 - ".BudgetId"
-Cohesion: 0.08
-Nodes (12): Owned budgets and memberships, Category targets, Credit accounts, Loan accounts, Payee management, Transaction images, Wishlist, PayeeManagement (+4 more)
-
-### Community 109 - "Current PostgreSQL schema"
-Cohesion: 0.22
-Nodes (9): Agent tokens and MCP audit, `Budgets`, Calculations and month lifecycle, `CategoryGroups` and `Categories`, Current PostgreSQL schema, Data model, Identity and account lifecycle, Long-Term Planning (+1 more)
-
-### Community 110 - "JsonElement"
-Cohesion: 0.11
-Nodes (13): ApiResponse, Error, IsSuccess, McpToolCatalog, Effect, Destructive, Read, Write (+5 more)
-
-### Community 112 - "TransactionImageService"
-Cohesion: 0.07
-Nodes (26): Storage, AccountDto, LedgerBalanceRow, Balance, Id, TransactionImageEndpoints, TransactionImageEntity, BudgetId (+18 more)
-
-### Community 115 - "TransactionImagesDialog"
-Cohesion: 0.29
-Nodes (11): Security model, Transaction image attachments, TransactionImagesDialog(), addFiles(), commandFor(), drop(), go(), importUrl() (+3 more)
-
-### Community 116 - "devDependencies"
-Cohesion: 0.18
-Nodes (11): devDependencies, jsdom, @testing-library/jest-dom, @testing-library/react, @testing-library/user-event, @types/react, @types/react-dom, typescript (+3 more)
-
-### Community 118 - "AppRouting.test.tsx"
-Cohesion: 0.12
-Nodes (6): URL routing, account(), budgets, Category, key, travelKey
-
-### Community 120 - "liveUpdates.test.tsx"
+### Community 108 - "liveUpdates.test.tsx"
 Cohesion: 0.30
 Nodes (6): BudgetChange, LiveUpdateOptions, reconnectDelay(), FakeEventSource, setup(), useBudgetLiveUpdates()
+
+### Community 109 - "BudgetEntity"
+Cohesion: 0.20
+Nodes (10): BudgetEntity, BudgetId, FundsAdded, Groups, LedgerIncome, Month, Note, OpeningReadyToAssign (+2 more)
+
+### Community 111 - "MCP server for personal AI agents"
+Cohesion: 0.17
+Nodes (12): Agent tokens, MCP and live events, 1. Create an agent token, 2. Connect a client, 3. Using the tools, 4. Permission matrix, 5. Security model (ISO 27001 mapping), 6. Real-time updates, 7. Limitations (+4 more)
+
+### Community 112 - "TransactionImageService"
+Cohesion: 0.10
+Nodes (13): Storage, DeleteCreditPayoffTargetRequest, SaveCreditPayoffTargetRequest, LedgerBalanceRow, Balance, Id, TransactionImageEndpoints, TransactionImageDto (+5 more)
+
+### Community 113 - "BudgetMemberEntity"
+Cohesion: 0.33
+Nodes (6): BudgetMemberEntity, BudgetId, InvitedByUserId, JoinedAt, Role, UserId
+
+### Community 115 - "TransactionImageEntity"
+Cohesion: 0.13
+Nodes (14): TransactionImageEntity, BudgetId, ContentType, CreatedAt, CreatedByUserId, FileName, Height, Id (+6 more)
+
+### Community 116 - "budgetKeyFor"
+Cohesion: 0.47
+Nodes (5): budgetKeyFor(), base64Url(), rotateRight(), roundConstants, sha256()
+
+### Community 117 - "AuthGate"
+Cohesion: 0.26
+Nodes (9): AuthBrand(), AuthGate(), login(), refreshSession(), Session, isSafeReturnPath(), publicPaths, rememberReturnPath() (+1 more)
+
+### Community 118 - "PlanActionEntity"
+Cohesion: 0.18
+Nodes (10): PlanActionEntity, ActorUserId, Amount, BudgetId, CreatedAt, FromCategoryName, Id, Kind (+2 more)
+
+### Community 120 - "BudgetPlanEntity"
+Cohesion: 0.09
+Nodes (23): BudgetPlanEntity, CreatedAt, Currency, Id, IsArchived, Months, Name, OwnerUserId (+15 more)
 
 ### Community 121 - "BudgetInvitationEntity"
 Cohesion: 0.29
 Nodes (7): BudgetInvitationEntity, BudgetId, CreatedAt, Email, Id, InvitedByUserId, NormalizedEmail
 
-### Community 122 - "AccountEntity"
-Cohesion: 0.18
-Nodes (8): AccountEntity, AccountType, BudgetId, Id, IsClosed, IsFavorite, Name, Notes
-
-### Community 125 - ".ToDtoAsync"
-Cohesion: 0.22
-Nodes (8): Architecture and current status, Category targets, Current feature inventory, Design limits to address, Implemented user path, Runtime topology, Technologies, LongTermPlanningPlanValues
-
-### Community 126 - "evaluateMoneyExpression"
+### Community 122 - "TransactionImageUrlFetcherOptions"
 Cohesion: 0.33
-Nodes (8): parseAssignment(), evaluateMoneyExpression(), factor(), number(), product(), sum(), hasMoneyOperator(), normalize()
+Nodes (5): BudgetEventsEndpoint, TransactionImageUrlFetcherOptions, AllowNonDefaultPort, MaxRedirects, Timeout
 
-### Community 127 - "MCP server for personal AI agents"
-Cohesion: 0.20
-Nodes (10): Agent tokens, MCP and live events, 1. Create an agent token, 2. Connect a client, 3. Using the tools, 4. Permission matrix, 6. Real-time updates, 7. Limitations, MCP server for personal AI agents (+2 more)
+### Community 123 - "WishlistSettingsEntity"
+Cohesion: 0.40
+Nodes (5): WishlistSettingsEntity, BudgetId, IsEnabled, UpdatedAt, Version
 
-### Community 129 - "InlineTransactionEditor.tsx"
-Cohesion: 0.10
-Nodes (35): Cash ledger slice, AccountSidebarRow(), editor(), Account, accountFamily(), isCreditAccount(), isLoanAccount(), loadCategories() (+27 more)
+### Community 124 - "CreditPayoffTargetEntity"
+Cohesion: 0.22
+Nodes (9): CreditPayoffTargetEntity, AccountId, BudgetId, CreatedAt, Kind, MonthlyAmount, PayoffAmount, TargetMonth (+1 more)
 
-### Community 130 - "IReadOnlyList"
-Cohesion: 0.39
-Nodes (6): WishlistBucketDto, WishlistBucketOrderRequest, WishlistItemDto, WishlistItemOrderRequest, WishlistProgressDto, WishlistPurchaseDto
+### Community 126 - "CategoryGroupEntity"
+Cohesion: 0.25
+Nodes (8): CategoryGroupEntity, BudgetId, BudgetMonth, Categories, Id, IsArchived, Name, SortOrder
 
-### Community 132 - ".RenameFlagsAsync"
-Cohesion: 0.48
-Nodes (4): FlagDto, FlagPaletteDto, RenameFlagsRequest, SetFlagRequest
+### Community 128 - "AccountEntity"
+Cohesion: 0.08
+Nodes (12): CreditCardRules, Flows, AccountEntity, AccountType, BudgetId, Id, IsClosed, IsFavorite (+4 more)
+
+### Community 131 - "Theory"
+Cohesion: 0.14
+Nodes (3): EntitlementKeyTests, PayeeRulesTests, TransactionImageValidationTests
 
 ### Community 133 - "Developer setup"
 Cohesion: 0.22
 Nodes (9): Build commands, Current development boundaries, Database lifecycle, Developer setup, First run, GitHub pull requests and releases, Prerequisites, Request flow (+1 more)
 
-### Community 134 - "UserMembershipEntity"
-Cohesion: 0.22
-Nodes (9): UserMembershipEntity, BillingProvider, BudgetLimitOverride, ExpiresOn, ExternalSubscriptionId, MembershipPlanId, StartsOn, UserId (+1 more)
-
-### Community 135 - "ModelBuilder"
-Cohesion: 0.11
-Nodes (14): BudgetPlanEntity, CreatedAt, Currency, Id, IsArchived, Months, Name, OwnerUserId (+6 more)
-
-### Community 136 - ".Describe"
-Cohesion: 0.44
-Nodes (3): PlanActionDraft, PlanActionRules, PlanActionRulesTests
-
-### Community 138 - "CreditPayoffTargetEntity"
-Cohesion: 0.22
-Nodes (9): CreditPayoffTargetEntity, AccountId, BudgetId, CreatedAt, Kind, MonthlyAmount, PayoffAmount, TargetMonth (+1 more)
-
-### Community 139 - "Milestone 3 — Goals, templates, and guided assignment"
-Cohesion: 0.29
-Nodes (7): Acceptance criteria, Dependencies, Goal, Milestone 3 — Goals, templates, and guided assignment, Product references, User value, Vertical slice
-
-### Community 140 - "AdminAuditLogEntity"
-Cohesion: 0.33
-Nodes (6): AdminAuditLogEntity, Action, ActorUserId, CreatedAt, Id, TargetUserId
-
-### Community 141 - "LedgerModel.cs"
-Cohesion: 0.40
-Nodes (4): FlagDefinitionEntity, BudgetId, Color, Name
+### Community 136 - "Effect"
+Cohesion: 0.50
+Nodes (4): Effect, Destructive, Read, Write
 
 ## Knowledge Gaps
-- **427 isolated node(s):** `BudgetId`, `Notes`, `Id`, `Name`, `IsClosed` (+422 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1090 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **25 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **429 isolated node(s):** `LocalTimeZone`, `UtcNow`, `Zone`, `Arguments`, `BudgetId` (+424 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1082 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **19 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Wishlist slice` connect `.UpdateMonthAsync` to `AccountsPage`, `InlineTransactionEditor.tsx`, `LoanApiTests`, `WishlistBucketEntity`, `.BudgetId`, `CancellationToken`, `LedgerGate`, `WishlistService`, `WishlistRulesTests`, `LoanAccountPage.tsx`, `WishlistItemEntity`, `parseMoney`, `.ToDtoAsync`?**
-  _High betweenness centrality (0.222) - this node is a cross-community bridge._
-- **What connects `BudgetId`, `Notes`, `Id` to the rest of the system?**
-  _427 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Why does `Wishlist slice` connect `Wishlist slice` to `ModelBuilder`, `DateTimeOffset`, `LoanApiTests`, `AccountsPage`, `Payees.tsx`, `CancellationToken`, `.GetYearAsync`, `Milestone 13 — Wishlist`, `.UpdateMonthAsync`, `WishlistService`, `LoanAccountPage.tsx`, `parseMoney`?**
+  _High betweenness centrality (0.191) - this node is a cross-community bridge._
+- **What connects `LocalTimeZone`, `UtcNow`, `Zone` to the rest of the system?**
+  _429 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `BudgetApplication` be split into smaller, more focused modules?**
-  _Cohesion score 0.05026300409117475 - nodes in this community are weakly interconnected._
-- **Why does `AccountsPage()` connect `AccountsPage` to `InlineTransactionEditor.tsx`, `api.ts`, `react`, `App.tsx`, `CreditPayoffTarget.tsx`, `Payees.tsx`, `LoanAccountPage.tsx`, `.UpdateMonthAsync`, `parseMoney`?**
-  _High betweenness centrality (0.100) - this node is a cross-community bridge._
+  _Cohesion score 0.03137065637065637 - nodes in this community are weakly interconnected._
+- **Why does `BudgetDbContext` connect `BudgetDbContext` to `AccountEntity`, `CategoryTargetService`, `.AddOpenBudgetIdentity`, `MembershipEntitlements.cs`, `Task`, `Authentication.cs`, `RegisterViewEntity`, `TransactionEntity`, `WishlistService`, `Wishlist slice`, `TestApp`, `AgentTokenEntity`, `.GetYearAsync`, `WishlistItemEntity`, `LoanApiTests`, `ScheduleEntity`, `Milestone 13 — Wishlist`, `.UpdateMonthAsync`, `CategoryEntity`, `Authentication.cs`, `AccountEmailSettingsService`, `.CallToolAsync`, `OpenBudget.Api`, `ModelBuilder`, `LoanTermsEntity`, `WishlistPurchaseApiTests`, `CategoryTargetEntity`, `RegisterViewDto`, `BudgetEntity`, `AgentTokenAuthenticationHandler`, `TransactionImageService`, `BudgetMemberEntity`, `TransactionImageEntity`, `PlanActionEntity`, `BudgetPlanEntity`, `BudgetInvitationEntity`, `WishlistSettingsEntity`, `CreditPayoffTargetEntity`, `CategoryGroupEntity`?**
+  _High betweenness centrality (0.099) - this node is a cross-community bridge._
 - **Should `DateTimeOffset` be split into smaller, more focused modules?**
-  _Cohesion score 0.06341463414634146 - nodes in this community are weakly interconnected._
-- **Why does `BudgetDbContext` connect `BudgetDbContext` to `CategoryTargetService`, `UserMembershipEntity`, `ModelBuilder`, `AdminAuditLogEntity`, `MembershipEntitlements.cs`, `Task`, `CancellationToken`, `Authentication.cs`, `RegisterViewEntity`, `.CreateAsync`, `BudgetDbContext.cs`, `WishlistApiTests`, `BudgetCarryForwardTests`, `ScheduleEntity`, `LedgerGate`, `PlanActionEntity`, `CategoryEntity`, `SmtpSettingsEntity`, `.Configure`, `WishlistPurchaseApiTests`, `TransactionImageService`, `BudgetInvitationEntity`?**
-  _High betweenness centrality (0.089) - this node is a cross-community bridge._
+  _Cohesion score 0.05019607843137255 - nodes in this community are weakly interconnected._
+- **Why does `AccountsPage()` connect `AccountsPage` to `BudgetApplication`, `CreditPayoffTarget.tsx`, `Payees.tsx`, `vitest`, `vitest`, `LoanAccountPage.tsx`, `Wishlist slice`, `parseMoney`?**
+  _High betweenness centrality (0.086) - this node is a cross-community bridge._
 - **Should `CategoryTarget.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.08019323671497584 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.0726764500349406 - nodes in this community are weakly interconnected._
