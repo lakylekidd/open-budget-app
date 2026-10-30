@@ -8,13 +8,13 @@ import { TransactionDatePicker } from './TransactionDatePicker';
 import { PayeePicker, type SavedPayee } from './Payees';
 import { CategoryPicker, inflowCategoryId } from './CategoryPicker';
 import { NewCategoryDialog } from './NewCategoryDialog';
-import { TransactionModeToggle, WishlistLockedCategory, WishlistPurchasePicker, findWishlistChoice, wishlistPrefill, type TransactionMode, type WishlistChoice, type WishlistContext } from './WishlistPurchase';
+import { WishlistLinkButton, wishlistLinkFill, type WishlistChoice, type WishlistContext } from './WishlistPurchase';
 export type InlineFields = { accountId:string;date:string;amount:number;payee:string;memo:string;categoryId:string|null;splits:Split[];status:string;repeat:string;toAccountId:string|null;confirmReconciledEdit:boolean;onlyOnce:boolean;wishlistItemId?:string };
 export function parseRegisterMoney(value:string) { return parseMoney(value); }
 type DraftSplit = { categoryId:string; payee:string; memo:string; outflow:string; inflow:string };
 export function InlineTransactionEditor({ entry, selectedAccount, accounts, view, busy, onSave, onCancel, repeat:initialRepeat='never', transferAccountId, scheduled=false, requiresConfirmation=false, postingError, onPayeesChanged=()=>{}, onCategoriesChanged=()=>{}, onPayeesPending,onShowPayeeTransactions,wishlist }: {
   entry?:Entry;selectedAccount:string;accounts:Account[];view:ViewOptions;busy:boolean;onSave:(fields:InlineFields,another:boolean)=>Promise<boolean>;onCancel:()=>void;repeat?:string;transferAccountId?:string;scheduled?:boolean;requiresConfirmation?:boolean; postingError?:string|null;onPayeesChanged?:()=>void;onCategoriesChanged?:()=>void;onPayeesPending?:(pending:boolean)=>void;onShowPayeeTransactions?:(payee:SavedPayee)=>void;
-  /** Entitled + enabled Wishlist for this budget; enables the Regular/Wishlist switch on new transactions. */
+  /** Entitled + enabled Wishlist for this budget; shows the "Link wishlist item" button beside Memo on new transactions. */
   wishlist?:WishlistContext|null;
 }) {
   const formId=useId(); const [date,setDate]=useState(entry?.date??today());const [dateValid,setDateValid]=useState(true);const [repeat,setRepeat]=useState(initialRepeat);
@@ -28,10 +28,13 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
   const [categoryState,setCategoryState]=useState('loading');const [error,setError]=useState('');const [confirmed,setConfirmed]=useState(false);const [onlyOnce,setOnlyOnce]=useState(false);
   useEffect(()=>{const controller=new AbortController();setCategoryState('loading');loadCategoryBudget(date,controller.signal).then(data=>{if(controller.signal.aborted)return;setCategories(data.categories);setReadyToAssign(data.readyToAssign);setCategoryState('ready');}).catch(err=>{if(err.name!=='AbortError')setCategoryState('error');});return()=>controller.abort();},[date,categoryRefresh]);
   const transfer=accounts.find(a=>a.id!==accountId&&a.id===chosenTransfer);
-  const [mode,setMode]=useState<TransactionMode>('regular');const [choice,setChoice]=useState<WishlistChoice|null>(null);
-  const showModes=Boolean(wishlist)&&!entry&&!scheduled&&!splits.length&&!transfer;const wishlistMode=showModes&&mode==='wishlist';
-  function choose(next:WishlistChoice){const fill=wishlistPrefill(next);setChoice(next);setPayee(fill.payee);setChosenTransfer(undefined);setMemo(fill.memo);setOutflow(fill.outflow.toFixed(2));setInflow('');setSplits([]);setCategory(fill.categoryId);}
-  function changeMode(next:TransactionMode){setMode(next);setError('');if(next==='wishlist'&&wishlist){const first=choice??findWishlistChoice(wishlist.overview);if(first)choose(first);}}
+  // Wishlist link: new, unscheduled, unsplit, non-transfer, non-loan rows only. Linking fills Memo and Category, never Payee;
+  // choosing another category (or splitting) drops the link because a Wishlist purchase must use its bucket's category.
+  const [linked,setLinked]=useState<WishlistChoice|null>(null);
+  const canLink=Boolean(wishlist)&&!entry&&!scheduled&&!splits.length&&!transfer&&!isLoanAccount(accounts.find(a=>a.id===accountId));
+  const link=canLink&&linked&&categoryId===linked.bucket.categoryId?linked:null;
+  useEffect(()=>{if(linked&&categoryId!==linked.bucket.categoryId)setLinked(null);},[categoryId,linked]);
+  function linkItem(next:WishlistChoice){const fill=wishlistLinkFill(next);setLinked(next);setMemo(fill.memo);setSplits([]);setCategory(fill.categoryId);setError('');}
   const columns=9+Number(view.showFlags)+Number(view.showImages)+Number(view.showRunningBalance);
   const categoryProps={categories,readyToAssign,loading:categoryState==='loading',error:categoryState==='error',onOpen:()=>setCategoryRefresh(n=>n+1),onRetry:()=>setCategoryRefresh(n=>n+1)};
   function split(){setCategory('');setSplits([{categoryId:'',payee:'',memo:'',outflow:'',inflow:''},{categoryId:'',payee:'',memo:'',outflow:'',inflow:''}]);}
@@ -43,12 +46,10 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
     const amount=income-out;const parsed=splits.map(s=>{const splitOut=s.outflow.trim()?parseRegisterMoney(s.outflow):0;const splitIn=s.inflow.trim()?parseRegisterMoney(s.inflow):0;return {categoryId:s.categoryId,payee:s.payee,memo:s.memo,amount:splitIn===null||splitOut===null||splitOut<0||splitIn<0||splitOut>0&&splitIn>0?null:splitIn-splitOut};});
     if(!transfer&&(parsed.some(s=>!s.categoryId||s.amount===null||s.amount===0)||splits.length&&Math.round(parsed.reduce((sum,s)=>sum+(s.amount??0)*100,0))!==Math.round(amount*100))){setError('Split amounts must equal the signed transaction amount. Choose a category and one valid amount for every split.');return false;}
     if(!transfer&&!splits.length&&(!categoryId||categoryId===inflowCategoryId)&&!entry?.isOpening&&isCreditAccount(accounts.find(a=>a.id===accountId))){setError('Credit account transactions require a category.');return false;}
-    if(wishlistMode){
-      if(!choice){setError('Choose a Wishlist bucket with an item to buy.');return false;}
+    if(link){
       if(!(out&&out>0)||income){setError('A Wishlist purchase is spending: enter an outflow.');return false;}
       if(repeat!=='never'){setError('A Wishlist purchase cannot repeat. Set Repeat to Never.');return false;}
-      if(isLoanAccount(accounts.find(a=>a.id===accountId))){setError('Loan accounts cannot record Wishlist purchases. Choose another account.');return false;}
-      return onSave({accountId,date,amount:-out,payee,memo,categoryId:choice.bucket.categoryId,splits:[],status,repeat:'never',toAccountId:null,confirmReconciledEdit:false,onlyOnce:false,wishlistItemId:choice.item.id},another);
+      return onSave({accountId,date,amount:-out,payee,memo,categoryId:link.bucket.categoryId,splits:[],status,repeat:'never',toAccountId:null,confirmReconciledEdit:false,onlyOnce:false,wishlistItemId:link.item.id},another);
     }
     if(requiresConfirmation&&!confirmed){setError('Confirm the reconciled transaction warning before saving.');return false;}
     return onSave({accountId,date,amount,payee:transfer?'':payee,memo,categoryId:transfer||splits.length||categoryId===inflowCategoryId?null:categoryId||null,splits:transfer?[]:parsed as Split[],status,repeat,toAccountId:transfer?.id??null,confirmReconciledEdit:confirmed,onlyOnce},another);
@@ -59,10 +60,11 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
   return <><tr className="register-inline-row" onKeyDown={e=>{if(e.key==='Escape'&&!busy)onCancel();}} aria-label={entry?'Edit transaction inline':'New transaction'}>
     <td className="register-check-cell"><input type="checkbox" aria-label="Editing transaction" checked readOnly/></td><td/>{view.showFlags&&<td className="register-decoration"><RegisterIcon name="flag" size={15}/></td>}{view.showImages&&<td className="register-decoration"><RegisterIcon name="image" size={15}/></td>}
     <td className="inline-date-cell"><TransactionDatePicker date={date} repeat={repeat} onDate={setDate} onRepeat={setRepeat} initiallyOpen={!entry} disabled={busy} onValid={setDateValid}/></td>
-    <td>{wishlistMode?<input form={formId} aria-label="Payee" disabled={busy} value={payee} maxLength={160} onChange={e=>setPayee(e.target.value)}/>:<PayeePicker paymentsRequest={paymentsRequest} form={formId} value={payee} disabled={busy||entry?.isOpening} accountId={accountId} accounts={accounts} categories={categories} onShowTransactions={onShowPayeeTransactions} onChanged={onPayeesChanged} onPendingChange={onPayeesPending} onChange={(name,id,suggested)=>{setPayee(name);setChosenTransfer(id);if(!categoryId&&!splits.length&&suggested&&categories.some(c=>c.id===suggested&&!c.isArchived))setCategory(suggested);}}/>}</td>
-    <td>{wishlistMode?<WishlistLockedCategory choice={choice}/>:<CategoryPicker {...categoryProps} form={formId} value={splits.length?'__split':categoryId} notNeeded={!!transfer||entry?.isOpening} disabled={busy} onChange={id=>{setSplits([]);setCategory(id);}} onSplit={split} onTransfer={()=>setPaymentsRequest(n=>n+1)} onNewCategory={()=>setNewCategoryTarget('main')}/>}</td>
-    <td><input form={formId} aria-label="Memo" disabled={busy} value={memo} maxLength={1000} placeholder="memo" onChange={e=>setMemo(e.target.value)}/></td>
-    <td><MoneyInput form={formId} aria-label="Outflow" disabled={busy} value={outflow} placeholder="outflow" onChange={raw => setOutflow(raw)}/></td><td><MoneyInput form={formId} aria-label="Inflow" disabled={busy||wishlistMode} value={inflow} placeholder="inflow" onChange={raw => setInflow(raw)}/></td>
+    <td><PayeePicker paymentsRequest={paymentsRequest} form={formId} value={payee} disabled={busy||entry?.isOpening} accountId={accountId} accounts={accounts} categories={categories} onShowTransactions={onShowPayeeTransactions} onChanged={onPayeesChanged} onPendingChange={onPayeesPending} onChange={(name,id,suggested)=>{setPayee(name);setChosenTransfer(id);if(!categoryId&&!splits.length&&suggested&&categories.some(c=>c.id===suggested&&!c.isArchived))setCategory(suggested);}}/></td>
+    <td><CategoryPicker {...categoryProps} form={formId} value={splits.length?'__split':categoryId} notNeeded={!!transfer||entry?.isOpening} disabled={busy} onChange={id=>{setSplits([]);setCategory(id);}} onSplit={split} onTransfer={()=>setPaymentsRequest(n=>n+1)} onNewCategory={()=>setNewCategoryTarget('main')}/></td>
+    <td>{canLink&&wishlist?<span className="memo-with-wishlist"><input form={formId} aria-label="Memo" disabled={busy} value={memo} maxLength={1000} placeholder="memo" onChange={e=>setMemo(e.target.value)}/><WishlistLinkButton form={formId} overview={wishlist.overview} linked={link} disabled={busy} onLink={linkItem} onUnlink={()=>setLinked(null)}/></span>
+      :<input form={formId} aria-label="Memo" disabled={busy} value={memo} maxLength={1000} placeholder="memo" onChange={e=>setMemo(e.target.value)}/>}</td>
+    <td><MoneyInput form={formId} aria-label="Outflow" disabled={busy} value={outflow} placeholder="outflow" onChange={raw => setOutflow(raw)}/></td><td><MoneyInput form={formId} aria-label="Inflow" disabled={busy} value={inflow} placeholder="inflow" onChange={raw => setInflow(raw)}/></td>
     {view.showRunningBalance&&<td/>}<td className="register-status-cell"><button type="button" className={'transaction-status status-'+status} disabled={busy||scheduled||requiresConfirmation} aria-label={status==='cleared'?'Cleared: mark uncleared':'Uncleared: mark cleared'} onClick={()=>setStatus(status==='cleared'?'uncleared':'cleared')}><span className={status==='cleared'?'cleared-symbol':'uncleared-symbol'}>c</span></button></td>
   </tr>{splits.map((s,i)=><tr className="register-inline-split-row" key={i} aria-label={`Split ${i+1}`}>
     <td className="register-check-cell"/><td/>{view.showFlags&&<td/>}{view.showImages&&<td/>}
@@ -75,7 +77,7 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
     {view.showRunningBalance&&<td/>}<td/>
   </tr>)}<tr className="register-inline-footer"><td colSpan={columns}>
     <form id={formId} onSubmit={e=>{e.preventDefault();void save(false);}}>
-      {showModes&&wishlist&&<div className="transaction-mode-row"><TransactionModeToggle mode={mode} disabled={busy} onChange={changeMode}/>{wishlistMode&&<WishlistPurchasePicker form={formId} overview={wishlist.overview} choice={choice} disabled={busy} onChoose={choose}/>}</div>}
+      {link&&<span className="inline-wishlist-link" role="status">Linked to Wishlist item {link.item.name}. Saving marks it purchased.</span>}
       {!selectedAccount&&!entry&&<label>Account<select aria-label="Transaction account" value={accountId} disabled={busy} onChange={e=>setAccountId(e.target.value)}>{accounts.filter(a=>!a.isClosed).map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>}
       {scheduled&&<label className="inline-check"><input type="checkbox" checked={onlyOnce} disabled={busy} onChange={e=>setOnlyOnce(e.target.checked)}/>Only this occurrence</label>}
       {requiresConfirmation&&<label className="inline-reconcile-warning"><input type="checkbox" checked={confirmed} disabled={busy} onChange={e=>setConfirmed(e.target.checked)}/>This entry was reconciled. I understand saving marks it cleared and requires reconciling again. The old reconciliation and edit remain in the audit history.</label>}
