@@ -94,7 +94,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
   const [closingGroups, setClosingGroups] = useState<string[]>([]);
   const groupRowsRefs = useRef(new Map<string, HTMLDivElement>());
   const groupRowsAnimations = useRef(new Map<string, Animation>());
-  const pendingExpand = useRef<{ groupId: string; fromHeight: number } | null>(null);
+  const pendingExpands = useRef<{ groupId: string; fromHeight: number }[]>([]);
   const [editing, setEditing] = useState<EditingValue | null>(null);
   const [pendingChange, setPendingChange] = useState<PlanningChange | null>(null);
   const [conflict, setConflict] = useState<ConflictState | null>(null);
@@ -111,32 +111,44 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
 
   // Expanding: rows are mounted at full height, so slide them in from the current height before the first paint.
   useLayoutEffect(() => {
-    const pending = pendingExpand.current;
-    if (!pending) return;
-    pendingExpand.current = null;
-    const element = groupRowsRefs.current.get(pending.groupId);
-    if (!element || typeof element.animate !== 'function') return;
-    const height = element.scrollHeight;
-    const animation = element.animate([{ height: `${pending.fromHeight}px` }, { height: `${height}px` }],
-      { duration: rowAnimationMs(height - pending.fromHeight), easing: ROW_EXPAND_EASING });
-    groupRowsAnimations.current.set(pending.groupId, animation);
-    animation.onfinish = () => { if (groupRowsAnimations.current.get(pending.groupId) === animation) groupRowsAnimations.current.delete(pending.groupId); };
+    const pending = pendingExpands.current;
+    if (!pending.length) return;
+    pendingExpands.current = [];
+    for (const { groupId, fromHeight } of pending) {
+      const element = groupRowsRefs.current.get(groupId);
+      if (!element || typeof element.animate !== 'function') continue;
+      const height = element.scrollHeight;
+      const animation = element.animate([{ height: `${fromHeight}px` }, { height: `${height}px` }],
+        { duration: rowAnimationMs(height - fromHeight), easing: ROW_EXPAND_EASING });
+      groupRowsAnimations.current.set(groupId, animation);
+      animation.onfinish = () => { if (groupRowsAnimations.current.get(groupId) === animation) groupRowsAnimations.current.delete(groupId); };
+    }
   });
 
   // Collapsing slides the group's rows shut (pulling the groups below up) and only then unmounts them; expanding mounts
   // them and slides them open. Toggling mid-slide reverses from the current height.
   function toggleGroup(groupId: string) {
+    setGroupOpen(groupId, collapsed.includes(groupId) || closingGroups.includes(groupId));
+  }
+
+  function setAllGroupsOpen(open: boolean) {
+    displayedPlan?.groups.forEach(group => setGroupOpen(group.id, open));
+  }
+
+  function setGroupOpen(groupId: string, open: boolean) {
+    const isOpen = !collapsed.includes(groupId) && !closingGroups.includes(groupId);
+    if (open === isOpen) return;
     const element = groupRowsRefs.current.get(groupId);
     const running = groupRowsAnimations.current.get(groupId);
     const currentHeight = element ? element.getBoundingClientRect().height : 0;
     running?.cancel();
     groupRowsAnimations.current.delete(groupId);
-    const collapsing = !collapsed.includes(groupId) && !closingGroups.includes(groupId);
+    const collapsing = !open;
     const animate = !prefersReducedMotion() && !!element && typeof element.animate === 'function';
     if (!collapsing) {
       setClosingGroups(values => values.filter(id => id !== groupId));
       setCollapsed(values => values.filter(id => id !== groupId));
-      if (!prefersReducedMotion()) pendingExpand.current = { groupId, fromHeight: running ? currentHeight : 0 };
+      if (!prefersReducedMotion()) pendingExpands.current.push({ groupId, fromHeight: running ? currentHeight : 0 });
       return;
     }
     if (!animate) {
@@ -398,7 +410,12 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
         {displayedPlan.groups.length === 0 ? <div className="lt-state">Add budget categories in Plan to start long-term planning.</div> : <div className="lt-scroll" ref={scrollRef} aria-label={`Annual budget planning grid for ${year}`}>
           <div className="lt-grid" role="table" aria-label={`Long-term plan ${year}`}>
             <div className="lt-month-head lt-grid-row" role="row">
-              <div className="lt-label-header" role="columnheader"><strong>Category</strong><span>Planned vs actual</span></div>
+              <div className="lt-label-header" role="columnheader">
+                <div className="lt-collapse-controls">
+                  <button type="button" onClick={() => setAllGroupsOpen(true)} disabled={!displayedPlan.groups.some(group => collapsed.includes(group.id) || closingGroups.includes(group.id))}>Expand all</button>
+                  <button type="button" onClick={() => setAllGroupsOpen(false)} disabled={displayedPlan.groups.every(group => collapsed.includes(group.id) || closingGroups.includes(group.id))}>Collapse all</button>
+                </div>
+                <strong>Category</strong><span>Planned vs actual</span></div>
               {displayedPlan.months.map(month => {
                 const state = month.month < currentMonth ? 'past' : month.month === currentMonth ? 'current' : 'future';
                 const monthIndex = displayedPlan.months.indexOf(month);

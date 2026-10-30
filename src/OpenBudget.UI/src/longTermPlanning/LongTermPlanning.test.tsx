@@ -241,6 +241,25 @@ it('slides group rows shut before removing them and slides them open from zero h
   }
 });
 
+it('expands and collapses every group with the header buttons', async () => {
+  const user = userEvent.setup();
+  const { container } = render(<LongTermPlanning />);
+  await annualGrid(new Date().getFullYear());
+  const expandAll = screen.getByRole('button', { name: 'Expand all' });
+  const collapseAll = screen.getByRole('button', { name: 'Collapse all' });
+  expect(expandAll).toBeDisabled();
+
+  await user.click(collapseAll);
+  await waitFor(() => expect(container.querySelector('.lt-category-row')).not.toBeInTheDocument());
+  container.querySelectorAll('.lt-group-row button[aria-expanded]').forEach(button => expect(button).toHaveAttribute('aria-expanded', 'false'));
+  expect(collapseAll).toBeDisabled();
+
+  await user.click(expandAll);
+  container.querySelectorAll('.lt-group-row button[aria-expanded]').forEach(button => expect(button).toHaveAttribute('aria-expanded', 'true'));
+  expect(container.querySelectorAll('.lt-category-row').length).toBeGreaterThan(0);
+  expect(expandAll).toBeDisabled();
+});
+
 it('navigates years, previews remaining to be assigned, and preserves later overrides', async () => {
   const user = userEvent.setup();
   render(<LongTermPlanning />);
