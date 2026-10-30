@@ -150,11 +150,18 @@ it('shows the Long-Term Planning amount as muted text beside Assigned only when 
   expect(electricity.querySelector('.assigned-cell')).toHaveClass('has-planned');
   expect(food.querySelector('.planned-amount')).toBeNull();
   expect(food.querySelector('.assigned-cell')).not.toHaveClass('has-planned');
-  expect(within(document.querySelector('.group-row') as HTMLElement).getByTitle('Planned €120.00 in Long-Term Planning')).toBeInTheDocument();
+  expect((document.querySelector('.group-row') as HTMLElement).querySelector('.planned-amount')).toBeNull();
   await userEvent.click(screen.getByRole('button',{name:'Progress Bars Off'}));
   expect(document.querySelector('.budget-table')).toHaveClass('compact');
   expect(within(electricity).getByTitle('Planned €120.00 in Long-Term Planning')).toHaveTextContent('€120.00');
   expect(food.querySelector('.planned-amount')).toBeNull();
+});
+
+it('mutes zero Assigned amounts like zero Activity',async()=>{
+  months['2026-10'].groups[0].categories.push({id:'food',name:'Food',assigned:12,activity:0,available:12,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false});
+  render(<App/>);await saved();
+  expect(within(screen.getByRole('button',{name:'Edit assigned for Electricity'})).getByText('€0.00')).toHaveClass('assigned-zero');
+  expect(within(screen.getByRole('button',{name:'Edit assigned for Food'})).getByText('€12.00')).not.toHaveClass('assigned-zero');
 });
 
 it('auto-assigns Long-Term Planning amounts with the Planned option, capped by Ready to Assign',async()=>{

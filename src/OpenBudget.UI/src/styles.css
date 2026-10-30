@@ -210,3 +210,7 @@
 .assigned-cell.has-planned .amount-button{height:auto;padding-block:3px}
 .has-planned>span:first-child{line-height:inherit}
 .has-planned .planned-amount{position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%);max-width:55%;min-width:0;line-height:14px;text-align:left;pointer-events:none}
+/* Zero Assigned amounts use the same muted tone as zero Activity (disabled activity button). */
+.amount-button .assigned-zero{opacity:.65}
+/* Group Assigned lines up with category Assigned text (cell 4px + amount button 4px padding). */
+.group-assigned{padding-right:8px}
