@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { publicPaths, rememberReturnPath, takeReturnPath } from './routing/routes';
 
 type Session = { id: string; userName: string; email: string | null; isAdministrator: boolean };
 
@@ -31,7 +32,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
           const query = new URLSearchParams(window.location.search);
           const confirmation = await fetch('/api/auth/confirm-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: query.get('userId'), token: query.get('token') }) });
           setNotice(confirmation.ok ? 'Email verified. You can sign in now.' : 'This verification link is invalid or expired.');
-        } else if (!['/login', '/register', '/forgot-password', '/reset-password'].includes(window.location.pathname)) {
+        } else if (!publicPaths.includes(window.location.pathname)) {
+          // Remember the requested deep link (e.g. /{budgetKey}/account/visa) so sign-in can return to it.
+          rememberReturnPath(`${window.location.pathname}${window.location.search}`);
           window.history.replaceState(null, '', `/login${window.location.search}`);
         }
       }
@@ -54,7 +57,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         body: JSON.stringify({ userNameOrEmail: form.get('username'), password: form.get('password') }) });
       if (!response.ok) throw new Error(response.status === 429 ? 'Too many attempts. Try again later.' : 'Sign-in failed. Check your username or email and password.');
       setSession(await response.json() as Session);
-      if (window.location.pathname === '/login') window.history.replaceState(null, '', '/');
+      if (window.location.pathname === '/login') window.history.replaceState(null, '', takeReturnPath() ?? '/');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not sign in.'); }
     finally { setBusy(false); }
   }

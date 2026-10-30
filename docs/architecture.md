@@ -14,7 +14,7 @@ flowchart LR
   API -. SSE /api/budgets/id/events .-> UI
 ```
 
-The Aspire AppHost is the local system composition root. It starts PostgreSQL with a persistent named data volume, injects the database connection into the API, waits for PostgreSQL readiness, and starts the Vite UI after the API. The browser calls the UI at port 5173; Vite forwards `/api` and `/health` requests to port 5080.
+The Aspire AppHost is the local system composition root. It starts PostgreSQL with a persistent named data volume, injects the database connection into the API, waits for PostgreSQL readiness, and starts the Vite UI after the API. The browser calls the UI at port 5173; Vite forwards `/api`, `/health` and `/mcp` requests to port 5080 and serves `index.html` for every other path so client-side routes (see [URL routing](#url-routing)) survive a refresh.
 
 ## Technologies
 
@@ -158,3 +158,36 @@ For Azure production, implement `ITransactionImageStore` over Azure Blob Storage
 `src/OpenBudget.Api/Mcp` hosts the MCP server at `/mcp` in the same process and DI container as the REST API. `AgentTokenAuthenticationHandler` validates `obk_` bearer tokens (SHA-256 lookup, revocation, expiry, creator status and role re-checked per request). `McpToolHandlers` filters `tools/list` by permission, validates arguments against each tool's JSON schema, enforces the token's budget allow-list plus the creator's live access, requires `confirm: true` for destructive actions and writes one `AgentAuditLogs` row per call. Tools in `McpToolCatalog` never use `BudgetDbContext` directly: `ApiDispatcher` runs the existing minimal-API endpoint in-process in a fresh DI scope with the creator's principal (role claims removed for non-Admin tokens) and the target budget selected explicitly, after evaluating that endpoint's authorization metadata. Validation, `LedgerGate` locking, optimistic versions, command receipts, Plan action history and admin audit are therefore shared with the web app.
 
 `src/OpenBudget.Api/Realtime` adds a `BudgetChangeInterceptor` (registered with `ConfigureDbContext`, so test overrides keep it) that captures which budgets/areas each `SaveChanges` touched and publishes to the singleton `BudgetChangePublisher` only after the transaction commits. `GET /api/budgets/{id}/events` streams those notifications to authorised browser sessions; `useBudgetLiveUpdates` in the UI re-fetches the Plan month, register and budget list, or shows an "Updated elsewhere" notice when local Plan edits are unsaved. The hub and rate limiter are per process: multi-instance deployments need a backplane (Azure SignalR Service or Azure Cache for Redis) and a distributed limiter. See [MCP](mcp.md).
+
+## URL routing
+
+The budget application uses clean, lowercase paths: `/{budgetKey}/{page}`. Routing is a small in-house module (no router dependency): `src/OpenBudget.UI/src/routing/routes.ts` holds pure parse/format/resolve helpers and `useAppRouter.ts` keeps the address bar in sync with `App.tsx` state through `history.pushState`/`replaceState` and `popstate`. `App.tsx` still owns page, account, month and budget state; `navigate()` only changes that state and the hook writes the URL. The Long-Term Planning year is shared between the hook and `LongTermPlanning` through the small store in `routing/longTermYear.ts`.
+
+| Path | Screen |
+|---|---|
+| `/` | Redirects (replace) to the active budget's `/{budgetKey}/plan` |
+| `/{budgetKey}/plan` | Plan, default month (the month the app opens on) |
+| `/{budgetKey}/plan/{YYYY-MM}` | Plan for that month; browsing months pushes history entries |
+| `/{budgetKey}/long-term` | Long-Term Planning, current year |
+| `/{budgetKey}/long-term/{YYYY}` | Long-Term Planning for that year |
+| `/{budgetKey}/wishlist` | Wishlist |
+| `/{budgetKey}/reflect` | Reflect (placeholder page) |
+| `/{budgetKey}/account/all` | All Accounts register |
+| `/{budgetKey}/account/{account-slug}` | One account register (open or closed) |
+| `/{budgetKey}/together` | Budget Together (sharing) |
+| `/{budgetKey}` | Same as `/{budgetKey}/plan` |
+| `/admin` | Administration (not budget-scoped; full page load) |
+| `/login`, `/register`, `/forgot-password`, `/reset-password?userId=&token=`, `/confirm-email?userId=&token=` | Signed-out AuthGate pages; emailed verification and reset links use the last two |
+| `/?page=Accounts&account={id}` | Legacy query links from before routing; mapped to the clean path with `replaceState` |
+
+Account Settings (profile) remains a dialog, and the selected Plan category, filters and other dialogs stay UI state rather than URL state. Page titles follow the route: `Plan · {budget name} · OpenBudget`, `{account name} · {budget name} · OpenBudget`.
+
+**Budget key.** `budgetKey` is the first 11 base64url characters (66 bits) of `SHA-256("openbudget:budget:" + budgetId)`, computed in the browser with a synchronous SHA-256 (Web Crypto is unavailable on plain-HTTP origins). It is resolved by matching against the budgets returned by `GET /api/budgets`, so no server change is needed and a collision within one user's list is negligible. It is an obfuscated identifier for tidy URLs, **not a security boundary**: the API authorizes every budget request (owner/editor membership via the active-budget cookie middleware and per-endpoint checks). An unknown or no-longer-accessible key redirects to the current budget's Plan with a notice.
+
+**Account slug.** The account name lowercased, diacritics folded to ASCII (`Épargne` becomes `epargne`), other runs of non-alphanumerics collapsed to `-`, trimmed and capped at 48 characters; names with no ASCII letters or digits become `account`. When several accounts in a budget share a slug (or the slug would be `all`), every one of them gets `-` plus the shortest unique prefix (minimum 4 characters) of its account id, e.g. `mastercard-3f9a`. Resolution order: current slug, raw account id (legacy links), then any `{words}-{id prefix}` whose prefix matches exactly one account, which keeps suffixed links working after a rename and canonicalizes the URL. Renaming an account with a unique name changes its slug, so an old unsuffixed link falls back to `/account/all` with a notice. Closed accounts still resolve.
+
+**History and guards.** User navigation pushes an entry; first-load resolution, canonicalization and back/forward use `replaceState`. Back/forward applies the same leave-guards as `navigate()` (pending ledger command, pending Long-Term Planning edit, unsaved, saving or conflicting Plan edits). When a guard blocks, the toast explains why and the previous URL is pushed back so the address bar matches the screen (this drops forward history). Switching budget from the budget menu keeps the current page under the new key; account pages fall back to `/account/all`. Back/forward into another budget's account switches the budget first and resolves the slug once that budget's accounts load. Accounts follow the active-budget cookie, so the account list reloads whenever the selected budget changes.
+
+**Sign-in.** A signed-out visit to a deep link stores the path in `sessionStorage` (`openbudget.returnTo`) before AuthGate moves to `/login`; a successful sign-in returns there. Only same-origin app paths are accepted (no `//`, backslashes, control characters, `/api`, `/health`, `/mcp` or auth pages), so the value cannot become an open redirect.
+
+**Hosting fallback.** Vite's dev server serves `index.html` for any HTML request that is not proxied; the proxy keys are anchored regexes (`^/api(?:[/?]|$)`, `^/health(?:[?]|$)`, `^/mcp(?:[/?]|$)`) so a budget key that happens to start with `api`, `health` or `mcp` is never proxied. In production `deploy/nginx.conf` proxies `/api/`, `= /mcp` and `= /health`, returns 404 for `= /api`, `/mcp/...` and `/health/...`, and uses `try_files $uri $uri/ /index.html` for everything else. The API does not serve the UI (no static files or SPA fallback in `Program.cs`), so API routes are never captured by the fallback.

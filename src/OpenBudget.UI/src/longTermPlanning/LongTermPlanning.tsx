@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { longTermYearStore, useRoutedLongTermYear } from '../routing/longTermYear';
 import { parseAssignment } from '../budgetMoney';
 import { MoneyInput } from '../MoneyInput';
 import { formatMoney, requestJson, type Entry, type Register } from '../ledger/api';
@@ -63,7 +64,11 @@ function selectInputContents(input: HTMLInputElement) {
 }
 
 export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTransaction }: LongTermPlanningProps) {
-  const [year, setYear] = useState(() => new Date().getFullYear());
+  // Under the app router the viewed year follows /{budgetKey}/long-term/{year} (browser back/forward included).
+  const routedYear = useRoutedLongTermYear();
+  const [year, setYear] = useState(() => routedYear ?? new Date().getFullYear());
+  useEffect(() => { if (routedYear !== null) setYear(routedYear); }, [routedYear]);
+  useEffect(() => { if (longTermYearStore.get() !== null) longTermYearStore.set(year); }, [year]);
   const [plan, setPlan] = useState<LongTermPlanningData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
