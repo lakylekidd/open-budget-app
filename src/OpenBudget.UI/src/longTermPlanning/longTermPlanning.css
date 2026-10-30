@@ -86,3 +86,14 @@
 .lt-save-state.error,.lt-save-state.conflict{color:#ffb9c4}
 .lt-save-state.saved{color:#a7c9a8}
 @media(max-width:700px){.lt-toolbar{height:auto;min-height:72px;flex-basis:auto;align-items:flex-start;padding:10px 12px}.lt-toolbar h1{font-size:22px}.lt-toolbar p{max-width:300px}.lt-year-controls{gap:2px}.lt-year-controls strong{min-width:54px;font-size:17px}.lt-grid-row{grid-template-columns:220px repeat(12,205px)}.lt-label-header{padding-left:10px}.lt-month-header{padding-left:8px;padding-right:8px}.lt-month-values{padding-left:6px;padding-right:6px}.lt-money-input{font-size:11px}.lt-empty-note{margin-left:8px;margin-right:8px}}
+/* Category rows: the Planned/Actual labels and the month values share one vertical rhythm
+   (6px top, 21px name line, then two 30px subrows split by the same 1px rule), so the
+   divider lines up across the row and sits midway between Planned and Actual. */
+.lt-category-row .lt-label-cell{justify-content:flex-start;padding-top:6px;padding-bottom:6px}
+.lt-category-row .lt-label-cell>strong{display:block;height:21px}
+.lt-category-row .lt-pair-labels{grid-template-rows:30px 31px;margin-top:0;line-height:30px}
+.lt-category-row .lt-pair-labels span+span{top:0;border-top:1px solid #303248}
+.lt-category-row .lt-pair-labels span+span::before{content:none}
+.lt-category-row .lt-month-values{justify-content:flex-start;padding-top:27px;padding-bottom:6px}
+.lt-category-row .lt-subrow{box-sizing:border-box;min-height:30px;height:30px}
+.lt-category-row .lt-actual-subrow{height:31px}
