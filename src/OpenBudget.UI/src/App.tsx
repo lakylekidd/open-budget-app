@@ -33,7 +33,7 @@ import { useBudgetLiveUpdates } from './liveUpdates';
 import './agentTokens.css';
 import { BudgetTogether } from './BudgetTogether';
 import { RecentMoves } from './RecentMoves';
-import { buildAutoAssignOptions, previousBudgetMonths, type AssignmentHistory, type AutoAssignOption } from './planAutoAssign';
+import { buildAutoAssignOptions, capAdjustmentsToReady, previousBudgetMonths, type AssignmentHistory, type AutoAssignOption } from './planAutoAssign';
 import type { LongTermPlanning as LongTermPlanningData } from './longTermPlanning/longTermPlanningMath';
 import { WishlistPage } from './wishlist/WishlistPage';
 import { liveWishlistProgress, useWishlistAccess, WishlistCategoryCard, WishlistNavItem, WishlistProgressBar, WishlistRowStatus } from './wishlist/WishlistPlanParts';
@@ -55,6 +55,8 @@ type Category = {
   targetProgress?: TargetProgress | null;
   // Server-calculated progress toward the bucket's next Wishlist item (Wishlist categories only).
   wishlistProgress?: WishlistProgress | null;
+  // Long-Term Planning budget effective for this month (server-owned); absent/null when no plan exists.
+  planned?: number | null;
 };
 
 type CategoryGroup = { id: string; name: string; categories: Category[]; isArchived?: boolean; sortOrder?: number };
@@ -591,15 +593,7 @@ function BudgetApplication() {
 
   function applyAutoAssignOption(option: AutoAssignOption) {
     if (saveState !== 'saved' || assignmentHistoryLoading || option.requiresHistory && assignmentHistoryError) return;
-    let readyCents = Math.max(0, Math.round(data.readyToAssign * 100));
-    let recommendedCents = 0;
-    const adjustments = option.adjustments.map(item => {
-      if (item.deltaCents <= 0) return item;
-      recommendedCents += item.deltaCents;
-      const deltaCents = Math.min(item.deltaCents, readyCents);
-      readyCents -= deltaCents;
-      return { ...item, deltaCents };
-    });
+    const { adjustments, recommendedCents } = capAdjustmentsToReady(option.adjustments, data.readyToAssign);
     const appliedCents = applyAssignmentChanges(adjustments);
     setAssignMenuOpen(false);
     setAutoAssignExpanded(false);
@@ -1040,6 +1034,9 @@ function BudgetApplication() {
                 const scheduledOutflow = scheduledOutflows[category.id] ?? 0;
                 return !category.isArchived && scheduledOutflow < 0 && Math.round((category.available + scheduledOutflow) * 100) < 0;
               });
+              // Sum of the categories' Long-Term Planning values; null when no category in the group has a plan this month.
+              const plannedCategories = group.categories.filter(item => typeof item.planned === 'number');
+              const groupPlanned = plannedCategories.length === 0 ? null : plannedCategories.reduce((sum, item) => sum + Math.round((item.planned ?? 0) * 100), 0) / 100;
               return <div className={`category-group ${dropTarget?.groupId === group.id && !dropTarget.categoryId ? 'drop-target' : ''}`} key={group.id} onDragOver={event => {
                 if (!(dragSourceRef.current ?? dragSource)) return;
                 event.preventDefault();
@@ -1048,7 +1045,7 @@ function BudgetApplication() {
                 <div className="group-row">
                   <div className="group-name"><button className="group-collapse" aria-label={`Toggle ${group.name}`} aria-expanded={!isCollapsed} onClick={() => toggleGroup(group.id)}><span className={`group-chevron ${isCollapsed ? 'closed' : ''}`}><Icon name="chevron" size={18} /></span></button><input type="checkbox" aria-label={`Select ${group.name}`} checked={group.categories.length > 0 && group.categories.every(category => selectedIds.includes(category.id))} onChange={event => setSelectedIds(current => event.target.checked ? [...new Set([...current, ...group.categories.map(category => category.id)])] : current.filter(id => !group.categories.some(category => category.id === id)))} /><button className="group-label" draggable={!group.isArchived && group.id !== creditPaymentGroupId} title="Drag to reorder this group" onDragStart={event => { const source = { kind: 'group' as const, id: group.id }; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', group.id); dragSourceRef.current = source; setDragSource(source); }} onDragEnd={() => { dragSourceRef.current = null; setDragSource(null); setDropTarget(null); }} onClick={() => { if (group.id !== creditPaymentGroupId && group.id !== wishlistGroupId) openNameEditor('group', group.id, group.name); }}>{group.name}{isCollapsed && groupHasUpcomingShortfall && <span className="group-upcoming-warning" role="img" aria-label="Upcoming transactions will make a subcategory negative"><Icon name="warning" size={15} /></span>}</button>{!group.isArchived && group.id !== creditPaymentGroupId && group.id !== wishlistGroupId && <button className="group-add" onClick={() => addCategory(group.id)} aria-label={`Add category to ${group.name}`}><Icon name="plus" size={16} /></button>}<div className="group-order-tools"><button aria-label={`Move ${group.name} up`} onClick={() => moveGroup(group.id, -1)}>↑</button><button aria-label={`Move ${group.name} down`} onClick={() => moveGroup(group.id, 1)}>↓</button></div></div>
                   {nameEditor?.kind === 'group' && nameEditor.id === group.id && <CategoryNamePopover name={nameDraft} label="category group" maxLength={120} error={nameEditorError} canDelete={nameEditorCanDelete()} hideLabel={group.isArchived ? 'Restore' : 'Hide'} onNameChange={value => { setNameDraft(value); setNameEditorError(''); }} onSubmit={saveNameEditor} onHide={hideNameEditorTarget} onDelete={deleteUnsavedNameEditorTarget} onCancel={() => setNameEditor(null)} />}
-                  <div className="group-assigned">{money(group.categories.reduce((sum, item) => sum + item.assigned, 0))}</div>
+                  <div className={`group-assigned ${groupPlanned === null ? '' : 'has-planned'}`}><span>{money(group.categories.reduce((sum, item) => sum + item.assigned, 0))}</span>{groupPlanned !== null && <PlannedAmount amount={groupPlanned} money={money} />}</div>
                   <div className="group-activity">{money(group.categories.reduce((sum, item) => sum + item.activity, 0))}</div>
                   <div className={`group-available ${groupTotal < 0 ? 'negative' : ''}`}>{group.id === creditPaymentGroupId && <span className="payment-group-label">Payment</span>}{money(groupTotal)}</div>
                   {addCategoryGroupId === group.id && <form className="category-add-popover" onSubmit={submitCategory}><label className="sr-only" htmlFor={`new-category-${group.id}`}>New category</label><input id={`new-category-${group.id}`} autoFocus maxLength={160} value={newCategoryName} placeholder="New Category" onChange={event => { setNewCategoryName(event.target.value); setCategoryNameError(''); }} onKeyDown={event => { if (event.key === 'Escape') setAddCategoryGroupId(null); }} />{categoryNameError && <span role="alert">{categoryNameError}</span>}<div><button type="button" onClick={() => setAddCategoryGroupId(null)}>Cancel</button><button className="button button-primary" type="submit">OK</button></div></form>}<button className="group-archive" aria-label={`${group.isArchived ? 'Restore' : 'Archive'} group ${group.name}`} onClick={() => toggleGroupArchived(group.id)}>{group.isArchived ? 'Restore' : 'Archive'}</button>
@@ -1094,8 +1091,9 @@ function BudgetApplication() {
                   }}>
                     <div className="category-name-cell">{underfundedUpcoming && <span className="category-upcoming-warning" role="img" aria-label={`Upcoming transactions will make ${category.name} negative`} />}<input type="checkbox" aria-label={`Select ${category.name}`} checked={selectedIds.includes(category.id)} onChange={event => setSelectedIds(current => event.target.checked ? [...current, category.id] : current.filter(id => id !== category.id))} /><div className="category-copy"><div className="category-label-line"><button className={`category-name ${selectedIds.includes(category.id) ? 'is-selected' : ''}`} title={selectedIds.includes(category.id) ? `Rename ${category.name}` : `Select ${category.name} before renaming`} disabled={category.isArchived || group.isArchived} onClick={() => { if (selectedIds.includes(category.id)) { if (!paymentAccount && !wishlistRow) openNameEditor('category', category.id, category.name); } else { setSelectedIds([category.id]); setSelectedCategoryId(category.id); startEdit(category); } }}>{paymentAccount && <span className="credit-card-icon" aria-hidden="true">💳</span>}{category.name}</button>{progressOn && <span className="category-status">{category.available < 0 ? 'Overspent' : category.snoozed ? 'Snoozed' : category.wishlistProgress ? <WishlistRowStatus progress={liveWishlistProgress(category.wishlistProgress, category.available)} money={money} /> : targetProgress && targetUnderfunded ? <><b>{money(targetProgress.moreNeeded)}</b> more needed this month</> : category.available === 0 && category.activity < 0 ? 'Fully Spent' : targetProgress ? 'Funded' : ''}</span>}</div>{progressOn && targetBar && targetProgress && <div className={`progress-track target-track ${targetUnderfunded ? 'underfunded' : 'funded'}`} data-segments={targetProgress.segments} role="img" aria-label={`Target progress: ${Math.floor(targetProgress.fundedFraction * 100)}% of ${money(targetProgress.needed)} funded`}>{targetSegments(targetProgress).map((fill, index) => <span className="target-segment" key={index}><span style={{ width: `${fill * 100}%` }} /></span>)}</div>}{progressOn && category.wishlistProgress && <WishlistProgressBar progress={liveWishlistProgress(category.wishlistProgress, category.available)} money={money} />}{progressOn && !category.wishlistProgress && !targetBar && hasProgress && <div className="progress-track" aria-label={`Category progress: ${Math.round(progress.green)}% available${progress.spent ? `, ${Math.round(progress.spent)}% spent` : ''}${progress.orange ? `, ${Math.round(progress.orange)}% upcoming` : ''}${progress.red ? `, ${Math.round(progress.red)}% overspent` : ''}`}><span className="progress-green" style={{ width: `${progress.green}%` }} />{progress.spent > 0 && <span className="progress-spent" style={{ width: `${progress.spent}%` }} />}{progress.orange > 0 && <span className="progress-orange" style={{ width: `${progress.orange}%` }} />}<span className="progress-red" style={{ width: `${progress.red}%` }} /></div>}</div><div className="category-order-tools"><button aria-label={`Move ${category.name} up`} disabled={category.isArchived || group.isArchived || wishlistRow} onClick={() => moveCategory(group.id, category.id, -1)}>↑</button><button aria-label={`Move ${category.name} down`} disabled={category.isArchived || group.isArchived || wishlistRow} onClick={() => moveCategory(group.id, category.id, 1)}>↓</button></div><button className="category-archive" disabled={group.isArchived || wishlistRow} aria-label={`${category.isArchived ? 'Restore' : 'Archive'} category ${category.name}`} onClick={() => toggleCategoryArchived(category.id)}>{category.isArchived ? 'Restore' : 'Archive'}</button></div>
                     {nameEditor?.kind === 'category' && nameEditor.id === category.id && <CategoryNamePopover name={nameDraft} label="subcategory" maxLength={160} error={nameEditorError} canDelete={nameEditorCanDelete()} hideLabel={category.isArchived ? 'Restore' : 'Hide'} onNameChange={value => { setNameDraft(value); setNameEditorError(''); }} onSubmit={saveNameEditor} onHide={hideNameEditorTarget} onDelete={deleteUnsavedNameEditorTarget} onCancel={() => setNameEditor(null)} />}
-                    <div className="assigned-cell">{editingId===category.id&&assignmentError&&<span role="alert" className="assignment-error">{assignmentError}</span>}
+                    <div className={`assigned-cell ${typeof category.planned === 'number' && editingId !== category.id ? 'has-planned' : ''}`}>{editingId===category.id&&assignmentError&&<span role="alert" className="assignment-error">{assignmentError}</span>}
                       {editingId === category.id ? <div className="amount-input-shell"><span className="assignment-adjust-icon"><Icon name="assign" size={14} /></span><input className="amount-input" autoFocus value={editValue} aria-invalid={Boolean(assignmentError)} onFocus={event => event.currentTarget.select()} onChange={event => {setEditValue(event.target.value);setAssignmentError('');}} onBlur={() => saveEdit(category)} onKeyDown={event => { if (event.key === 'Enter') saveEdit(category); if (event.key === 'Escape') {setEditingId(null);setAssignmentError('');} }} aria-label={`Assigned to ${category.name}`} /></div> : <button className="amount-button" disabled={category.isArchived || group.isArchived || saveState==='loading' || loadedMonth.current!==data.month || !!conflictBudget} onClick={() => { setSelectedIds([category.id]); setSelectedCategoryId(category.id); startEdit(category); }} aria-label={`Edit assigned for ${category.name}`}><span className="assignment-adjust-icon"><Icon name="assign" size={14} /></span><span>{money(category.assigned)}</span></button>}
+                      {typeof category.planned === 'number' && editingId !== category.id && <PlannedAmount amount={category.planned} money={money} />}
 
                     </div>
                     <div className={`activity-cell ${category.activity < 0 ? 'negative' : ''}`}><button className="activity-button" disabled={category.activity === 0} aria-label={`View transactions for ${category.name} activity`} onClick={() => void openActivity(category)}>{money(category.activity)}</button></div>
@@ -1202,6 +1200,12 @@ function BudgetApplication() {
     {categoryDialog && <PlanTransactionList title={categoryDialog.title} items={categoryDialog.items} accounts={accounts.accounts} loading={categoryDialog.loading} error={categoryDialog.error} onClose={closeCategoryDialog} onRetry={categoryDialog.kind === 'activity' ? () => { const category = visibleCategories.find(item => item.id === categoryDialog.categoryId); if (category) void openActivity(category); } : undefined} onSelect={(entry, scheduled, splitIndex) => showTransactionInAccount(entry, scheduled, 'Plan', splitIndex)} />}
     {toast && <div className="toast" role="status"><span className="toast-check"><Icon name="check" size={14} /></span>{toast}<button aria-label="Dismiss notification" onClick={() => setToast('')}><Icon name="close" size={14} /></button></div>}
   </div>;
+}
+
+// Muted Long-Term Planning amount shown beside Assigned; display only, so it never affects Plan edits or saves.
+function PlannedAmount({ amount, money }: { amount: number; money: (value: number) => string }) {
+  const label = `Planned ${money(amount)} in Long-Term Planning`;
+  return <span className="planned-amount" title={label}><span aria-hidden="true">{money(amount)}</span><span className="sr-only">{label}</span></span>;
 }
 
 export default function App() {

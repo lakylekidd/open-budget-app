@@ -43,7 +43,7 @@ public sealed record CategoryGroupDto(string Id, string Name, int SortOrder, boo
 public sealed record CategoryDto(string Id, string Name, decimal Assigned, decimal Activity, decimal Available, decimal Target,
     string? Icon, bool Snoozed, int SortOrder, bool IsArchived, decimal CreditOverspending = 0,
     CategoryTargetDto? CategoryTarget = null, CategoryTargetProgressDto? TargetProgress = null,
-    WishlistProgressDto? WishlistProgress = null);
+    WishlistProgressDto? WishlistProgress = null, decimal? Planned = null);
 public sealed record CategoryGroupUpdateDto(string Id, string Name, int SortOrder, bool IsArchived, List<CategoryUpdateDto> Categories);
 public sealed record CategoryUpdateDto(string Id, string Name, decimal Assigned, decimal Target, string? Icon,
     bool Snoozed, int SortOrder, bool IsArchived);

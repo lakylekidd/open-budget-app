@@ -183,5 +183,41 @@ public sealed class LongTermPlanningApiTests(PostgresFixture fixture) : IClassFi
         }
     }
 
+    [Fact]
+    public async Task Plan_month_exposes_effective_planned_overrides_without_writing_planning_data()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        app.Clock.UtcNow = new DateTimeOffset(2026, 5, 15, 12, 0, 0, TimeSpan.Zero);
+        var client = app.CreateClient();
+        static decimal? Planned(BudgetDto month, string categoryId) =>
+            month.Groups.SelectMany(x => x.Categories).Single(x => x.Id == categoryId).Planned;
+
+        var may = await Get<BudgetDto>(client, "/api/budget/2026-05");
+        Assert.All(may.Groups.SelectMany(x => x.Categories), category => Assert.Null(category.Planned));
+
+        var plan = await Year(client, 2026);
+        plan = await Read<LongTermPlanningDto>(Update(client, 2026, plan, "2026-06", "plannedBudgetOverride", "groceries", 600m));
+        plan = await Read<LongTermPlanningDto>(Update(client, 2026, plan, "2026-09", "plannedBudgetOverride", "groceries", 700.50m));
+        plan = await Read<LongTermPlanningDto>(Update(client, 2026, plan, "2026-07", "plannedBudgetOverride", "utilities", 0m));
+
+        int planningRows;
+        await using (var db = app.CreateDb()) planningRows = await db.LongTermPlanningCategories.CountAsync();
+
+        Assert.Null(Planned(await Get<BudgetDto>(client, "/api/budget/2026-05"), "groceries"));
+        Assert.Equal(600m, Planned(await Get<BudgetDto>(client, "/api/budget/2026-06"), "groceries"));
+        var august = await Get<BudgetDto>(client, "/api/budget/2026-08");
+        Assert.Equal(600m, Planned(august, "groceries"));
+        Assert.Equal(0m, Planned(august, "utilities"));
+        Assert.Null(Planned(august, "rent"));
+        Assert.Equal(700.50m, Planned(await Get<BudgetDto>(client, "/api/budget/2026-09"), "groceries"));
+        Assert.Equal(700.50m, Planned(await Get<BudgetDto>(client, "/api/budget/2027-02"), "groceries"));
+        Assert.Equivalent(august, await Get<BudgetDto>(client, "/api/budget/2026-08"), strict: true);
+
+        var reloaded = await Year(client, 2026);
+        Assert.Equal(plan.Version, reloaded.Version);
+        await using (var db = app.CreateDb())
+            Assert.Equal(planningRows, await db.LongTermPlanningCategories.CountAsync());
+    }
+
     private sealed record PlanningConflictBody(string Error, LongTermPlanningDto Current);
 }

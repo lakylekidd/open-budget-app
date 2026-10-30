@@ -8,12 +8,16 @@ export type AutoAssignCategory = {
   target: number;
   // Server-calculated amount a category target still needs this month (TargetProgress.moreNeeded).
   targetMoreNeeded?: number;
+  // Server-calculated Long-Term Planning budget effective for this month (CategoryDto.planned); null/undefined when no plan exists.
+  planned?: number | null;
+  // Snoozed categories are protected from the Planned recommendation (archived ones never reach Auto-Assign).
+  snoozed?: boolean;
 };
 
 export type AssignmentAdjustment = { categoryId: string; deltaCents: number };
 
 export type AutoAssignOption = {
-  id: 'underfunded' | 'assigned-last-month' | 'spent-last-month' | 'average-assigned' | 'average-spent' | 'reset-available' | 'reset-assigned';
+  id: 'underfunded' | 'planned' | 'assigned-last-month' | 'spent-last-month' | 'average-assigned' | 'average-spent' | 'reset-available' | 'reset-assigned';
   label: string;
   amountCents: number;
   requiresHistory: boolean;
@@ -22,6 +26,20 @@ export type AutoAssignOption = {
 };
 
 const cents = (amount: number) => Math.round(amount * 100);
+
+// Positive adjustments are funded in list (category) order until Ready to Assign runs out; reductions pass through unchanged.
+export function capAdjustmentsToReady(adjustments: AssignmentAdjustment[], readyToAssign: number) {
+  let readyCents = Math.max(0, cents(readyToAssign));
+  let recommendedCents = 0;
+  const capped = adjustments.map(item => {
+    if (item.deltaCents <= 0) return item;
+    recommendedCents += item.deltaCents;
+    const deltaCents = Math.min(item.deltaCents, readyCents);
+    readyCents -= deltaCents;
+    return { ...item, deltaCents };
+  });
+  return { adjustments: capped, recommendedCents };
+}
 
 export function previousBudgetMonths(month: string, count = 12): string[] {
   const [year, monthNumber] = month.split('-').map(Number);
@@ -59,6 +77,9 @@ export function buildAutoAssignOptions(categories: AutoAssignCategory[], history
 
   return [
     makeOption('underfunded', 'Underfunded', false, scheduledShortfalls, true),
+    // Planned tops each category up to its Long-Term Planning amount for this month, like Assigned Last Month: it never
+    // lowers an existing assignment and skips snoozed categories and categories without a plan value.
+    makeOption('planned', 'Planned', false, recommendationAdjustments(category => !category.snoozed && typeof category.planned === 'number' ? category.planned : 0)),
     makeOption('assigned-last-month', 'Assigned Last Month', true, recommendationAdjustments(category => historicalAmount(lastMonth, category.id, 'assigned') / 100)),
     makeOption('spent-last-month', 'Spent Last Month', true, recommendationAdjustments(category => historicalAmount(lastMonth, category.id, 'spent') / 100)),
     makeOption('average-assigned', 'Average Assigned', true, recommendationAdjustments(category => average(category, 'assigned') / 100)),

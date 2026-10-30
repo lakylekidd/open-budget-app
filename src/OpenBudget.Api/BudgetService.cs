@@ -241,7 +241,8 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
     {
         var targets = await db.CategoryTargets.IgnoreQueryFilters().AsNoTracking()
             .Where(x => x.BudgetId == budget.BudgetId).ToListAsync(cancellationToken);
-        if (targets.Count == 0) return await WishlistService.AttachPlanProgressAsync(db, budget, BudgetDto.From(budget), cancellationToken);
+        if (targets.Count == 0) return await LongTermPlanningPlanValues.AttachPlannedAsync(db, budget,
+            await WishlistService.AttachPlanProgressAsync(db, budget, BudgetDto.From(budget), cancellationToken), cancellationToken);
         var history = await LoadTargetHistoryAsync(budget.BudgetId, budget.Month, targets, cancellationToken);
         var categories = budget.Groups.SelectMany(g => g.Categories.Select(c => (Group: g, Category: c))).ToDictionary(x => x.Category.Id, StringComparer.Ordinal);
         var result = new Dictionary<string, (CategoryTargetDto Target, CategoryTargetProgressDto? Progress)>(StringComparer.Ordinal);
@@ -251,7 +252,8 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
             var active = !row.Category.IsArchived && !row.Group.IsArchived && !CategoryTargetRules.IsPaymentCategory(row.Category.Id, row.Group.Id);
             result[target.CategoryId] = (target.ToDto(), active ? CalculateTarget(target, budget.Month, row.Category, history) : null);
         }
-        return await WishlistService.AttachPlanProgressAsync(db, budget, BudgetDto.From(budget, result), cancellationToken);
+        return await LongTermPlanningPlanValues.AttachPlannedAsync(db, budget,
+            await WishlistService.AttachPlanProgressAsync(db, budget, BudgetDto.From(budget, result), cancellationToken), cancellationToken);
     }
 
     public static CategoryTargetProgressDto CalculateTarget(CategoryTargetEntity target, string month, CategoryEntity category,

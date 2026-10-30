@@ -209,6 +209,10 @@ public sealed class BudgetOwnershipApiTests(PostgresFixture fixture) : IClassFix
         bobPlanning = await bob.GetFromJsonAsync<LongTermPlanningDto>("/api/long-term-planning/2026");
         Assert.Equal(400m, alicePlanning!.Groups.SelectMany(group => group.Categories).Single(category => category.Id == "groceries").Months.Single(month => month.Month == "2026-11").PlannedBudgetOverride);
         Assert.Equal(700m, bobPlanning!.Groups.SelectMany(group => group.Categories).Single(category => category.Id == "groceries").Months.Single(month => month.Month == "2026-11").PlannedBudgetOverride);
+        var alicePlanMonth = await alice.GetFromJsonAsync<BudgetDto>($"/api/budgets/{aliceBudget.Id}/months/2026-12");
+        var bobPlanMonth = await bob.GetFromJsonAsync<BudgetDto>($"/api/budgets/{bobBudget.Id}/months/2026-12");
+        Assert.Equal(400m, alicePlanMonth!.Groups.SelectMany(group => group.Categories).Single(category => category.Id == "groceries").Planned);
+        Assert.Equal(700m, bobPlanMonth!.Groups.SelectMany(group => group.Categories).Single(category => category.Id == "groceries").Planned);
 
         bob.DefaultRequestHeaders.Remove("Cookie");
         bob.DefaultRequestHeaders.Add("Cookie", $"openbudget.activeBudgetId={aliceBudget.Id}");

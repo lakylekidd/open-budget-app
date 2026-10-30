@@ -82,4 +82,29 @@ public sealed class LongTermPlanningTests
             Assert.Equal(0m, month.PlannedAvailable);
         });
     }
+    [Fact]
+    public void Plan_planned_value_is_the_latest_override_at_or_before_the_month()
+    {
+        LongTermPlanningCategoryEntity Entry(string category, string month, decimal? amount) =>
+            new() { CategoryId = category, Month = month, PlannedBudgetOverride = amount };
+        var entries = new[]
+        {
+            Entry("groceries", "2025-11", 400m),
+            Entry("groceries", "2026-03", 450m),
+            Entry("groceries", "2026-04", null),
+            Entry("groceries", "2026-08", 500m),
+            Entry("rent", "2026-02", 0m),
+            Entry("fun", "2026-07", 80m),
+            Entry("phone", "2026-01", null)
+        };
+
+        var april = LongTermPlanningPlanValues.EffectiveOverrides(entries, "2026-04");
+        Assert.Equal(450m, april["groceries"]);
+        Assert.Equal(0m, april["rent"]);
+        Assert.False(april.ContainsKey("fun"));
+        Assert.False(april.ContainsKey("phone"));
+        Assert.Equal(400m, LongTermPlanningPlanValues.EffectiveOverrides(entries, "2026-01")["groceries"]);
+        Assert.Equal(500m, LongTermPlanningPlanValues.EffectiveOverrides(entries, "2026-08")["groceries"]);
+        Assert.Empty(LongTermPlanningPlanValues.EffectiveOverrides(entries, "2025-10"));
+    }
 }
