@@ -787,8 +787,8 @@ it('allows a moved subcategory to be reordered in its destination group',async()
 
 it('opens Long-Term Planning from the main navigation',async()=>{
   render(<App/>);await saved();
-  await userEvent.click(screen.getByRole('button',{name:'Long-Term Planning'}));
-  expect(await screen.findByRole('heading',{name:'Long-Term Planning'})).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button',{name:'Long-Term'}));
+  expect(await screen.findByRole('heading',{name:'Long-Term'})).toBeInTheDocument();
   expect(await screen.findByText('Add budget categories in Plan to start long-term planning.')).toBeInTheDocument();
   const year=new Date().getFullYear();
   expect(vi.mocked(fetch)).toHaveBeenCalledWith(`/api/long-term-planning/${year}`,expect.objectContaining({signal:expect.any(AbortSignal)}));

@@ -56,7 +56,7 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Category creation and ordering | Add categories from a group; drag groups to reorder and drag subcategories before or after another subcategory within or across groups. Dropping on a group appends it; versioned monthly saves preserve category identity. |
 | Undo/redo | In-memory UI history; edits are saved but no server-side audit event is recorded |
 | Month note | Persisted on the monthly snapshot |
-| Long-Term Planning | Implemented; annual grid with click-to-edit planned Assigned amounts, separate forecast persistence, effective-month overrides, read-only actuals and cross-year carry-forward |
+| Long-Term Planning (labelled "Long-Term" in the navigation and page heading) | Implemented; annual grid with click-to-edit planned Assigned amounts, separate forecast persistence, effective-month overrides, read-only actuals and cross-year carry-forward |
 | Cash accounts, register, transfers, splits, reconciliation | Implemented; real ledger-backed balances, server filters/pagination and retained audit |
 | Account View Options | Server-persisted per-account presets, month range and visibility switches, independently versioned |
 | Scheduled register | Anchored recurrence rules, forecasts, idempotent due-day posting, approval and occurrence review |

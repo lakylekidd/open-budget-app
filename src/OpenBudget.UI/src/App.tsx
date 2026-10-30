@@ -1168,7 +1168,7 @@ function BudgetApplication() {
       </div>
       <div className="side-nav" role="navigation" aria-label="Main navigation">
         <button aria-label="Plan" title="Plan" className={`nav-item ${activePage === 'Plan' ? 'active' : ''}`} onClick={() => navigate('Plan')}><Icon name="plan" size={22} /><span>Plan</span></button>
-        <button aria-label="Long-Term Planning" title="Long-Term Planning" className={`nav-item ${activePage === 'Long-Term Planning' ? 'active' : ''}`} onClick={() => navigate('Long-Term Planning')}><Icon name="calendar" size={22} /><span>Long-Term Planning</span></button>
+        <button aria-label="Long-Term" title="Long-Term" className={`nav-item ${activePage === 'Long-Term Planning' ? 'active' : ''}`} onClick={() => navigate('Long-Term Planning')}><Icon name="calendar" size={22} /><span>Long-Term</span></button>
         <WishlistNavItem access={wishlistAccess} active={activePage === 'Wishlist'} onClick={() => navigate('Wishlist')} />
         <button aria-label="Reflect" title="Reflect" className={`nav-item ${activePage === 'Reflect' ? 'active' : ''}`} onClick={() => setToast('Reflect is outside this demo’s scope')}><Icon name="chart" /><span>Reflect</span></button>
         <button aria-label="All Accounts" title="All Accounts" className={`nav-item ${activePage === 'Accounts' && !selectedAccount ? 'active' : ''}`} onClick={() => navigate('Accounts')}><Icon name="bank" size={22} /><span>All Accounts</span></button>

@@ -307,9 +307,9 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
 
   function closeActivity() { activityRequestId.current++; setActivityDialog(null); }
 
-  return <section className="long-term-planning" aria-label="Long-Term Planning">
+  return <section className="long-term-planning" aria-label="Long-Term">
     <header className="lt-toolbar">
-      <div><span className="eyebrow">PLAN AHEAD</span><h1>Long-Term Planning</h1><p>Map expected income and expenses across the year, then compare each category with your budget.</p></div>
+      <div><span className="eyebrow">PLAN AHEAD</span><h1>Long-Term</h1><p>Map expected income and expenses across the year, then compare each category with your budget.</p></div>
       <div className="lt-year-controls" aria-label="Year navigation">
         <button type="button" aria-label="Previous year" disabled={year <= 1 || status === 'saving'} onClick={() => changeYear(-1)}>‹</button>
         <strong>{year}</strong>

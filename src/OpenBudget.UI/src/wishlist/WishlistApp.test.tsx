@@ -51,7 +51,7 @@ it('hides the Wishlist nav item when the membership is not entitled', async () =
   await screen.findByText('Plan saved');
   await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/budgets/budget-1/wishlist', expect.anything()));
   expect(sideNav().queryByRole('button', { name: /^Wishlist/ })).not.toBeInTheDocument();
-  expect(navLabels()).toContain('Long-Term Planning');
+  expect(navLabels()).toContain('Long-Term');
 });
 
 it('places Wishlist directly below Long-Term Planning with a ready-to-buy badge and Plan row status', async () => {
@@ -60,7 +60,7 @@ it('places Wishlist directly below Long-Term Planning with a ready-to-buy badge 
   const nav = await sideNav().findByRole('button', { name: 'Wishlist, 1 ready to buy' });
   expect(nav).toHaveTextContent('1');
   const labels = navLabels();
-  expect(labels.indexOf('Wishlist, 1 ready to buy')).toBe(labels.indexOf('Long-Term Planning') + 1);
+  expect(labels.indexOf('Wishlist, 1 ready to buy')).toBe(labels.indexOf('Long-Term') + 1);
 
   const row = screen.getByRole('button', { name: 'Edit assigned for Games' }).closest('.category-row') as HTMLElement;
   expect(within(row).getByText(/Ready to buy/)).toHaveTextContent('Ready to buy Racing game');
