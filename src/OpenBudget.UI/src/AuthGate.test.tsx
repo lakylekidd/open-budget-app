@@ -59,3 +59,30 @@ it('offers registration only when enabled and submits the account details', asyn
   expect(await screen.findByRole('status')).toHaveTextContent('Verification email sent.');
   expect(fetchMock).toHaveBeenLastCalledWith('/api/auth/register', expect.objectContaining({ method: 'POST' }));
 });
+
+it('returns to the requested deep link after sign-in', async () => {
+  window.history.replaceState(null, '', '/hB2YaG5AyLF/account/visa-3f9a');
+  const fetchMock = vi.fn()
+    .mockResolvedValueOnce(new Response(null, { status: 401 }))
+    .mockResolvedValueOnce(Response.json({ mode: 'Disabled' }))
+    .mockResolvedValueOnce(Response.json({ id: 'u1', userName: 'alice', email: 'alice@example.test', isAdministrator: true }));
+  vi.stubGlobal('fetch', fetchMock);
+  render(<AuthGate><div>Budget application</div></AuthGate>);
+  const user = userEvent.setup();
+  await user.type(await screen.findByLabelText('Username or email'), 'alice');
+  expect(window.location.pathname).toBe('/login');
+  await user.type(screen.getByLabelText('Password'), 'Secret-pass1!');
+  await user.click(screen.getByRole('button', { name: 'Sign in' }));
+  expect(await screen.findByText('Budget application')).toBeInTheDocument();
+  expect(window.location.pathname).toBe('/hB2YaG5AyLF/account/visa-3f9a');
+  expect(window.sessionStorage.getItem('openbudget.returnTo')).toBeNull();
+});
+
+it('keeps emailed reset-password links reachable before sign-in', async () => {
+  window.history.replaceState(null, '', '/reset-password?userId=u1&token=abc');
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response(null, { status: 401 })).mockResolvedValueOnce(Response.json({ mode: 'Disabled' })));
+  render(<AuthGate><div>Budget application</div></AuthGate>);
+  expect(await screen.findByRole('heading', { name: 'Choose a new password' })).toBeInTheDocument();
+  expect(window.location.pathname + window.location.search).toBe('/reset-password?userId=u1&token=abc');
+  expect(window.sessionStorage.getItem('openbudget.returnTo')).toBeNull();
+});

@@ -38,6 +38,8 @@ import type { LongTermPlanning as LongTermPlanningData } from './longTermPlannin
 import { WishlistPage } from './wishlist/WishlistPage';
 import { liveWishlistProgress, useWishlistAccess, WishlistCategoryCard, WishlistNavItem, WishlistProgressBar, WishlistRowStatus } from './wishlist/WishlistPlanParts';
 import { wishlistGroupId, type WishlistProgress } from './wishlist/wishlistApi';
+import { budgetIdFromLocation, initialPageFromLocation, isAdminPath, monthFromLocation, type RouteTarget } from './routing/routes';
+import { useAppRouter } from './routing/useAppRouter';
 
 type Category = {
   id: string;
@@ -131,9 +133,10 @@ function BudgetApplication() {
   const [budgetsLoaded, setBudgetsLoaded] = useState(false);
   const [accounts, setAccounts] = useState<Accounts>({ version: 1, accounts: [] });
   const [accountsLoaded, setAccountsLoaded] = useState(false);
+  const [accountsBudgetId, setAccountsBudgetId] = useState<string | null>(null);
   const [accountError, setAccountError] = useState(false);
   const [ledgerPending, setLedgerPending] = useState(false);
-  const [selectedAccount, setSelectedAccount] = useState(() => new URLSearchParams(window.location.search).get('account') || '');
+  const [selectedAccount, setSelectedAccount] = useState('');
   const [accountEditRequest,setAccountEditRequest]=useState<{id:string;token:number}>();
   const [accountCreateRequest,setAccountCreateRequest]=useState(0);
   const [ledgerRefresh, setLedgerRefresh] = useState(0);
@@ -178,7 +181,7 @@ function BudgetApplication() {
     setBudgetMenuOpen(false);
     setSidebarCollapsed(value => { window.localStorage.setItem('openbudget.sidebarCollapsed', String(!value)); return !value; });
   }
-  const [activePage, setActivePage] = useState(() => new URLSearchParams(window.location.search).get('page') || 'Plan');
+  const [activePage, setActivePage] = useState<string>(() => initialPageFromLocation());
   const [planningPending, setPlanningPending] = useState(false);
   const [toast, setToast] = useState('');
   const [recentMovesOpen,setRecentMovesOpen]=useState(false);
@@ -239,28 +242,45 @@ function BudgetApplication() {
 
   useEffect(() => {
     const controller = new AbortController();
-    requestJson<Accounts>('/api/accounts', { signal: controller.signal }).then(value => { setAccounts(value); setAccountError(false); setAccountsLoaded(true); })
-      .catch(error => { if (error.name !== 'AbortError') { setAccountError(true); setAccountsLoaded(true); } });
+    // Accounts follow the active-budget cookie, so reload them when the selected budget changes.
+    const budgetId = selectedBudgetId;
+    requestJson<Accounts>('/api/accounts', { signal: controller.signal }).then(value => { setAccounts(value); setAccountError(false); setAccountsLoaded(true); setAccountsBudgetId(budgetId); })
+      .catch(error => { if (error.name !== 'AbortError') { setAccountError(true); setAccountsLoaded(true); setAccountsBudgetId(budgetId); } });
     return () => controller.abort();
-  }, [ledgerRefresh]);
+  }, [ledgerRefresh, selectedBudgetId]);
 
-  function navigate(page: string, accountId = '', transaction: PlanFocus | null = null) {
+  function canLeaveCurrentView() {
     if (ledgerPending) { setToast('Resolve the pending ledger save before leaving accounts.'); return false; }
     if (planningPending) { setToast('Resolve the pending planning edit before changing screens.'); return false; }
     if (editingId || saveState === 'saving' || conflictBudget || (loadedMonth.current === data.month && lastSaved.current !== JSON.stringify(data))) {
       setToast('Wait for the plan to save, or resolve its save error before opening accounts.'); return false;
     }
-    const params = new URLSearchParams(); params.set('page', page); if (accountId) params.set('account', accountId);
-    window.history.pushState(null, '', `${window.location.pathname}?${params}`);
+    return true;
+  }
+
+  // The address bar follows this state through useAppRouter (src/routing); navigate() only changes state.
+  function navigate(page: string, accountId = '', transaction: PlanFocus | null = null) {
+    if (!canLeaveCurrentView()) return false;
     setActivePage(page); setSelectedAccount(accountId); setFocusTransaction(transaction); setMobileMenu(false);
     if (page === 'Plan') setBudgetRefresh(value => value + 1);
     return true;
   }
 
-  useEffect(() => {
-    const restore = () => { const params = new URLSearchParams(window.location.search); setActivePage(params.get('page') || 'Plan'); setSelectedAccount(params.get('account') || ''); setFocusTransaction(null); };
-    window.addEventListener('popstate', restore); return () => window.removeEventListener('popstate', restore);
-  }, []);
+  // Applies a URL (first load, browser back/forward). Back/forward obeys the same leave-guards as navigate().
+  function applyRoute(target: RouteTarget, { initial }: { initial: boolean }) {
+    if (!initial && !canLeaveCurrentView()) return false;
+    if (target.budgetId !== selectedBudgetId) selectBudget(target.budgetId);
+    setActivePage(target.page); setSelectedAccount(target.accountId); setFocusTransaction(null); setMobileMenu(false);
+    if (target.month && target.month !== data.month) setData(current => ({ ...current, month: target.month! }));
+    if (!initial && target.page === 'Plan' && activePage !== 'Plan') setBudgetRefresh(value => value + 1);
+    return true;
+  }
+
+  useAppRouter({
+    budgets: ownedBudgets, budgetsLoaded, selectedBudgetId, budgetName: plan.name,
+    accounts: selectedBudgetId && accountsBudgetId === selectedBudgetId ? accounts.accounts : null,
+    page: activePage, accountId: selectedAccount, month: data.month, applyRoute, notify: setToast,
+  });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -270,7 +290,9 @@ function BudgetApplication() {
         const result = await response.json() as { budgets: OwnedBudget[] };
         const available = result.budgets.filter(budget => !budget.isArchived);
         setOwnedBudgets(available);
-        const remembered = window.localStorage.getItem('openbudget.activeBudgetId');
+        const remembered = budgetIdFromLocation(available) ?? window.localStorage.getItem('openbudget.activeBudgetId');
+        const routeMonth = monthFromLocation();
+        if (routeMonth) setData(current => ({ ...current, month: routeMonth }));
         const selected = available.find(budget => budget.id === remembered) ?? available[0];
         if (selected) {
           setSelectedBudgetId(selected.id);
@@ -875,7 +897,7 @@ function BudgetApplication() {
     }
     const selected = ownedBudgets.find(budget => budget.id === id);
     if (!selected) return;
-    setSelectedIds([]); setSelectedCategoryId(null);
+    setSelectedIds([]); setSelectedCategoryId(null); setSelectedAccount(''); setFocusTransaction(null);
     loadedMonth.current = null;
     lastSaved.current = null;
     setPlan(selected);
@@ -894,7 +916,7 @@ function BudgetApplication() {
       const created = result as OwnedBudget;
       setOwnedBudgets(current => [...current, created]);
       setPlan(created);
-      setSelectedBudgetId(created.id);
+      setSelectedBudgetId(created.id); setSelectedAccount('');
       rememberActiveBudget(created.id);
       loadedMonth.current = null;
       lastSaved.current = null;
@@ -1168,7 +1190,7 @@ function BudgetApplication() {
         <button aria-label="Plan" title="Plan" className={`nav-item ${activePage === 'Plan' ? 'active' : ''}`} onClick={() => navigate('Plan')}><Icon name="plan" size={22} /><span>Plan</span></button>
         <button aria-label="Long-Term" title="Long-Term" className={`nav-item ${activePage === 'Long-Term Planning' ? 'active' : ''}`} onClick={() => navigate('Long-Term Planning')}><Icon name="calendar" size={22} /><span>Long-Term</span></button>
         <WishlistNavItem access={wishlistAccess} active={activePage === 'Wishlist'} onClick={() => navigate('Wishlist')} />
-        <button aria-label="Reflect" title="Reflect" className={`nav-item ${activePage === 'Reflect' ? 'active' : ''}`} onClick={() => setToast('Reflect is outside this demo’s scope')}><Icon name="chart" /><span>Reflect</span></button>
+        <button aria-label="Reflect" title="Reflect" className={`nav-item ${activePage === 'Reflect' ? 'active' : ''}`} onClick={() => navigate('Reflect')}><Icon name="chart" /><span>Reflect</span></button>
         <button aria-label="All Accounts" title="All Accounts" className={`nav-item ${activePage === 'Accounts' && !selectedAccount ? 'active' : ''}`} onClick={() => navigate('Accounts')}><Icon name="bank" size={22} /><span>All Accounts</span></button>
       </div>
       <div className="account-section">
@@ -1208,7 +1230,11 @@ function PlannedAmount({ amount, money }: { amount: number; money: (value: numbe
   return <span className="planned-amount" title={label}><span aria-hidden="true">{money(amount)}</span><span className="sr-only">{label}</span></span>;
 }
 
+// Chooses the page when it mounts, so a deep link restored after sign-in renders the right screen.
+function RoutedPage() {
+  return isAdminPath(window.location.pathname) ? <AdminPanel /> : <BudgetApplication />;
+}
+
 export default function App() {
-  const page = window.location.pathname === '/admin' ? <AdminPanel /> : <BudgetApplication />;
-  return import.meta.env.MODE === 'test' ? page : <AuthGate>{page}</AuthGate>;
+  return import.meta.env.MODE === 'test' ? <RoutedPage /> : <AuthGate><RoutedPage /></AuthGate>;
 }

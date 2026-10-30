@@ -1,6 +1,6 @@
 # API reference
 
-Local Aspire development exposes the UI at `http://127.0.0.1:5173` and the API at `http://127.0.0.1:5080`. Vite proxies `/api` and `/health` to the API.
+Local Aspire development exposes the UI at `http://127.0.0.1:5173` and the API at `http://127.0.0.1:5080`. Vite proxies `/api`, `/health` and `/mcp` to the API; all other paths are client-side routes served by `index.html`.
 
 ## `GET /health`
 
