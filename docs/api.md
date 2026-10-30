@@ -183,6 +183,53 @@ Each credit account may have one debt payoff target on its payment category. Tar
 
 Worked example (October 2026, target March 2027, balance −2,674.47, Available 500.40, Assigned 0): needed 2,674.47, to go 2,174.07, percent 18, six months remaining, assign `ceil(2,174.07 / 6)` = 362.35.
 
+## Mortgages, loans and contracts
+
+Loan account types are `mortgage`, `autoLoan`, `studentLoan`, `personalLoan`, `medicalDebt`, `otherDebt` and `contract`. They are created with the existing `POST /api/accounts` plus a `loan` object; `PUT /api/accounts/{id}` also accepts `loan` together with name, notes, `accountType` (within the loan family; a contract stays a contract) and `workingBalance` (the existing adjustment transaction). An account can never switch between the cash, credit and loan families (`400`).
+
+```json
+{ "commandId": "…", "version": 7, "name": "Mortgage (400K @ 3.47%)", "date": "2026-10-21", "openingBalance": -389651.68, "accountType": "mortgage",
+  "loan": { "interestRate": 3.47, "minimumPayment": 1789.49, "escrowAmount": 0, "pairedCategoryId": null, "createPairedCategory": true, "contract": null } }
+```
+
+| Field | Rule |
+|---|---|
+| `openingBalance` | Debt as a negative amount (`0` allowed, positive rejected). For contracts send `0` (or the exact server value): the server records the remaining commitment on `date`. |
+| `interestRate` | Annual percent, 0–100, at most three decimals. Contracts must send `0`. |
+| `minimumPayment` | Positive money (includes escrow/fees). Contracts must send `0` (their payment comes from the schedule). |
+| `escrowAmount` | Non-negative money, less than `minimumPayment`; it does not reduce principal. |
+| `createPairedCategory` | Pairs the account's own `loan-{accountId}` category in the **Loans** group (created, or restored if archived). |
+| `pairedCategoryId` | Pairs an existing active category of the current month instead (not a `ccp-*` card payment category, not another loan's category, not already paired). Both omitted = unpaired. |
+| `contract` | Required for `contract`, rejected otherwise: `{ months 1–60, startDate, includesDevice, upfrontCost, monthlyServiceCost, deviceTotal, discountMonths, discountedServiceCost }`. `deviceTotal` must be 0 without a device; a discount needs both `discountMonths` (≤ months) and `discountedServiceCost` (≤ the regular cost). |
+
+| Method | Route | Contract |
+|---|---|---|
+| `GET` | `/api/accounts/{id}/loan` | `LoanDto`: balance, terms, `originalBalance`, `percentRemaining`, `balanceConfirmedAt`, `estimatedInterestThisMonth`, `pairedCategory { id, name, groupName, available, isArchived, isAutomatic, targetKind, targetMoreNeeded }`, `projection`, month-end `history`, `activity` (newest month first: `endBalance`, `estimatedInterest`, `payments`, `other`) and `contract` (schedule, remaining device/contract cost, end date, total cost). `400` for non-loan accounts, `404` for unknown/other-budget accounts. |
+| `GET` | `/api/accounts/{id}/loan/simulation?payment=&payoffMonth=&extra=` | Read-only. `payment` (default the minimum) or `payoffMonth` (`YYYY-MM`, after this month, within 100 years; solves the smallest whole-cent payment) and an optional one-time `extra` this month. Returns `{ balance, minimumPayment, extra, projection }`. Contracts return `400`. Never writes. |
+| `PUT` | `/api/accounts/{id}/loan` | `{ commandId, version, terms }` replaces the terms and pairing (ledger command, audited as `loan.terms/{id}`). Closed accounts are rejected. |
+| `POST` | `/api/accounts/{id}/loan/balance` | `{ commandId, version, balance? }`. Without `balance` it confirms the current balance (sets `balanceConfirmedAt`, the "Updated" date). With a different `balance` it also records a cleared "Balance Adjustment" transaction for the difference. |
+
+`projection` is `{ monthlyPayment, paymentsRemaining, payoffMonth, interestRemaining, principalRemaining, remainingToPay, neverPaidOff, track[] }`; `track[0]` is the current month. Errors follow the ledger protocol: `400` validation (nothing written), `404` unknown account, `409` stale version or reused command ID.
+
+**Budget treatment.** A transfer from a non-loan account into a loan is a payment: it reduces the debt and counts as activity (spending) in the paired category, exactly like categorized spending, so Ready to Assign is unchanged and the category's Available falls. Unpaired (or paired to a category missing in that month), the payment reduces Ready to Assign instead. A transfer out of a loan (a draw) is the reverse; transfers between two loan accounts are budget-neutral. Loan opening balances and loan-only transactions (interest, fees, balance adjustments) change the debt only, never Ready to Assign. Loan transactions cannot have a category, do not need one, and cannot be imported. In every case budget-account cash = Ready to Assign + Σ Available.
+
+Worked example: Checking 5,000; mortgage −389,651.68 paired with "Loans: Mortgage". Ready to Assign 5,000. Assign 1,789.49 to the loan category (RTA 3,210.51) and transfer 1,789.49 Checking → mortgage: Checking 3,210.51, mortgage −387,862.19, loan category Activity −1,789.49, Available 0, RTA 3,210.51. After unpairing, the same payment reduces RTA to 1,421.02 and the category keeps its 1,789.49 Available (1,421.02 + 1,789.49 = 3,210.51 cash).
+
+**Interest estimate.** `round_half_even(debt × rate / 1200, 2)`, computed on the debt carried into the month (the opening debt in the account's first month). It is shown as "Estimated" and never posted; record actual interest with Add Activity (a negative loan transaction). Example: 390,312.52 × 3.47 / 1200 = 1,128.65.
+
+**Projection.** Starting from the current debt `B` (minus any one-time extra), each month: `I = round_half_even(B × r / 1200, 2)`, `B' = B + I − (payment − escrow)`. The final payment is capped at `B + I`. If a month does not reduce the debt (payment − escrow ≤ interest), or payoff would take more than 1,200 months, the result is `neverPaidOff`. Payment for a payoff date: annuity estimate `B·i·(1+i)^n / ((1+i)^n − 1)` rounded up to the cent, then increased cent by cent until the simulation finishes within `n` months; escrow is added back. Worked examples (decimal, verified by unit tests):
+
+| Scenario | Result |
+|---|---|
+| €389,651.68 at 3.47%, €1,789.49/month | 344 payments (28 yrs, 8 mos), payoff Jun 2055 from Oct 2026, interest €225,929.45, final payment €1,786.06, remaining to pay €615,581.13 |
+| Same, payoff Oct 2046 (240 payments) | €2,253.83/month, interest €151,264.28 |
+| Same, €10,000 one-time extra now | 330 payments, interest €209,462.96 |
+| €100,000 at 12%, €1,000/month | never paid off (interest is exactly €1,000) |
+
+The reference screenshot shows €225,929.41 interest; our per-month half-even cent rounding gives €225,929.45 (the 4-cent difference is cumulative rounding). Payment counts and payoff month match.
+
+**Contracts.** Item `N` is due on `startDate + (N−1) months` (day clamped). The device total is split into equal floor-to-cent instalments, the last absorbing the remainder; for the first `discountMonths` items the contract (service) cost is `discountedServiceCost`. Remaining commitment at a date = items due on or after it, plus the upfront cost if the contract has not started (counted as device cost when a device is included). The account balance is −(remaining device + remaining contract cost); both parts and the total contract cost are reported separately. Example: 24 months from 31 Jan 2026, upfront 50, service 20 (10 for the first 6 months), device 599.99: instalments 23 × 24.99 + 25.22; total cost 1,069.99; on 30 Oct 2026, 15 items remain: device 375.08 + contract 300.00 = balance −675.08.
+
 ## Category targets
 
 A regular Plan category (any category outside the `credit-card-payments` group; `ccp-*` payment categories use [debt payoff targets](#debt-payoff-targets)) may have one structured target per budget. Targets are keyed by the logical category ID, so the same target applies in every month. They never change assignments, Available, Ready to Assign or ledger balances.

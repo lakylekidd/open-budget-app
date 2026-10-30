@@ -1,0 +1,100 @@
+/* Mortgages, loans and contracts: account page, add/edit forms, simulator and update-balance dialogs. */
+.loan-page{flex:1;min-height:0;overflow:auto;background:#0c0d22;color:#eeeefa}
+.loan-header{display:flex;align-items:center;gap:16px;min-height:84px;padding:15px 16px 12px;background:#14152b;border-bottom:1px solid #292a40}
+.loan-header>div:first-child{flex:1;min-width:0}.loan-header h1{margin:0;font-size:24px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.loan-header h1 small{margin-left:8px;font-size:12px;color:#c4c5dd}
+.loan-meta{display:flex;gap:14px;margin-top:6px;font-size:12px;color:#c4c5dd}.loan-meta span{display:inline-flex;gap:4px;align-items:center}
+.loan-header-actions{display:flex;gap:8px;align-items:center}.loan-header-actions button{height:32px;border-radius:6px;font-size:14px;font-weight:600;padding:0 14px}
+.loan-header-actions .loan-edit,.loan-header-actions .loan-secondary{background:#2c2c4d;color:#fff;border:0}.loan-header-actions .loan-edit{padding:0 12px}
+.loan-header-actions .ledger-menu{display:none}
+.loan-stats{display:flex;flex-wrap:wrap;gap:8px 24px;margin:0;padding:12px 16px;background:#14152b;border-bottom:1px solid #292a40}
+.loan-stats div{display:flex;flex-direction:column-reverse}.loan-stats dd{margin:0;font-size:17px;font-weight:700}.loan-stats dt{font-size:12px;color:#c4c5dd}
+.loan-body{max-width:1040px;margin:0 auto;padding:24px 16px 64px;display:grid;gap:16px}
+.loan-banner{display:flex;align-items:center;gap:16px;padding:16px 20px;border-radius:10px;background:#25255a;border:1px solid #5b54ff}
+.loan-banner>div{flex:1;display:grid;gap:4px}.loan-banner strong{font-size:16px}.loan-banner span{font-size:13px;color:#dcdcf0}
+.loan-banner-icon{font-size:30px;color:#f39a4a}.loan-banner .button-primary{height:32px;padding:0 16px;border-radius:6px}
+.loan-banner-close{background:none;border:0;color:#fff;font-size:24px;padding:0 4px}
+.loan-card{background:var(--surface,#15172d);border-radius:10px;overflow:hidden}
+.loan-card-heading{width:100%;display:flex;justify-content:space-between;align-items:center;background:none;border:0;border-bottom:1px solid #2c2e43;color:#fff;padding:14px 16px;font-size:14px;font-weight:700;text-align:left}
+.loan-card-title{margin:0;padding:14px 16px;font-size:14px;border-bottom:1px solid #2c2e43}
+.loan-chevron{transform:rotate(-90deg);transition:transform .15s}.loan-chevron.open{transform:none}
+.loan-card-body{padding:16px;display:grid;gap:12px}
+.loan-progress-head{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}.loan-progress-head>div:first-child{display:grid;gap:4px}
+.loan-progress-head span{font-size:13px;color:#c4c5dd}.loan-progress-head strong{font-size:26px}.loan-progress-head small{font-size:17px;font-weight:600}
+.loan-progress-links{display:flex;gap:16px;align-items:flex-start}.loan-progress-links button,.loan-link{background:none;border:0;padding:0;color:#7583ff;font-size:13px;font-weight:600;display:inline-flex;gap:6px;align-items:center;cursor:pointer;text-align:left}
+.loan-progress-links button:disabled,.loan-link:disabled{opacity:.5;cursor:default}.loan-link:hover:not(:disabled){text-decoration:underline}
+.loan-summary-banner{margin:0;padding:16px;border-radius:8px;background:#25255a;text-align:center;font-size:14px}.loan-summary-banner b{background:#3a3a8c;border-radius:4px;padding:2px 5px}
+.loan-chart{position:relative;margin:0}.loan-chart svg{width:100%;height:auto;display:block}
+.loan-chart-legend{display:flex;justify-content:flex-end;gap:16px;font-size:12px;color:#c4c5dd}.loan-chart-legend span{display:inline-flex;gap:6px;align-items:center}
+.loan-chart-legend i{display:inline-block;width:18px;border-top:2px solid #7583ff}.loan-chart-legend i.dashed{border-top-style:dashed}
+.loan-chart-grid{stroke:#2c2e43;stroke-dasharray:2 4}.loan-chart-axis{fill:#c4c5dd;font-size:11px}
+.loan-chart-past{fill:none;stroke:#7583ff;stroke-width:2}.loan-chart-track{fill:none;stroke:#7583ff;stroke-width:2;stroke-dasharray:7 5}
+.loan-chart-area{fill:#5b54ff;opacity:.35}.loan-chart-now{fill:#15172d;stroke:#7583ff;stroke-width:2}
+.loan-chart-hover line{stroke:#c4c5dd;stroke-dasharray:3 3}.loan-chart-hover circle{fill:#7583ff;stroke:#15172d;stroke-width:2}.loan-chart-hit{fill:transparent;cursor:crosshair}
+.loan-chart-tooltip{position:absolute;top:24px;transform:translateX(-50%);background:#23223c;border:1px solid #555670;border-radius:6px;padding:6px 10px;font-size:12px;display:grid;gap:2px;pointer-events:none;white-space:nowrap}
+.loan-category{grid-template-columns:1fr auto auto;align-items:start;gap:24px}.loan-category>div{display:grid;gap:6px;justify-items:start}.loan-category span{font-size:13px;color:#c4c5dd}
+.loan-category p{grid-column:1/-1;margin:0;color:#c4c5dd;font-size:13px}
+.loan-pill{border-radius:999px;padding:2px 8px;background:#3b3c55;font-size:13px}.loan-pill.positive{background:#3e6614}.loan-pill.negative{background:#86142d}
+.loan-plus{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;background:#5b54ff;color:#fff;font-size:13px}
+.loan-contract-summary{display:flex;flex-wrap:wrap;gap:12px 28px;margin:0}.loan-contract-summary div{display:grid;gap:2px}.loan-contract-summary dt{font-size:12px;color:#c4c5dd}.loan-contract-summary dd{margin:0;font-weight:700}
+.loan-schedule-scroll{overflow-x:auto;max-height:360px}.loan-schedule{width:100%;border-collapse:collapse;font-size:13px}
+.loan-schedule th,.loan-schedule td{padding:8px 16px;text-align:right;border-bottom:1px solid #2c2e43}.loan-schedule th:nth-child(-n+2),.loan-schedule td:nth-child(-n+2){text-align:left}
+.loan-schedule th{position:sticky;top:0;background:#15172d;color:#c4c5dd;font-weight:600}
+.loan-schedule tr.is-discounted td{background:#1f2a1a}.loan-schedule tr.is-past td{color:#8d8ea6}
+.loan-discount-tag{margin-left:8px;padding:1px 6px;border-radius:999px;background:#3e6614;color:#e6ffd0;font-size:11px}
+.loan-activity{display:grid;gap:8px}.loan-activity h2{margin:8px 0;font-size:22px}
+.loan-month{background:#15172d;border-radius:8px;overflow:hidden}
+.loan-month-heading{width:100%;display:flex;justify-content:space-between;align-items:center;background:none;border:0;color:#fff;padding:18px 16px;font-size:14px;font-weight:700}
+.loan-month-heading>span{display:inline-flex;gap:8px;align-items:center}
+.loan-month-body{border-top:1px solid #2c2e43}
+.loan-month-row{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;padding:10px 16px;border-top:1px solid #23243a;font-size:14px}
+.loan-month-row:first-child{border-top:0}.loan-month-row>div{display:grid;gap:2px}.loan-month-row small{color:#c4c5dd;font-size:13px}.loan-month-row b.positive{color:#84c43a}
+.loan-month-row .loan-check{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#75bd22;color:#14152b;font-size:12px;font-weight:700}
+.loan-year-divider{width:100%;display:flex;justify-content:center;align-items:center;gap:6px;background:none;border:0;border-top:1px solid #2c2e43;color:#fff;padding:10px;margin-top:8px;font-weight:700}
+.loan-help{margin:0;font-size:12px;line-height:1.5;color:#c1becf}.loan-error{color:#ffc2ce}
+/* Add Unlinked Account (loan) */
+.ledger-dialog:has(.loan-account-form){width:min(400px,calc(100% - 24px));background:#23223c;border:0}
+.loan-account-form{display:grid;gap:14px;font-size:14px}.loan-intro{margin:0;font-weight:600;line-height:1.4}
+.loan-account-form label,.edit-loan-form label{display:grid;gap:8px;font-weight:600}
+.loan-account-form input,.loan-account-form select,.edit-loan-form select,.loan-contract-fields input,.loan-contract-fields select{width:100%;min-width:0;min-height:40px;border:1px solid #4a4964;border-radius:6px;background:#3a394f;color:#f4f3fa;padding:6px 10px;font:inherit;font-weight:400}
+.loan-account-form .money-input-shell input{min-height:40px}
+.loan-field-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}.loan-field-row:has(>label:nth-child(3)),.loan-contract-fields .loan-field-row{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
+.loan-rate{width:110px}.edit-loan-form .loan-rate{width:150px}
+.loan-percent-input{position:relative;display:block}.loan-percent-input input{padding-right:28px;text-align:right}.loan-percent-input span{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700}
+.loan-next{width:100%;height:44px;margin-top:24px;border:0;border-radius:6px;background:#5b54ff;color:#fff;font-size:16px;font-weight:600}.loan-next:disabled{background:#2f2e48;color:#8d8ca6}
+.loan-contract-fields{border:0;padding:0;margin:0;display:grid;gap:12px;min-width:0}.loan-contract-fields legend{font-weight:700;margin-bottom:8px}
+.loan-check{display:flex!important;flex-direction:row;align-items:center;gap:8px!important;font-weight:600}.loan-check input{width:auto!important;min-height:0!important}
+/* Edit Account (loan) */
+.ledger-dialog:has(.edit-loan-form){max-height:90vh;display:flex;flex-direction:column;overflow:hidden}
+.edit-loan-form{min-height:0;display:flex!important;flex-direction:column}.edit-loan-scroll{overflow:auto;display:grid;gap:14px;padding-right:6px}
+.edit-loan-form section h3{margin-bottom:12px}.edit-loan-form section{display:grid;gap:10px}
+.loan-pair-button{justify-self:start;background:#2f3060;color:#fff;border:0;border-radius:6px;height:34px;padding:0 16px;font-weight:600}
+.loan-learn-more{justify-self:start;height:34px;padding:0 16px;border-radius:6px}
+/* Update Balance */
+.loan-update-balance{display:grid;gap:12px;justify-items:center;text-align:center;padding:12px 0}.loan-update-balance p{margin:0}.loan-update-balance>strong{font-size:28px}
+.loan-update-balance form{display:grid;gap:12px;width:100%;text-align:left}
+.loan-update-actions{display:flex;gap:8px;justify-content:center}.loan-update-actions button{min-width:56px;height:32px;border-radius:6px;font-weight:600}
+.loan-update-balance details{font-size:13px;color:#a3acff;max-width:320px}.loan-update-balance summary{cursor:pointer}
+.loan-activity-tabs{display:flex;gap:4px;margin-bottom:12px}.loan-activity-tabs button{flex:1;height:32px;border-radius:6px;background:#2c2c4d;color:#fff;border:0;font-weight:600}.loan-activity-tabs button[aria-selected=true]{background:#5b54ff}
+/* Loan Payoff Simulator */
+.ledger-dialog:has(.loan-simulator){width:min(860px,calc(100% - 24px));background:#23223c;border:0}
+.loan-simulator{display:grid;grid-template-columns:200px 1fr;gap:0 24px}
+.loan-simulator-inputs{display:grid;align-content:start;gap:8px;padding-right:20px;border-right:1px solid #39364e}
+.loan-simulator-inputs label,.loan-simulator-field{display:grid;gap:8px;font-weight:700;margin-top:12px}
+.loan-simulator-minimum{display:grid;justify-items:center;gap:2px;padding-bottom:14px;border-bottom:1px solid #39364e}.loan-simulator-minimum strong{font-size:16px}.loan-simulator-minimum span{font-size:12px;color:#c4c5dd}
+.loan-simulator-results{display:grid;gap:14px;min-width:0}
+.loan-simulator-summary{border:1px solid #4a4964;border-radius:8px;overflow:hidden;text-align:center}.loan-simulator-summary h3{margin:0;padding:12px;font-size:14px;border-bottom:1px solid #4a4964}
+.loan-simulator-summary>div{display:grid;grid-template-columns:1fr 1fr}.loan-simulator-summary span{display:grid;gap:4px;padding:18px 8px;font-size:13px}.loan-simulator-summary span+span{border-left:1px solid #4a4964}.loan-simulator-summary strong{font-size:15px}
+.loan-simulator-totals{margin:0;display:grid;gap:4px}.loan-simulator-totals div{display:flex;justify-content:space-between;font-size:14px}.loan-simulator-totals dd{margin:0;font-weight:700}
+.loan-simulator-totals .total{font-weight:700;padding-bottom:8px;margin-bottom:6px;border-bottom:1px solid #39364e}
+.loan-simulator-footer{grid-column:1/-1;display:flex;justify-content:flex-end;padding-top:16px;margin-top:16px;border-top:1px solid #39364e}.loan-simulator-footer button{height:34px;padding:0 18px;border-radius:6px}
+.month-year-picker{position:relative}.month-year-trigger{width:100%;height:36px;display:flex;justify-content:space-between;align-items:center;background:#3a394f;border:1px solid #4a4964;border-radius:6px;color:#fff;padding:0 10px;font-size:14px}
+.month-year-popover{position:absolute;z-index:30;top:calc(100% + 6px);left:0;width:280px;background:#23223c;border:1px solid #39364e;border-radius:8px;box-shadow:0 8px 30px #0008;padding:12px}
+.month-year-head{display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;border-bottom:1px solid #39364e}.month-year-head strong{font-size:18px}
+.month-year-head button{width:28px;height:28px;border-radius:50%;border:2px solid #8f8bff;background:none;color:#8f8bff;font-size:18px;line-height:1;padding:0}.month-year-head button:disabled{opacity:.3}
+.month-year-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding-top:10px}.month-year-grid button{height:40px;border-radius:6px;background:none;border:0;color:#fff;font-weight:600}
+.month-year-grid button:hover:not(:disabled){background:#2f3060}.month-year-grid button.selected{background:#5b54ff}.month-year-grid button:disabled{color:#5f5e78}
+@media(max-width:700px){
+  .loan-header{flex-wrap:wrap;padding:12px}.loan-header-actions{flex-wrap:wrap}.loan-header-actions .ledger-menu{display:inline-block}
+  .loan-category{grid-template-columns:1fr}.loan-simulator{grid-template-columns:1fr}.loan-simulator-inputs{border-right:0;padding-right:0}
+  .loan-banner{flex-wrap:wrap}
+}

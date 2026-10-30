@@ -7,7 +7,7 @@ namespace OpenBudget.Api;
 
 public sealed partial class LedgerService(BudgetDbContext db, BudgetService budgets, LedgerGate gate, TimeProvider clock, LedgerProjection projection)
 {
-    private IQueryable<TransactionEntity> Entries => db.Transactions.Include(t => t.Payee).Include(t => t.Splits);
+    private IQueryable<TransactionEntity> Entries => db.Transactions.Include(t => t.Payee).Include(t => t.Splits).Include(t => t.Account);
 
     public async Task<AccountsDto> GetAccountsAsync(CancellationToken ct)
     {
@@ -15,8 +15,8 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
         var accounts = await db.Accounts.OrderBy(x => x.IsClosed).ThenBy(x => x.Name).ThenBy(x => x.Id).ToListAsync(ct);
         var balances = await db.Transactions.Where(t => !t.IsDeleted).GroupBy(t => t.AccountId)
             .Select(g => new { Id = g.Key, Balance = g.Sum(t => t.Amount), Cleared = g.Sum(t => t.Status != "uncleared" ? t.Amount : 0),
-                Unapproved = g.Count(t => !t.IsApproved), Attention = g.Count(t => !t.IsApproved || (t.TransferId == null && !t.IsOpening && t.Amount < 0 && t.CategoryId == null && !t.Splits.Any())),
-                NeedsCategory = g.Count(t => t.TransferId == null && !t.IsOpening && t.Amount < 0 && t.CategoryId == null && !t.Splits.Any()) }).ToDictionaryAsync(x => x.Id, ct);
+                Unapproved = g.Count(t => !t.IsApproved), Attention = g.Count(t => !t.IsApproved || (t.TransferId == null && !t.IsOpening && t.Amount < 0 && t.CategoryId == null && !t.Splits.Any() && !LoanRules.LoanTypes.Contains(t.Account.AccountType))),
+                NeedsCategory = g.Count(t => t.TransferId == null && !t.IsOpening && t.Amount < 0 && t.CategoryId == null && !t.Splits.Any() && !LoanRules.LoanTypes.Contains(t.Account.AccountType)) }).ToDictionaryAsync(x => x.Id, ct);
         var reconciledAt = await db.Reconciliations.Where(r => !r.IsInvalidated).GroupBy(r => r.AccountId)
             .Select(g => new { Id = g.Key, At = g.Max(r => r.CreatedAt) }).ToDictionaryAsync(r => r.Id, r => r.At, ct);
         return new(version, accounts.Select(a =>
@@ -36,14 +36,14 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
         if (search?.Length > 160) throw new LedgerException("Search must be 160 characters or fewer.");
         var query = Entries.Where(t => !t.IsDeleted);
         if (payeeId is not null) query = query.Where(t => t.PayeeId == payeeId);
-        if (needsAttention) query = query.Where(t => !t.IsApproved || (t.TransferId == null && !t.IsOpening && t.Amount < 0 && t.CategoryId == null && !t.Splits.Any()));
+        if (needsAttention) query = query.Where(t => !t.IsApproved || (t.TransferId == null && !t.IsOpening && t.Amount < 0 && t.CategoryId == null && !t.Splits.Any() && !LoanRules.LoanTypes.Contains(t.Account.AccountType)));
         if (!includeReconciled) query = query.Where(t => t.Status != "reconciled");
         if (accountId is not null) query = query.Where(t => t.AccountId == accountId);
         if (transferId is not null) query = query.Where(t => t.TransferId == transferId);
         if (from is not null) query = query.Where(t => t.Date >= from);
         if (to is not null) query = query.Where(t => t.Date <= to);
         if (!string.IsNullOrWhiteSpace(categoryId)) query = categoryId == "uncategorized"
-            ? query.Where(t => t.TransferId == null && !t.IsOpening && t.Amount < 0 && t.CategoryId == null && !t.Splits.Any())
+            ? query.Where(t => t.TransferId == null && !t.IsOpening && t.Amount < 0 && t.CategoryId == null && !t.Splits.Any() && !LoanRules.LoanTypes.Contains(t.Account.AccountType))
             : query.Where(t => t.CategoryId == categoryId || t.Splits.Any(s => s.CategoryId == categoryId));
         if (!string.IsNullOrWhiteSpace(status)) query = query.Where(t => t.Status == status);
         if (!string.IsNullOrWhiteSpace(search))
@@ -100,20 +100,43 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             ValidateName(request.Name);
             ValidateAccountType(request.AccountType);
             if (request.Date.Year is < 1900 or > 9998 || !LedgerRules.IsMoney(request.OpeningBalance)) throw new LedgerException("Opening date or balance is invalid.");
+            var loan = LoanRules.IsLoan(request.AccountType);
+            if (!loan && request.Loan is not null) throw new LedgerException("Only loan accounts take loan details.");
+            var openingBalance = request.OpeningBalance;
+            if (loan)
+            {
+                if (LoanRules.ValidateTerms(request.AccountType, request.Loan) is { } error) throw new LedgerException(error);
+                if (request.Loan!.Contract is { } contract)
+                {
+                    // A contract's starting debt is its remaining commitment on the opening date (server-calculated).
+                    var remaining = -LoanRules.ContractPositionAt(contract, request.Date).Remaining;
+                    if (openingBalance != 0 && openingBalance != remaining) throw new LedgerException("A contract's opening balance is its remaining contract cost.");
+                    openingBalance = remaining;
+                }
+                else if (openingBalance > 0) throw new LedgerException("Enter the loan balance you owe as a positive amount; it is recorded as debt.");
+            }
             await budgets.GetMonthAsync(db.ActiveBudgetId, Month(request.Date), ct);
             var account = new AccountEntity { Id = Guid.NewGuid(), Name = request.Name.Trim(), AccountType = request.AccountType };
             db.Accounts.Add(account);
             TransactionEntity? opening = null;
-            if (request.OpeningBalance != 0)
+            if (openingBalance != 0)
             {
                 opening = new TransactionEntity
                 {
                     Id = Guid.NewGuid(), Account = account, AccountId = account.Id, Date = request.Date,
-                    Amount = request.OpeningBalance, Status = "cleared", IsOpening = true, Memo = "Opening balance"
+                    Amount = openingBalance, Status = "cleared", IsOpening = true, Memo = "Opening balance"
                 };
                 db.Transactions.Add(opening);
             }
-            return new Change(account.Id, null, new { account, opening = opening is null ? null : ToDto(opening) });
+            LoanTermsEntity? terms = null;
+            if (loan)
+            {
+                terms = new LoanTermsEntity { AccountId = account.Id, CreatedAt = clock.GetUtcNow() };
+                await ApplyLoanTermsAsync(account, request.AccountType, terms, request.Loan, ct);
+                terms.OriginalBalance = request.Loan!.Contract is { } contract ? LoanRules.ContractPositionAt(contract, contract.StartDate).Remaining : -openingBalance;
+                db.LoanTerms.Add(terms);
+            }
+            return new Change(account.Id, null, new { account, opening = opening is null ? null : ToDto(opening), loan = terms is null ? null : ToTermsAudit(terms) });
         }, ct);
 
     public Task<MutationDto> UpdateAccountAsync(Guid id, UpdateAccountRequest request, CancellationToken ct) =>
@@ -122,11 +145,16 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             ValidateName(request.Name);
             if (request.AccountType is not null) ValidateAccountType(request.AccountType);
             var account = await db.Accounts.SingleOrDefaultAsync(a => a.Id == id, ct) ?? throw new LedgerException("Account not found.", 404);
-            if (request.AccountType is not null && CreditCardRules.IsCredit(request.AccountType) != CreditCardRules.IsCredit(account.AccountType))
-                throw new LedgerException("An account cannot change between cash and credit types. Create a new account instead.");
+            if (request.AccountType is not null && LoanRules.Family(request.AccountType) != LoanRules.Family(account.AccountType))
+                throw new LedgerException("An account cannot change between cash, credit and loan types. Create a new account instead.");
+            if (request.AccountType is not null && LoanRules.IsContract(request.AccountType) != LoanRules.IsContract(account.AccountType))
+                throw new LedgerException("A contract cannot change to another loan type. Create a new account instead.");
+            var loanTerms = LoanRules.IsLoan(account.AccountType) ? await db.LoanTerms.SingleOrDefaultAsync(t => t.AccountId == id, ct) : null;
+            if (request.Loan is not null && loanTerms is null) throw new LedgerException("Only loan accounts take loan details.");
+            if (request.Loan is not null && request.IsClosed) throw new LedgerException("Reopen the account before changing its loan details.");
             if(request.Notes?.Length > 1000 || request.WorkingBalance is not null && !LedgerRules.IsMoney(request.WorkingBalance.Value)) throw new LedgerException("Notes must be at most 1000 characters and the working balance must be valid money.");
             var balance=await db.Transactions.Where(t=>t.AccountId==id&&!t.IsDeleted).SumAsync(t=>t.Amount,ct);
-            var before = new { account.Id, account.Name, account.IsClosed, account.AccountType, account.IsFavorite, account.Notes, Balance=balance };
+            var before = new { account.Id, account.Name, account.IsClosed, account.AccountType, account.IsFavorite, account.Notes, Balance=balance, Loan = loanTerms is null ? null : ToTermsAudit(loanTerms) };
             var difference=request.WorkingBalance is null?0:request.WorkingBalance.Value-balance;
             if(request.IsClosed&&difference!=0)throw new LedgerException("Reopen the account before adjusting its working balance.");
             if(!LedgerRules.IsMoney(difference))throw new LedgerException("The adjustment exceeds the supported transaction amount.");
@@ -142,12 +170,18 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             account.AccountType = request.AccountType ?? account.AccountType;
             account.IsFavorite = request.IsFavorite ?? account.IsFavorite;
             account.Notes=request.Notes??account.Notes;
+            if (request.Loan is not null)
+            {
+                await ApplyLoanTermsAsync(account, account.AccountType, loanTerms!, request.Loan, ct);
+                if (request.Loan.Contract is { } contract) loanTerms!.OriginalBalance = LoanRules.ContractPositionAt(contract, contract.StartDate).Remaining;
+            }
             if(difference!=0) {
                 var date=DateOnly.FromDateTime(clock.GetLocalNow().DateTime);
                 await budgets.GetMonthAsync(db.ActiveBudgetId, Month(date),ct);
                 adjustment=new TransactionEntity{Id=Guid.NewGuid(),AccountId=id,Date=date,Amount=difference,Payee=await GetPayeeAsync("Balance Adjustment",ct),Memo="Account working balance adjustment",Status="cleared"};
                 db.Transactions.Add(adjustment);
             }
+            if (loanTerms is not null) return new Change(id, before, new { account, adjustment = adjustment is null ? null : ToDto(adjustment), loan = ToTermsAudit(loanTerms) });
             return new Change(id, before, adjustment is null?account:new{account,adjustment=ToDto(adjustment)});
         }, ct);
 
@@ -166,6 +200,11 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             var categoryIds = (request.Splits ?? []).Select(s => s.CategoryId).Concat(request.CategoryId is null ? [] : [request.CategoryId]).ToList();
             if (categoryIds.Any(CreditCardRules.IsPaymentCategory))
                 throw new LedgerException("Credit card payment categories are funded automatically. Record a card payment as a transfer.");
+            if (LoanRules.IsLoan(account.AccountType))
+            {
+                if (imported) throw new LedgerException("New transactions are unable to import into loan accounts.");
+                if (categoryIds.Count > 0) throw new LedgerException("Loan activity such as interest, fees or corrections changes the debt only and cannot use a category. Record payments as transfers.");
+            }
             if (!imported && CreditCardRules.IsCredit(account.AccountType) && categoryIds.Count == 0
                 && !(id is not null && await db.Transactions.AnyAsync(t => t.Id == id && t.IsOpening, ct)))
                 throw new LedgerException("Credit account transactions require a category.");
@@ -363,8 +402,8 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
     }
     private static void ValidateAccountType(string? type)
     {
-        if (type is not ("checking" or "savings" or "cash" or "creditCard" or "lineOfCredit"))
-            throw new LedgerException("Account type must be checking, savings, cash, creditCard or lineOfCredit.");
+        if (type is not ("checking" or "savings" or "cash" or "creditCard" or "lineOfCredit") && !LoanRules.IsLoan(type))
+            throw new LedgerException("Account type must be checking, savings, cash, creditCard, lineOfCredit, mortgage, autoLoan, studentLoan, personalLoan, medicalDebt, otherDebt or contract.");
     }
     private sealed class LedgerBalanceRow
     {

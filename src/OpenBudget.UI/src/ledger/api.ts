@@ -1,13 +1,19 @@
 import { evaluateMoneyExpression } from '../moneyExpression';
 export type Account = { unapprovedCount?:number; attentionCount?:number; notes?:string; id: string; name: string; isClosed: boolean; balance: number; clearedBalance: number; unclearedBalance: number;
   accountType: AccountType; isFavorite: boolean; connectionStatus: 'unlinked' | 'connected'; lastReconciledAt: string | null; needsCategoryCount: number };
-export type AccountType = 'checking' | 'savings' | 'cash' | 'creditCard' | 'lineOfCredit';
+export type LoanAccountType = 'mortgage' | 'autoLoan' | 'studentLoan' | 'personalLoan' | 'medicalDebt' | 'otherDebt' | 'contract';
+export type AccountType = 'checking' | 'savings' | 'cash' | 'creditCard' | 'lineOfCredit' | LoanAccountType;
 export const accountTypeSections: { title: string; description: string; types: { value: AccountType; label: string }[] }[] = [
   { title: 'Cash Accounts', description: 'A cash account holds funds you already own and can spend immediately.', types: [{ value: 'checking', label: 'Checking' }, { value: 'savings', label: 'Savings' }, { value: 'cash', label: 'Cash' }] },
   { title: 'Credit Accounts', description: 'A credit account lets you spend borrowed money that you’ll need to repay later, often with interest.', types: [{ value: 'creditCard', label: 'Credit Card' }, { value: 'lineOfCredit', label: 'Line of Credit' }] },
+  { title: 'Mortgages and Loans', description: 'Accounts that have an outstanding balance you’re currently paying off, and aren’t spending from.', types: [{ value: 'mortgage', label: 'Mortgage' }, { value: 'autoLoan', label: 'Auto Loan' }, { value: 'studentLoan', label: 'Student Loan' }, { value: 'personalLoan', label: 'Personal Loan' }, { value: 'medicalDebt', label: 'Medical Debt' }, { value: 'otherDebt', label: 'Other Debt' }, { value: 'contract', label: 'Contract' }] },
 ];
+export const loanAccountTypes = accountTypeSections[2].types;
 export const accountTypeLabel = (type: AccountType) => accountTypeSections.flatMap(section => section.types).find(item => item.value === type)?.label ?? type;
 export const isCreditAccount = (account: Pick<Account, 'accountType'> | undefined) => account?.accountType === 'creditCard' || account?.accountType === 'lineOfCredit';
+export const isLoanAccount = (account: Pick<Account, 'accountType'> | undefined) => loanAccountTypes.some(type => type.value === account?.accountType);
+export const accountFamily = (account: Pick<Account, 'accountType'> | undefined) => isLoanAccount(account) ? 'loan' : isCreditAccount(account) ? 'credit' : 'cash';
+export const loanCategoryId = (accountId: string) => `loan-${accountId}`;
 export const creditPaymentGroupId = 'credit-card-payments';
 export const creditPaymentCategoryId = (accountId: string) => `ccp-${accountId}`;
 export type CreditSummary = { accountId: string; month: string; priorBalance: number; spendingAndOutflows: number; interestCharges: number; paymentsAndInflows: number; currentBalance: number };

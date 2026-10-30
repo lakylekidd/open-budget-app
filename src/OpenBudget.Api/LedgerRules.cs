@@ -28,8 +28,9 @@ public static class LedgerRules
             : t.CategoryId is not null ? [new SplitDto(t.CategoryId, t.Amount)] : Enumerable.Empty<SplitDto>())
         .GroupBy(s => s.CategoryId).ToDictionary(g => g.Key, g => g.Sum(s => s.Amount));
 
+    // Loan activity (interest, fees, corrections) is never categorized, so it never needs a category.
     public static bool NeedsAttention(TransactionEntity entry) => !entry.IsDeleted && entry.TransferId is null && !entry.IsOpening
-        && entry.Amount < 0 && entry.CategoryId is null && entry.Splits.Count == 0;
+        && entry.Amount < 0 && entry.CategoryId is null && entry.Splits.Count == 0 && !LoanRules.IsLoan(entry.Account?.AccountType);
 
     public static decimal Balance(IEnumerable<TransactionEntity> entries, bool clearedOnly = false) =>
         entries.Where(t => !t.IsDeleted && (!clearedOnly || t.Status != "uncleared")).Sum(t => t.Amount);

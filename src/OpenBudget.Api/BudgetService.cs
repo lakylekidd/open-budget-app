@@ -136,6 +136,8 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
                 {
                     if (CreditCardRules.IsPaymentCategory(categoryRequest.Id))
                         return BudgetUpdateResult.Invalid("Credit card payment categories are created with their credit account.");
+                    if (categoryRequest.Id.StartsWith(LoanRules.CategoryPrefix, StringComparison.Ordinal))
+                        return BudgetUpdateResult.Invalid("Loan categories are created with their loan account.");
                     if (categoryRequest.Assigned != 0)
                         return BudgetUpdateResult.Invalid("A new category must start with zero assigned.");
                     category = new CategoryEntity { BudgetId = budgetId, BudgetMonth = request.Month, GroupId = groupRequest.Id, Id = categoryRequest.Id };

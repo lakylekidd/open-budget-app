@@ -20,7 +20,7 @@ public sealed partial class LedgerService
             if (request.Action == "flag") ValidateFlagColor(request.Color);
             if (request.Action == "memo" && (request.Memo is null || request.Memo.Length > 1000)) throw new LedgerException("Memo must be at most 1000 characters.");
             if (request.Action == "repeat" && (request.Repeat is null or "never")) throw new LedgerException("Choose a repeating frequency.");
-            if (request.Action == "move") await OpenAccountAsync(request.AccountId ?? Guid.Empty, ct);
+            var moveTarget = request.Action == "move" ? await OpenAccountAsync(request.AccountId ?? Guid.Empty, ct) : null;
 
             var rows = await Entries.Where(t => request.Ids.Contains(t.Id) && !t.IsDeleted).ToListAsync(ct);
             if (rows.Count != request.Ids.Count) throw new LedgerException("A selected transaction no longer exists. Reload the register.", 404);
@@ -40,6 +40,8 @@ public sealed partial class LedgerService
                 if (request.Action is "status" or "delete") EnsureEditable(row);
                 if (request.Action is "duplicate" or "move" or "repeat" && row.IsOpening) throw new LedgerException("Opening balances cannot be duplicated, moved or repeated.");
                 if (request.Action == "move" && row.TransferId != null) throw new LedgerException("Edit the linked transfer to change its accounts together.");
+                if (moveTarget is not null && LoanRules.IsLoan(moveTarget.AccountType) && (row.CategoryId != null || row.Splits.Count > 0))
+                    throw new LedgerException("Categorized transactions cannot move into a loan account.");
                 if (request.Action is "memo" or "move") invalidated.AddRange(await ConfirmEditableAsync(row, request.ConfirmReconciledEdit, ct));
             }
             List<TransactionEntity> copies = [];

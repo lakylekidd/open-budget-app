@@ -192,13 +192,13 @@ const describe = (target: CategoryTarget, money: Money) => {
 
 // Target card in the Plan category details. Saves and deletes keep their command for lost-response retries; a version
 // conflict asks for a reload instead of overwriting another session's change.
-export function CategoryTargetCard({ budgetId, month, category, money, onChanged }: {
-  budgetId: string; month: string; category: TargetCategory; money: Money; onChanged: (result: CategoryTargetResult) => void;
+export function CategoryTargetCard({ budgetId, month, category, money, onChanged, startEditing = false }: {
+  budgetId: string; month: string; category: TargetCategory; money: Money; onChanged: (result: CategoryTargetResult) => void; startEditing?: boolean;
 }) {
   const target = category.categoryTarget ?? null;
   const progress = category.targetProgress ?? null;
   const [open, setOpen] = useState(true);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(startEditing);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [conflict, setConflict] = useState(false);
