@@ -52,7 +52,7 @@ The `/admin` UI also supports email invitations, membership assignment and per-u
 
 Administrators can read `GET /api/admin/membership-plans` and update a user's membership with `PUT /api/admin/users/{id}/membership` using `{ "membershipPlanId": "plus", "budgetLimitOverride": 2, "startsOn": "2026-10-01", "expiresOn": "2027-10-01", "billingProvider": "provider-name", "externalSubscriptionId": "provider-subscription-id" }`. Subscription metadata fields are optional; dates must be ordered, provider is limited to 80 characters and external ID to 160. Use `null` for the override to apply the tier's limit. Updates are role-protected and written to the administration audit log. These fields do not connect to or charge a payment provider.
 
-Feature checks can use the reusable `RequireEntitlement("ledger.export")` endpoint requirement. A user's explicit allow/deny override wins over the assigned membership plan's entitlement; missing plan entries deny access. Entitlement configuration and overrides are audited, and no feature is restricted by a plan until an endpoint opts into a requirement.
+Feature checks can use the reusable `RequireEntitlement("ledger.export")` endpoint requirement. A user's explicit allow/deny override wins over the assigned membership plan's entitlement; missing plan entries deny access. Entitlement configuration and overrides are audited, and no feature is restricted by a plan until an endpoint opts into a requirement. The `wishlist` key gates the [Wishlist](#wishlist) routes; the `Wishlist` migration seeds it as disabled for Free and enabled for Plus and Pro.
 
 The budget-scoped Plan endpoints are available to the owner and invited editors:
 
@@ -226,6 +226,31 @@ Worked examples (amounts in EUR):
 - Custom 40 every 2 weeks from 02-10-2026: October has 2, 16 and 30 October → needed 120 in 3 segments; November (13 and 27) → 80.
 
 The Plan **Underfunded** filter shows categories whose `targetProgress.moreNeeded` is above zero (snoozed categories excluded); **Overfunded** shows categories whose Assigned exceeds `needed`. Categories without a structured target keep the previous legacy-`target` rule. **Auto-Assign → Underfunded** assigns, per category, the larger of the scheduled-outflow shortfall and `moreNeeded`, still capped by Ready to Assign.
+
+## Wishlist
+
+Budget-scoped wish lists funded by Plan categories ([Milestone 13](milestones/milestone-13-wishlist.md)). Every route requires the `wishlist` entitlement (`403` otherwise; seeded for Plus and Pro, denied for Free, per-user overrides win) and owner/editor access to an active budget (`404` otherwise). Requests run under the budget's `LedgerGate`; validation errors (`400`), missing resources (`404`) and conflicts (`409`) roll back the whole transaction, including Plan month changes. Every write carries the overview's `version` (0 before the first write) and returns the new overview; a stale version returns `409` with `{ error, current }`.
+
+| Method | Path | Body / behavior |
+|---|---|---|
+| `GET` | `/api/budgets/{id}/wishlist?month=YYYY-MM` | Overview `{ isEnabled, version, month, readyCount, buckets[] }`. `month` defaults to the server's current month and selects the Available used for progress. |
+| `POST` | `/api/budgets/{id}/wishlist/enable` / `disable` | `{ version }`. Enable creates/restores the `wishlist` group and `wl-{bucketId}` categories in every initialized month (initializing the current month first); disable archives the group without moving money. |
+| `POST` | `/api/budgets/{id}/wishlist/buckets` | `{ version, name }` creates a bucket (1–60 characters, unique case-insensitively, max 50) and its Plan category. |
+| `PUT` | `/api/budgets/{id}/wishlist/buckets/{bucketId}` | `{ version, name }` renames the bucket and its category in every month. |
+| `PUT` | `/api/budgets/{id}/wishlist/buckets/order` | `{ version, bucketIds }` (every active bucket exactly once) reorders buckets and their categories. |
+| `POST` | `/api/budgets/{id}/wishlist/buckets/{bucketId}/delete` | `{ version }` archives the bucket and category; rejected while the category has non-zero Available in the current, a later or the latest initialized month. |
+| `POST` | `/api/budgets/{id}/wishlist/buckets/{bucketId}/items` | `{ version, name, url?, cost, description? }` adds an item at the bottom of the bucket. |
+| `PUT` | `/api/budgets/{id}/wishlist/items/{itemId}` | `{ version, name, url?, cost, description?, bucketId? }` edits an active item; a different `bucketId` moves it to the end of that bucket. |
+| `PUT` | `/api/budgets/{id}/wishlist/buckets/{bucketId}/items/order` | `{ version, itemIds }` (every active item exactly once) sets the desire order. |
+| `POST` | `/api/budgets/{id}/wishlist/items/{itemId}/purchase` / `remove` / `restore` | `{ version }`. Purchase/remove move an active item to history (`purchasedAt`/`removedAt`); restore returns it to the end of the bucket. |
+
+Item validation: name 1–120 characters; cost greater than zero with at most two decimals (max 999,999,999,999.99); description ≤ 1000; optional `url` must be an absolute `http`/`https` URL without whitespace or credentials, ≤ 2048 characters. Bucket and item writes require Wishlist to be enabled for the budget.
+
+Each bucket is `{ id, name, sortOrder, categoryId, available, minCost, maxCost, progress, items, purchased, removed }`: `items` are active items in desire order; `purchased`/`removed` list the latest 50 history entries. `progress` (also returned as `wishlistProgress` on the bucket's category in `GET/PUT /api/budgets/{id}/months/{month}` while Wishlist is enabled) is `{ nextItemId, nextItemName, cost, available, remaining, canPurchase, fundedFraction }` for the top active item: `remaining = max(cost − available, 0)`, `canPurchase = available ≥ cost`, `fundedFraction = available ≤ 0 ? 0 : min(available / cost, 1)`; `null` for a bucket without active items. `readyCount` counts buckets whose next item can be purchased.
+
+Plan month saves keep the Wishlist group server-owned: assigning/moving money and moving the whole group are allowed, but renaming, archiving, adding, removing, reordering or moving `wl-*` categories, renaming/archiving the group, or placing other categories into it returns `400`.
+
+Administrators can list feature keys with `GET /api/admin/entitlement-keys` (known keys such as `wishlist` plus any configured key) and a user's overrides with `GET /api/admin/users/{id}/entitlements`.
 
 ## Register and payees
 

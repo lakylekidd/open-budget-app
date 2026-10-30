@@ -102,6 +102,8 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
         if (currentGroups.Keys.Any(id => request.Groups.All(g => g.Id != id)) ||
             currentCategories.Keys.Any(id => !requestedCategoryIds.Contains(id)))
             return BudgetUpdateResult.Invalid("Existing groups and categories must be archived instead of removed.");
+        if (WishlistRules.ValidatePlanUpdate(budget, request.Groups) is { } wishlistError)
+            return BudgetUpdateResult.Invalid(wishlistError);
 
         var previousReadyToAssign = CalculateReadyToAssign(budget);
         var previousAvailable = budget.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.Available);
@@ -237,7 +239,7 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
     {
         var targets = await db.CategoryTargets.IgnoreQueryFilters().AsNoTracking()
             .Where(x => x.BudgetId == budget.BudgetId).ToListAsync(cancellationToken);
-        if (targets.Count == 0) return BudgetDto.From(budget);
+        if (targets.Count == 0) return await WishlistService.AttachPlanProgressAsync(db, budget, BudgetDto.From(budget), cancellationToken);
         var history = await LoadTargetHistoryAsync(budget.BudgetId, budget.Month, targets, cancellationToken);
         var categories = budget.Groups.SelectMany(g => g.Categories.Select(c => (Group: g, Category: c))).ToDictionary(x => x.Category.Id, StringComparer.Ordinal);
         var result = new Dictionary<string, (CategoryTargetDto Target, CategoryTargetProgressDto? Progress)>(StringComparer.Ordinal);
@@ -247,7 +249,7 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
             var active = !row.Category.IsArchived && !row.Group.IsArchived && !CategoryTargetRules.IsPaymentCategory(row.Category.Id, row.Group.Id);
             result[target.CategoryId] = (target.ToDto(), active ? CalculateTarget(target, budget.Month, row.Category, history) : null);
         }
-        return BudgetDto.From(budget, result);
+        return await WishlistService.AttachPlanProgressAsync(db, budget, BudgetDto.From(budget, result), cancellationToken);
     }
 
     public static CategoryTargetProgressDto CalculateTarget(CategoryTargetEntity target, string month, CategoryEntity category,

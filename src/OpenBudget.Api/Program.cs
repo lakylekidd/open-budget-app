@@ -29,6 +29,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 builder.Services.AddScoped<BudgetService>();
 builder.Services.AddScoped<CategoryTargetService>();
+builder.Services.AddScoped<WishlistService>();
 builder.Services.AddScoped<BudgetOwnershipService>();
 builder.Services.AddScoped<BudgetSharingService>();
 builder.Services.AddScoped<EntitlementService>();
@@ -166,6 +167,7 @@ EntitlementService.MapEndpoints(app);
 BudgetOwnershipService.MapEndpoints(app);
 CategoryTargetService.MapEndpoints(app);
 BudgetSharingService.MapEndpoints(app);
+WishlistService.MapEndpoints(app);
 
 app.MapGet("/api/budget/{month}", async (string month, BudgetService budgets, LedgerGate gate, CancellationToken cancellationToken) =>
 {

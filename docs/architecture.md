@@ -57,6 +57,7 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Account View Options | Server-persisted per-account presets, month range and visibility switches, independently versioned |
 | Scheduled register | Anchored recurrence rules, forecasts, idempotent due-day posting, approval and occurrence review |
 | Credit accounts | Implemented: Credit Card and Line of Credit types, a CREDIT sidebar section, required categories on card transactions, an automatic Credit Card Payments group a payment details panel and debt payoff targets (Pay Off Balance by Date / Pay Specific Amount Monthly) with server-calculated monthly progress. Loans and the payoff planner remain planned. |
+| Wishlist | Implemented: entitlement-gated (`wishlist`, Plus/Pro by default), per-budget enable/disable, ranked buckets and items with drag/keyboard ordering, a server-owned Wishlist Plan group with one category per bucket, server-calculated next-item progress on the Wishlist screen and Plan rows, ready-to-buy nav badge and purchase/removal history. See [Milestone 13](milestones/milestone-13-wishlist.md). |
 | Bank linking, loan accounts | Future milestones |
 | Targets and assignment recommendations | Category targets (Weekly, Monthly, Yearly, Custom with optional repeat; set aside or refill/fill up) are stored per budget and logical category with their own version and command receipts; the server calculates each month's needed/more-needed amount, bar segments and funded fraction on the month DTO. Auto-Assign Underfunded assigns the larger of a category's target need and its current-month scheduled-outflow shortfall; with no category selection it covers all active subcategories, otherwise only selected subcategories. Other actions use last month and trailing 12-month actual assignments/spending; manual assignment and reset actions use the existing versioned Plan save. Target pause/snooze, templates and preview/apply workflows remain planned. |
 | Reflect reports | Not implemented; entry remains a placeholder |
@@ -70,6 +71,10 @@ The CASH account heading matches the navigation items' 228px width and 40px heig
 An Add Account button follows the CASH account list outside its collapsible content, so it remains visible when CASH is collapsed. It opens the existing account form on the Accounts page.
 If the loaded account list is empty, the sidebar shows a No Accounts message with Open Budget wording in place of CASH, followed by the Add Account button. Loading and failed account requests do not show the empty message.
 On desktop, the sidebar edge can be dragged between 190px and 420px. Its footer control collapses it to a 56px icon rail and expands it back to the saved width; both settings are stored locally. The existing mobile drawer remains full width.
+
+## Wishlist slice
+
+Wishlist UI lives in `src/OpenBudget.UI/src/wishlist/` (typed client, sidebar nav item/hook, page, Plan row status and category card). `App.tsx` only mounts the nav item below Long-Term Planning, routes the `Wishlist` page, renders `wishlistProgress` on Plan rows/details, and disables rename/archive/reorder/drag/add for the `wishlist` group. The API keeps the feature in `Wishlist*.cs`: `WishlistRules` (validation, progress, Plan structure sync and Plan-save guard), `WishlistService` (endpoints under `/api/budgets/{id}/wishlist`, each with `RequireEntitlement("wishlist")`, owner/editor access and `LedgerGate`), and `WishlistModel` (EF configuration and entitlement seed). `BudgetService.UpdateMonthAsync` calls the Plan-save guard and `ToDtoAsync` attaches progress. The admin panel lists feature keys with tier checkboxes and per-user overrides.
 
 ## Design limits to address
 
