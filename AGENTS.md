@@ -78,6 +78,26 @@ Agent-specific configuration may exist in `.github/`, `.claude/`, `.codex/`, or 
 
 Those files may provide tool-specific behavior, but this `AGENTS.md` and the project documentation remain the shared repository-level instructions.
 
+### Delegating requests to worktrees and subagents
+
+For every user request, judge its complexity and delegate when it pays off:
+
+- **Trivial** (copy, a style tweak, a one-file fix): do it directly in the current working branch.
+- **Moderate or complex** (a new feature, a cross-layer change, or anything touching the API, migrations, or several UI areas): run it in a subagent in its own Git worktree (branch `worktree-<feature>`). Pick the model and effort to match the work: a smaller model or lower effort for mechanical or styling changes, the most capable model at high effort for ledger, money, security, or schema work.
+- Independent requests may run as parallel subagents, each in a separate worktree. Give each one a self-contained brief: the goal, the screenshots or acceptance criteria, the relevant files, and the testing expectations from this file.
+
+When a subagent finishes:
+
+1. Review its diff and confirm its tests pass.
+2. Merge its branch back into the **current working branch**, not necessarily `main`. Resolve conflicts by keeping both sides' intent, then check `dotnet ef migrations has-pending-model-changes` when migrations are involved.
+3. Run the relevant unit, integration, and UI suites on the merged result.
+4. **Always rebuild and restart the Aspire AppHost** (`dotnet run --project src/OpenBudget.AppHost`) so the user can see the changes, and confirm that the UI and `/health` respond.
+   - The running AppHost locks the API binaries, so stop it before `dotnet build` or `dotnet test` and restart it afterwards.
+   - Tell the user before stopping it, and keep the downtime short.
+5. Report what was merged, the test results, and any deviations or unverified visuals.
+
+Never delete a worktree or branch that still has unmerged work.
+
 ## When Unsure
 
 Before inventing a new pattern:
