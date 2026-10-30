@@ -67,7 +67,7 @@ export function CreditPaymentDetails({ account, month, available, money, onClose
   const funded = underfunded === 0;
   const progress = owed === 0 ? 100 : Math.min(Math.max(available, 0) / owed * 100, 100);
   return <section className="credit-payment-details" aria-label={`${account.name} payment`}>
-    <header><strong><span aria-hidden="true">💳</span> {account.name}</strong><button type="button" aria-label="Close category details" onClick={onClose}>×</button></header>
+    <header><strong>{account.name}</strong><button type="button" aria-label="Close category details" onClick={onClose}>×</button></header>
     {editing ? <><PayoffTargetEditor key={target?.updatedAt ?? 'new'} target={target} busy={busy || conflict} onSave={save} onCancel={cancelEdit} onDelete={remove} />{feedback}</>
       : target && payoff?.progress ? <><PayoffTargetSummary target={target} progress={payoff.progress} money={money} onEdit={() => { setSaveError(''); setEditing(true); }} />{feedback}</>
       : <><div className="credit-payment-card">

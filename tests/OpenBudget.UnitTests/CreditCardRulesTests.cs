@@ -69,4 +69,23 @@ public sealed class CreditCardRulesTests
         Assert.Equal("ICS Mastercard", Assert.Single(group.Categories).Name);
         Assert.False(CreditCardRules.EnsurePaymentCategories(month, [account]));
     }
+
+    [Fact]
+    public void Payment_categories_get_no_automatic_icon_and_lose_the_legacy_one()
+    {
+        var month = new BudgetEntity { Month = "2026-10" };
+        var account = new AccountEntity { Id = Card, Name = "💳 Mastercard", AccountType = "creditCard" };
+        Assert.True(CreditCardRules.EnsurePaymentCategories(month, [account]));
+        var category = Assert.Single(month.Groups.Single(g => g.Id == CreditCardRules.PaymentGroupId).Categories);
+        Assert.Null(category.Icon);
+
+        category.Icon = CreditCardRules.LegacyPaymentIcon;
+        Assert.True(CreditCardRules.EnsurePaymentCategories(month, [account]));
+        Assert.Null(category.Icon);
+        Assert.Equal("💳 Mastercard", category.Name);
+
+        category.Icon = "★";
+        Assert.False(CreditCardRules.EnsurePaymentCategories(month, [account]));
+        Assert.Equal("★", category.Icon);
+    }
 }

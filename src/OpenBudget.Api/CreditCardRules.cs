@@ -10,7 +10,8 @@ public static class CreditCardRules
 {
     public const string PaymentGroupId = "credit-card-payments";
     public const string PaymentGroupName = "Credit Card Payments";
-    public const string PaymentIcon = "💳";
+    // Icon earlier versions assigned automatically; account names now carry any icon the user wants.
+    public const string LegacyPaymentIcon = "💳";
     private const string PaymentCategoryPrefix = "ccp-";
 
     public static readonly string[] CreditTypes = ["creditCard", "lineOfCredit"];
@@ -84,13 +85,13 @@ public static class CreditCardRules
             if (category is null)
             {
                 group.Categories.Add(new CategoryEntity { BudgetId = month.BudgetId, BudgetMonth = month.Month, GroupId = group.Id, Id = id,
-                    Name = account.Name, Icon = PaymentIcon, SortOrder = group.Categories.Count == 0 ? 0 : group.Categories.Max(c => c.SortOrder) + 1 });
+                    Name = account.Name, SortOrder = group.Categories.Count == 0 ? 0 : group.Categories.Max(c => c.SortOrder) + 1 });
                 changed = true;
             }
-            else if (category.Name != account.Name || category.Icon != PaymentIcon)
+            else if (category.Name != account.Name || category.Icon == LegacyPaymentIcon)
             {
                 category.Name = account.Name;
-                category.Icon = PaymentIcon;
+                if (category.Icon == LegacyPaymentIcon) category.Icon = null;
                 changed = true;
             }
         }

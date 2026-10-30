@@ -23,7 +23,6 @@ public static class LoanRules
     public const int MaxCategoryNameLength = 160;
     public const int MaxGroupNameLength = 120;
     public const string CategoryPrefix = "loan-";
-    public const string CategoryIcon = "⌂";
     // 100 years: a payment that cannot clear the debt within this horizon is reported as never paid off.
     public const int MaxMonths = 1200;
     public const int MaxContractMonths = 60;
@@ -294,7 +293,7 @@ public static class LoanRules
                 month.Groups.Add(group);
             }
             group.Categories.Add(new CategoryEntity { BudgetId = month.BudgetId, BudgetMonth = month.Month, GroupId = group.Id, Id = categoryId,
-                Name = account.Name, Icon = CategoryIcon, SortOrder = group.Categories.Count == 0 ? 0 : group.Categories.Max(c => c.SortOrder) + 1 });
+                Name = account.Name, SortOrder = group.Categories.Count == 0 ? 0 : group.Categories.Max(c => c.SortOrder) + 1 });
             changed = true;
         }
         return changed;
