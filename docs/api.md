@@ -357,3 +357,16 @@ For a category, Available = prior carried amount + current Assigned + current Ac
 `PUT /api/budget/{month}` performs the correction under the shared ledger lock and transaction. Invalid/stale requests and save failures do not leave partially updated future months or an implicitly initialized rejected month. Repeating the old monthly version returns 409 with the current snapshot; it never adds the carry twice. A later month's stale write returns its corrected `current` snapshot for reload/reapply. Concurrent ledger changes and assignments serialize under the same lock. Future months are corrected in order so threshold crossings between positive category carry and Ready to Assign withholding are reflected at every boundary. New category/group definitions needed to retain incoming positive historical carry are materialized in initialized later months without copying source assignments/activity or overwriting existing later metadata.
 
 The Plan UI waits for pending assignment saves before changing months; unsaved/failed edits cannot be lost by month navigation. Undo/Redo history resets after loading a different month. Assigned input accepts signed decimal amounts with at most two fractional digits (decimal comma supported; blank clears to zero). Invalid text, exponent notation, excess precision and out-of-range values remain visible with an error and are never silently converted to zero. All persisted available/Ready to Assign totals come back from the server.
+
+## Agent tokens, MCP and live events
+
+Full details, the tool list and the permission matrix are in [MCP server for personal AI agents](mcp.md).
+
+| Method/path | Behavior |
+|---|---|
+| `GET /api/auth/agent-tokens` | Cookie session. Lists the signed-in user's agent tokens without secrets or hashes (`no-store`). |
+| `POST /api/auth/agent-tokens` | Cookie session. `{ "name", "permission": "Admin"|"Budget"|"Reporting", "budgetIds", "expiresInDays" }` → `201 { "token": "obk_…", "details" }`; the plaintext is returned only here. Admin requires the Administrator role (`403`); Budget/Reporting need 1-50 budgets the user owns or edits (`400` with one generic message otherwise); expiry 1-365 days (default 90); at most 25 active tokens (`409`). |
+| `POST /api/auth/agent-tokens/{id}/revoke` | Cookie session. Immediate revocation (`204`); another user's token is `404`. |
+| `GET /api/auth/agent-tokens/{id}/activity?limit=50` | Cookie session. Recent MCP calls for the token: tool, budget, success, outcome code and time (no arguments or values). |
+| `POST /mcp` | MCP Streamable HTTP (stateless) for agent tokens only: `Authorization: Bearer obk_…`. Cookies are ignored (`401` without a valid bearer). HTTPS required outside Development; per-token rate limit (`429` + `Retry-After`); 1 MiB body limit. |
+| `GET /api/budgets/{id}/events` | Cookie session, owner/editor only (`404` otherwise). Server-sent `change` events `{ budgetId, kind, month, version, at }` published after commit; `kind` is `plan`, `ledger`, `targets`, `planning` or `admin`. Heartbeat every 25 s; at most 10 streams per user (`429`). |

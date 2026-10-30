@@ -42,6 +42,7 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
     {
         base.OnModelCreating(modelBuilder);
         LedgerModel.Configure(modelBuilder);
+        Mcp.AgentAccessModel.Configure(modelBuilder);
         modelBuilder.Entity<ApplicationSettingEntity>(e => { e.HasKey(x => x.Key); e.Property(x => x.Key).HasMaxLength(100); e.Property(x => x.Value).HasMaxLength(500); });
         modelBuilder.Entity<SmtpSettingsEntity>(e => { e.HasKey(x => x.Id); e.Property(x => x.Host).HasMaxLength(255); e.Property(x => x.From).HasMaxLength(256); e.Property(x => x.Username).HasMaxLength(256); e.Property(x => x.EncryptedPassword).HasMaxLength(2000); });
         modelBuilder.Entity<AdminAuditLogEntity>(e => { e.HasKey(x => x.Id); e.Property(x => x.ActorUserId).HasMaxLength(450); e.Property(x => x.TargetUserId).HasMaxLength(450); e.Property(x => x.Action).HasMaxLength(80); e.HasIndex(x => x.CreatedAt); });

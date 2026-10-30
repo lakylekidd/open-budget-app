@@ -783,6 +783,121 @@ namespace OpenBudget.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("OpenBudget.Api.Mcp.AgentAuditLogEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int?>("StatusCode")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("TokenId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Tool")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenId", "CreatedAt");
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.ToTable("AgentAuditLogs", (string)null);
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.Mcp.AgentTokenBudgetEntity", b =>
+                {
+                    b.Property<Guid>("TokenId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("TokenId", "BudgetId");
+
+                    b.HasIndex("BudgetId");
+
+                    b.ToTable("AgentTokenBudgets", (string)null);
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.Mcp.AgentTokenEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Permission")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Prefix")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.ToTable("AgentTokens", (string)null);
+                });
+
             modelBuilder.Entity("OpenBudget.Api.MembershipPlanEntitlementEntity", b =>
                 {
                     b.Property<string>("MembershipPlanId")
@@ -1533,6 +1648,30 @@ namespace OpenBudget.Api.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("OpenBudget.Api.Mcp.AgentTokenBudgetEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.BudgetPlanEntity", null)
+                        .WithMany()
+                        .HasForeignKey("BudgetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("OpenBudget.Api.Mcp.AgentTokenEntity", null)
+                        .WithMany("Budgets")
+                        .HasForeignKey("TokenId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.Mcp.AgentTokenEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.OpenBudgetUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("OpenBudget.Api.MembershipPlanEntitlementEntity", b =>
                 {
                     b.HasOne("OpenBudget.Api.MembershipPlanEntity", null)
@@ -1647,6 +1786,11 @@ namespace OpenBudget.Api.Migrations
             modelBuilder.Entity("OpenBudget.Api.CategoryGroupEntity", b =>
                 {
                     b.Navigation("Categories");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.Mcp.AgentTokenEntity", b =>
+                {
+                    b.Navigation("Budgets");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.TransactionEntity", b =>

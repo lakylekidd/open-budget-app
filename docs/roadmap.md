@@ -28,6 +28,7 @@ This roadmap turns product workflows documented publicly by YNAB into independen
 | 10 | Optional linked-account import | Consent-based provider connection, transaction sync/review, reconnect, and disconnect. | Planned; provider availability to be assessed | [Milestone 10](milestones/milestone-10-linked-accounts.md) |
 | 11 | Annual long-term budget planning | Full-year planned-versus-actual forecast grid with effective-month overrides, carry-forward, and year navigation. | Current / implemented | [Milestone 11](milestones/milestone-11-anual-budget-planning.md) |
 | 12 | Icons and suggested icons | Emoji icon picker for accounts, payees, category groups and subcategories, with suggestions from names. | Planned; open questions | [Milestone 12](milestones/milestone-12-icons-and-suggestions.md) |
+| 13 | Agent access (MCP) and live updates | Personal agent tokens with Admin/Budget/Reporting scopes, an MCP server over the application services, per-call audit, and server-sent live refresh of open sessions. | Current / implemented | [MCP](mcp.md) |
 
 ## Cross-cutting completion criteria
 

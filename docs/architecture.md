@@ -10,6 +10,8 @@ flowchart LR
   Host[.NET Aspire AppHost] -. orchestrates .-> UI
   Host -. orchestrates .-> API
   Host -. health + connection string .-> PG
+  Agent[Owner's AI agent] -->|HTTPS POST /mcp + Bearer obk_ token| API
+  API -. SSE /api/budgets/id/events .-> UI
 ```
 
 The Aspire AppHost is the local system composition root. It starts PostgreSQL with a persistent named data volume, injects the database connection into the API, waits for PostgreSQL readiness, and starts the Vite UI after the API. The browser calls the UI at port 5173; Vite forwards `/api` and `/health` requests to port 5080.
@@ -23,7 +25,9 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Persistence | EF Core 10, Npgsql EF provider, PostgreSQL 17 |
 | Local orchestration | .NET Aspire 13.6.2 AppHost, PostgreSQL and JavaScript/Vite integrations |
 | API contract | Budget identity plus versioned monthly snapshot |
-| Authentication | ASP.NET Core Identity with cookie sessions, verified registration, branded SMTP email, password recovery and administrator role |
+| Authentication | ASP.NET Core Identity with cookie sessions, verified registration, branded SMTP email, password recovery and administrator role; hashed personal agent tokens (bearer) for the MCP endpoint only |
+| Agent integration | MCP server via `ModelContextProtocol.AspNetCore` 2.2.0 (Streamable HTTP, stateless) hosted in the API process |
+| Real-time updates | In-process change hub fed by an EF Core commit interceptor; server-sent events to the browser |
 
 ## Implemented user path
 
@@ -108,3 +112,9 @@ Every money field (Plan Assigned and move/assign amounts, transaction outflow/in
 Selecting a regular category in Plan adds a collapsible **Target** card under its details (never for credit card payment categories, which keep their debt payoff target). Without a target it asks "How much do you need for ...?" and offers **Create Target**. The editor (`CategoryTarget.tsx`) has Weekly / Monthly / Yearly / Custom tabs: Weekly takes an amount and weekday; Monthly an amount, a "By" day (Last Day of Month or 1st-31st) and a "Next month I want to" popover (Set aside another / Refill up to); Yearly an amount, a dd-MM-yyyy date with a calendar (`TargetDateField.tsx`) and "Next year I want to"; Custom an amount, "I want to" (Set aside another / Fill up to), "Due on" and a Repeat switch revealing Every [1-99] [Day/Week/Month/Year]. Delete (only for a saved target), Cancel and Save Target finish the editor. A saved target shows a progress ring, "EUR X more needed this month", Needed/Assigned/Due/To Go rows and **Edit Target**. Writes keep their command for lost-response retries (same command ID) and a `409` offers **Reload target**; results patch the loaded month without a Plan save.
 
 `CategoryTargetService` owns validation, access, versioning and receipts; `CategoryTargetRules` is the pure calculation used by `BudgetService.ToDtoAsync`, so Plan rows render from the month response without extra calls. Rows with an active target show "EUR X more needed this month" above a bar split into `segments` equal parts (one per weekday occurrence for weekly targets) that fill yellow while underfunded and green when funded, and the Available pill turns yellow with a small progress-ring icon while money is still needed.
+
+## MCP server and live updates
+
+`src/OpenBudget.Api/Mcp` hosts the MCP server at `/mcp` in the same process and DI container as the REST API. `AgentTokenAuthenticationHandler` validates `obk_` bearer tokens (SHA-256 lookup, revocation, expiry, creator status and role re-checked per request). `McpToolHandlers` filters `tools/list` by permission, validates arguments against each tool's JSON schema, enforces the token's budget allow-list plus the creator's live access, requires `confirm: true` for destructive actions and writes one `AgentAuditLogs` row per call. Tools in `McpToolCatalog` never use `BudgetDbContext` directly: `ApiDispatcher` runs the existing minimal-API endpoint in-process in a fresh DI scope with the creator's principal (role claims removed for non-Admin tokens) and the target budget selected explicitly, after evaluating that endpoint's authorization metadata. Validation, `LedgerGate` locking, optimistic versions, command receipts, Plan action history and admin audit are therefore shared with the web app.
+
+`src/OpenBudget.Api/Realtime` adds a `BudgetChangeInterceptor` (registered with `ConfigureDbContext`, so test overrides keep it) that captures which budgets/areas each `SaveChanges` touched and publishes to the singleton `BudgetChangePublisher` only after the transaction commits. `GET /api/budgets/{id}/events` streams those notifications to authorised browser sessions; `useBudgetLiveUpdates` in the UI re-fetches the Plan month, register and budget list, or shows an "Updated elsewhere" notice when local Plan edits are unsaved. The hub and rate limiter are per process: multi-instance deployments need a backplane (Azure SignalR Service or Azure Cache for Redis) and a distributed limiter. See [MCP](mcp.md).

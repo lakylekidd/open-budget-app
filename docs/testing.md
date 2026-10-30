@@ -193,3 +193,26 @@ Commit-time verification on October 22: the previous complete run passed the cou
 - Full .NET suite: 84 unit tests and 66 PostgreSQL integration tests passed; no failures or skips. Integration tests apply the planning migration to isolated Testcontainers databases and verify reads, writes, persistence, effective overrides, historical locks, actual values and stale-version conflicts.
 - UI suite: 160 tests passed. Solution build completed with zero warnings/errors; UI production build passed; `git diff --check` passed.
 - Initial Aspire startup was blocked because the local `Parameters:postgres-password` user secret was unset; no migration ran during that attempt. Follow-up verification confirmed the named database volume was uninitialized, added a generated development-only credential to local user secrets, and restarted Aspire. Database-connected API health and the UI both returned HTTP 200; the annual planning endpoint returned 12 months. Browser inspection confirmed the Plan-style grid, paired planned/actual rows, and editable Assigned fields. No existing budget data was overwritten.
+
+## Agent access (MCP) and live updates acceptance map
+
+| Behavior | Automated coverage |
+|---|---|
+| 256-bit `obk_` tokens, SHA-256 storage, constant-time verification, shape checks, bearer parsing | `AgentTokenSecretsTests` |
+| Permission matrix (Reporting read-only, Budget plan reads + assignments, Admin everything), budget scope, strict level parsing, tool naming/hints/confirmation consistency | `McpPermissionMatrixTests` |
+| Argument validation (required, unknown properties, types, bounds, money precision, patterns, enums, UUID/date formats, control characters, nested arrays) | `McpArgumentValidatorTests` |
+| Change-event collapsing and payload without financial fields | `BudgetChangeCollapseTests` |
+| MCP `initialize`; `tools/list` filtered per level with read-only/destructive hints and permission metadata | `McpServerApiTests.Initialize_and_tools_list_are_filtered_by_token_permission` |
+| Token create/list/revoke/expiry; Admin creation denied to non-admins; foreign/unknown budgets rejected identically; plaintext shown once, never listed; last-used tracking | `McpServerApiTests.Agent_tokens_are_created_once_listed_without_secrets_revoked_and_expire_immediately` |
+| Bearer-only `/mcp` (cookie rejected), tokens rejected on cookie REST/SSE routes, forged/malformed tokens, creator suspension and Administrator-role loss deny immediately | `McpServerApiTests.Mcp_accepts_only_bearer_tokens_and_denies_suspended_or_demoted_creators` |
+| Budget token sets assignment and moves money (persisted, Recent Moves), stale version surfaces 409 with current month, out-of-scope/foreign/unknown budgets return identical not-found, cannot create transactions, invalid/extra arguments rejected, archived budget denied | `McpServerApiTests.Budget_token_changes_assignments_only_within_scope_and_surfaces_conflicts` |
+| Every write tool refused for Reporting (and all non-assignment writes for Budget) with no state change; every Reporting read area succeeds | `McpServerApiTests.Reporting_and_budget_tokens_cannot_call_any_write_tool` |
+| Admin token across accounts, transactions, transfers, flags, payoff targets, schedules, category targets, Plan structure/notes, long-term planning, sharing, admin dashboard/settings, budget lifecycle; ledger conflict; destructive tools refused without `confirm` | `McpServerApiTests.Admin_token_covers_every_area_with_confirmation_and_ledger_conflicts` |
+| Audit row per call (success/denied/not found) without arguments, amounts or token; activity visible only to the owner | `McpServerApiTests.Audit_rows_record_each_call_without_arguments_and_are_visible_only_to_the_owner` |
+| SSE stream: owner receives a post-commit `plan` event after an MCP write, outsiders get 404, anonymous 401, payload free of amounts | `McpServerApiTests.Events_stream_notifies_authorised_sessions_after_an_mcp_write_without_financial_values` |
+| Per-token rate limit returns 429 with Retry-After and does not affect other tokens | `McpServerApiTests.Mcp_is_rate_limited_per_token` |
+| Agent tokens UI: create with scopes and budget multi-select, plaintext shown once with copy, Admin only for administrators, server errors, revoke confirmation, recent activity, load error/empty states | `AgentTokens.test.tsx` |
+| Live update hook: refresh on newer Plan versions, notice instead of refresh with unsaved edits, own-save/month/budget filtering, deferred evaluation during saves, ledger coalescing, admin refresh, reconnect backoff and cleanup | `liveUpdates.test.tsx` |
+
+Not automated: connecting a real Claude Code/Claude Desktop client to a deployed instance, and nginx SSE/MCP proxying (configuration in `deploy/nginx.conf`).
+
