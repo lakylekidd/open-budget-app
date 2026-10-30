@@ -42,7 +42,8 @@ public sealed record CategoryGroupDto(string Id, string Name, int SortOrder, boo
 // and its server-calculated progress for this month (null without a target; progress is null for hidden categories).
 public sealed record CategoryDto(string Id, string Name, decimal Assigned, decimal Activity, decimal Available, decimal Target,
     string? Icon, bool Snoozed, int SortOrder, bool IsArchived, decimal CreditOverspending = 0,
-    CategoryTargetDto? CategoryTarget = null, CategoryTargetProgressDto? TargetProgress = null);
+    CategoryTargetDto? CategoryTarget = null, CategoryTargetProgressDto? TargetProgress = null,
+    WishlistProgressDto? WishlistProgress = null);
 public sealed record CategoryGroupUpdateDto(string Id, string Name, int SortOrder, bool IsArchived, List<CategoryUpdateDto> Categories);
 public sealed record CategoryUpdateDto(string Id, string Name, decimal Assigned, decimal Target, string? Icon,
     bool Snoozed, int SortOrder, bool IsArchived);

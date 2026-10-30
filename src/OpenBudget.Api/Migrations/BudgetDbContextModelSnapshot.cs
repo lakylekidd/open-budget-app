@@ -799,6 +799,26 @@ namespace OpenBudget.Api.Migrations
                     b.HasKey("MembershipPlanId", "EntitlementKey");
 
                     b.ToTable("MembershipPlanEntitlements");
+
+                    b.HasData(
+                        new
+                        {
+                            MembershipPlanId = "free",
+                            EntitlementKey = "wishlist",
+                            IsEnabled = false
+                        },
+                        new
+                        {
+                            MembershipPlanId = "plus",
+                            EntitlementKey = "wishlist",
+                            IsEnabled = true
+                        },
+                        new
+                        {
+                            MembershipPlanId = "pro",
+                            EntitlementKey = "wishlist",
+                            IsEnabled = true
+                        });
                 });
 
             modelBuilder.Entity("OpenBudget.Api.MembershipPlanEntity", b =>
@@ -1403,6 +1423,123 @@ namespace OpenBudget.Api.Migrations
                     b.ToTable("UserMemberships");
                 });
 
+            modelBuilder.Entity("OpenBudget.Api.WishlistBucketEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BudgetId", "IsDeleted", "SortOrder");
+
+                    b.ToTable("WishlistBuckets");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.WishlistItemEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BucketId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<decimal>("Cost")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTimeOffset?>("PurchasedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("RemovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Url")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BudgetId");
+
+                    b.HasIndex("BucketId", "Status", "SortOrder");
+
+                    b.ToTable("WishlistItems");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.WishlistSettingsEntity", b =>
+                {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("BudgetId");
+
+                    b.ToTable("WishlistSettings");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
@@ -1630,6 +1767,33 @@ namespace OpenBudget.Api.Migrations
                     b.HasOne("OpenBudget.Api.OpenBudgetUser", null)
                         .WithOne()
                         .HasForeignKey("OpenBudget.Api.UserMembershipEntity", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.WishlistBucketEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.BudgetPlanEntity", null)
+                        .WithMany()
+                        .HasForeignKey("BudgetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.WishlistItemEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.WishlistBucketEntity", null)
+                        .WithMany()
+                        .HasForeignKey("BucketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.WishlistSettingsEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.BudgetPlanEntity", null)
+                        .WithMany()
+                        .HasForeignKey("BudgetId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

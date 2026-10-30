@@ -16,6 +16,9 @@ public sealed class EntitlementService(BudgetDbContext db)
 {
     private static readonly Regex KeyPattern = new("^[a-z][a-z0-9._-]{0,79}$", RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    // Feature keys enforced by endpoints; the admin panel lists them even before a tier configures them.
+    public static readonly IReadOnlyList<string> KnownKeys = [WishlistRules.EntitlementKey];
+
     public static bool IsValidKey(string? key) => key is not null && KeyPattern.IsMatch(key);
 
     public async Task<bool> HasAsync(string userId, string entitlementKey, CancellationToken cancellationToken = default)
@@ -35,6 +38,17 @@ public sealed class EntitlementService(BudgetDbContext db)
     public static void MapEndpoints(WebApplication app)
     {
         var admin = app.MapGroup("/api/admin").RequireAuthorization(policy => policy.RequireRole(AuthenticationSetup.AdministratorRole));
+        admin.MapGet("/entitlement-keys", async (BudgetDbContext db, CancellationToken ct) =>
+        {
+            var configured = await db.MembershipPlanEntitlements.AsNoTracking().Select(item => item.EntitlementKey).Distinct().ToListAsync(ct);
+            return Results.Ok(KnownKeys.Union(configured, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList());
+        });
+        admin.MapGet("/users/{id}/entitlements", async (string id, BudgetDbContext db, CancellationToken ct) =>
+        {
+            if (!await db.Users.AnyAsync(user => user.Id == id, ct)) return Results.NotFound();
+            return Results.Ok(await db.UserEntitlementOverrides.AsNoTracking().Where(item => item.UserId == id)
+                .OrderBy(item => item.EntitlementKey).Select(item => new MembershipEntitlementDto(item.EntitlementKey, item.IsEnabled)).ToListAsync(ct));
+        });
         admin.MapGet("/membership-plans/{id}/entitlements", async (string id, BudgetDbContext db, CancellationToken ct) =>
         {
             if (!await db.MembershipPlans.AnyAsync(plan => plan.Id == id, ct)) return Results.NotFound();
