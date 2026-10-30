@@ -115,3 +115,32 @@
 .month-year-grid button{height:32px;border-radius:16px;font-weight:600;color:#f4f3fa;cursor:pointer}.month-year-grid button:hover:not(:disabled){background:#44405d}
 .month-year-grid button.selected{background:#6054ff;color:#fff}.month-year-grid button:disabled{color:#77758e;cursor:default}
 .loan-simulator-summary.saving{background:#1f3a2a;border-color:#3f7a45}.loan-simulator-summary.saving h3{border-bottom-color:#3f7a45;color:#c9f0b0}.loan-simulator-summary.saving strong{color:#9be16a}
+/* Optional: Pair a Category (Add Unlinked Account step 2 and Edit Account -> Pair Category). */
+.ledger-dialog:has(.loan-pair-step){width:min(400px,calc(100% - 24px));background:#23223c;border:0;border-radius:8px;padding:16px;display:flex;flex-direction:column;overflow:hidden}
+.ledger-dialog:has(.loan-pair-step) .ledger-dialog-heading{border-bottom:1px solid #39364e;padding-bottom:14px;margin:0 -16px 16px;padding-inline:16px}
+.ledger-dialog:has(.loan-pair-step) h2{font-size:18px;text-align:center}
+.ledger-dialog:has(.loan-pair-step) .ledger-dialog-heading>button{background:none;color:#8e87ff;padding:0 4px;font-size:28px;font-weight:300}
+.loan-pair-step{display:flex;flex-direction:column;min-height:min(560px,70vh);font-size:14px;color-scheme:dark}
+.loan-pair-scroll{flex:1;overflow:auto;display:grid;align-content:start;gap:14px;padding-bottom:16px}
+.loan-pair-step h3{margin:0;font-size:14px;font-weight:700}.loan-pair-step h4{margin:4px 0 0;font-size:14px;font-weight:700;color:#fff}
+.loan-pair-help{margin:-8px 0 0;color:#c4c5dd;font-size:13px;line-height:1.5}
+.loan-pair-choice{border:0;margin:0;padding:0;display:grid;gap:8px;min-width:0}.loan-pair-choice legend{font-weight:700;margin-bottom:10px;line-height:1.4;padding:0}
+.loan-pair-radio{display:flex;gap:10px;align-items:flex-start;cursor:pointer}.loan-pair-radio>span{display:grid;gap:1px}.loan-pair-radio b{font-weight:600}.loan-pair-radio small{color:#c4c5dd;font-size:12px}
+.loan-pair-radio input{appearance:none;flex:none;width:18px;height:18px;margin:1px 0 0;border:1.5px solid #c4c5dd;border-radius:50%;background:transparent;display:grid;place-items:center;cursor:pointer}
+.loan-pair-radio input:checked{border-color:#8e87ff}.loan-pair-radio input:checked::after{content:"";width:10px;height:10px;border-radius:50%;background:#8e87ff}
+.loan-pair-radio input:focus-visible{outline:2px solid #aaa6ff;outline-offset:2px}
+.loan-pair-field{display:grid;gap:8px;font-weight:700}
+.loan-pair-field input,.loan-pair-field select{width:100%;min-width:0;min-height:44px;border:1px solid #4a4964;border-radius:6px;background:#3a394f;color:#f4f3fa;padding:6px 12px;font:inherit;font-weight:400}
+.loan-pair-field select{appearance:none;padding-right:32px;background-image:linear-gradient(45deg,transparent 50%,#8e87ff 50%),linear-gradient(135deg,#8e87ff 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat}
+.loan-pair-field input:focus,.loan-pair-field select:focus{outline:0;border-color:#6a6cff;box-shadow:0 0 0 1px #6a6cff}
+.loan-pair-field optgroup{font-weight:700;color:#fff;background:#2c2b44}.loan-pair-field option{font-weight:400;color:#f4f3fa;background:#2c2b44}.loan-pair-field option:disabled{color:#7d7b92}
+.loan-pair-field small{font-weight:400;color:#c4c5dd}
+.loan-pair-section{display:grid;gap:12px;padding-top:12px;border-top:1px solid #39364e}
+.loan-pair-actions{display:grid;grid-template-columns:1fr 1fr;gap:16px;border-top:1px solid #39364e;margin:0 -16px;padding:16px 16px 0}
+.ledger-dialog .loan-pair-actions button{height:48px;border-radius:6px;font-size:16px;font-weight:600}
+.ledger-dialog .loan-pair-skip{background:#353769;color:#fff}.ledger-dialog .loan-pair-next{background:#5b54ff;color:#fff}
+.ledger-dialog .loan-pair-next:disabled{background:#2f2e48;color:#8d8ca6;opacity:1}
+.loan-paired-line{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:14px}.loan-paired-line>span:first-child{font-weight:700}
+.loan-category-slots{display:grid;gap:16px}.loan-category-slot{display:grid;grid-template-columns:1fr auto auto;align-items:start;gap:24px}.loan-category-slot>div{display:grid;gap:6px;justify-items:start}
+.loan-category-slot h3{grid-column:1/-1;margin:0;font-size:14px}.loan-category-slot+.loan-category-slot{border-top:1px solid #2c2e43;padding-top:16px}
+@media (max-width:640px){.loan-category-slot{grid-template-columns:1fr}}

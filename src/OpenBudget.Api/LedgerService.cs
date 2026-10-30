@@ -129,14 +129,15 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
                 db.Transactions.Add(opening);
             }
             LoanTermsEntity? terms = null;
+            object? createdCategories = null;
             if (loan)
             {
                 terms = new LoanTermsEntity { AccountId = account.Id, CreatedAt = clock.GetUtcNow() };
-                await ApplyLoanTermsAsync(account, request.AccountType, terms, request.Loan, ct);
+                createdCategories = await ApplyLoanTermsAsync(account, request.AccountType, terms, request.Loan, ct);
                 terms.OriginalBalance = request.Loan!.Contract is { } contract ? LoanRules.ContractPositionAt(contract, contract.StartDate).Remaining : -openingBalance;
                 db.LoanTerms.Add(terms);
             }
-            return new Change(account.Id, null, new { account, opening = opening is null ? null : ToDto(opening), loan = terms is null ? null : ToTermsAudit(terms) });
+            return new Change(account.Id, null, new { account, opening = opening is null ? null : ToDto(opening), loan = terms is null ? null : ToTermsAudit(terms), createdCategories });
         }, ct);
 
     public Task<MutationDto> UpdateAccountAsync(Guid id, UpdateAccountRequest request, CancellationToken ct) =>
@@ -170,9 +171,10 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             account.AccountType = request.AccountType ?? account.AccountType;
             account.IsFavorite = request.IsFavorite ?? account.IsFavorite;
             account.Notes=request.Notes??account.Notes;
+            object? createdCategories = null;
             if (request.Loan is not null)
             {
-                await ApplyLoanTermsAsync(account, account.AccountType, loanTerms!, request.Loan, ct);
+                createdCategories = await ApplyLoanTermsAsync(account, account.AccountType, loanTerms!, request.Loan, ct);
                 if (request.Loan.Contract is { } contract) loanTerms!.OriginalBalance = LoanRules.ContractPositionAt(contract, contract.StartDate).Remaining;
             }
             if(difference!=0) {
@@ -181,7 +183,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
                 adjustment=new TransactionEntity{Id=Guid.NewGuid(),AccountId=id,Date=date,Amount=difference,Payee=await GetPayeeAsync("Balance Adjustment",ct),Memo="Account working balance adjustment",Status="cleared"};
                 db.Transactions.Add(adjustment);
             }
-            if (loanTerms is not null) return new Change(id, before, new { account, adjustment = adjustment is null ? null : ToDto(adjustment), loan = ToTermsAudit(loanTerms) });
+            if (loanTerms is not null) return new Change(id, before, new { account, adjustment = adjustment is null ? null : ToDto(adjustment), loan = ToTermsAudit(loanTerms), createdCategories });
             return new Change(id, before, adjustment is null?account:new{account,adjustment=ToDto(adjustment)});
         }, ct);
 

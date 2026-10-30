@@ -8,14 +8,20 @@ namespace OpenBudget.Api;
 //   - A transfer between a loan and a non-loan account is a payment (or a draw when money leaves the loan).
 //     With a paired Plan category the payment is spending from that category; without one it reduces
 //     Ready to Assign, so budget accounts always equal Ready to Assign plus category Available.
+//   - Pairing is optional and one-to-one: a category is paired with at most one loan slot. A contract with a device
+//     may pair a separate device category; each payment is then split by SplitContractPayment.
 //   - Interest is estimated, never posted: estimate = debt x annual rate / 12 / 100, rounded half-even to cents.
 //   - Projections are read-only decimal simulations that start with next month's payment.
 public static class LoanRules
 {
     public const string Contract = "contract";
     public static readonly string[] LoanTypes = ["mortgage", "autoLoan", "studentLoan", "personalLoan", "medicalDebt", "otherDebt", Contract];
+    // Legacy: loans created before optional pairing were auto-paired with "loan-{accountId}" in this group.
+    // Those pairings are kept (and their categories kept present) but new loans never create them.
     public const string PaymentGroupId = "loan-payments";
     public const string PaymentGroupName = "Loans";
+    public const int MaxCategoryNameLength = 160;
+    public const int MaxGroupNameLength = 120;
     public const string CategoryPrefix = "loan-";
     public const string CategoryIcon = "⌂";
     // 100 years: a payment that cannot clear the debt within this horizon is reported as never paid off.
@@ -37,8 +43,7 @@ public static class LoanRules
         if (!IsRate(terms.InterestRate)) return "Interest rate must be between 0 and 100 with at most three decimal places.";
         if (!LedgerRules.IsMoney(terms.MinimumPayment) || terms.MinimumPayment < 0 || !LedgerRules.IsMoney(terms.EscrowAmount) || terms.EscrowAmount < 0)
             return "Monthly payment and escrow must be non-negative amounts with at most two decimal places.";
-        if (terms.PairedCategoryId?.Length > 100) return "Category identifier is too long.";
-        if (terms.CreatePairedCategory && terms.PairedCategoryId is not null) return "Choose an existing category or create a new one, not both.";
+        if (ValidatePairing(accountType, terms) is { } pairingError) return pairingError;
         if (IsContract(accountType))
         {
             if (terms.Contract is null) return "Contract accounts require contract details.";
@@ -51,6 +56,42 @@ public static class LoanRules
         if (terms.EscrowAmount >= terms.MinimumPayment) return "The escrow or fee amount must be less than the monthly payment.";
         return null;
     }
+
+    // Shape of the pairing request; existence, activity, protection and one-to-one checks need the database (LoanService).
+    public static string? ValidatePairing(string accountType, LoanTermsRequest terms)
+    {
+        if (terms.PairedCategoryId?.Length > 100 || terms.DevicePairedCategoryId?.Length > 100) return "Category identifier is too long.";
+        if (terms.PairedCategoryId is not null && terms.NewPairedCategory is not null || terms.DevicePairedCategoryId is not null && terms.NewDevicePairedCategory is not null)
+            return "Choose an existing category or create a new one, not both.";
+        if (terms.SeparateDeviceCategory && !(IsContract(accountType) && terms.Contract?.IncludesDevice == true))
+            return "Separate device categories are only for contracts that include a device.";
+        if (!terms.SeparateDeviceCategory && (terms.DevicePairedCategoryId is not null || terms.NewDevicePairedCategory is not null))
+            return "Pair a device category only when the device uses a separate category.";
+        if (terms.SeparateDeviceCategory && terms.PairedCategoryId is not null && terms.PairedCategoryId == terms.DevicePairedCategoryId)
+            return "Choose different categories for the contract and the device.";
+        foreach (var created in new[] { terms.NewPairedCategory, terms.NewDevicePairedCategory })
+            if (created is not null && ValidateNewCategory(created) is { } error) return error;
+        if (terms.NewPairedCategory is { } a && terms.NewDevicePairedCategory is { } b && SameName(a.Name, b.Name)
+            && (a.GroupId is not null ? a.GroupId == b.GroupId : b.NewGroupName is not null && SameName(a.NewGroupName!, b.NewGroupName)))
+            return "The contract and device categories need different names.";
+        return null;
+    }
+
+    public static string? ValidateNewCategory(NewPairedCategoryRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length > MaxCategoryNameLength)
+            return $"Category name is required (maximum {MaxCategoryNameLength} characters).";
+        if ((request.GroupId is null) == (request.NewGroupName is null)) return "Choose a category group or name a new one.";
+        if (request.GroupId is { } groupId && (string.IsNullOrWhiteSpace(groupId) || groupId.Length > 100)) return "Category group identifier is invalid.";
+        if (request.NewGroupName is { } group && (string.IsNullOrWhiteSpace(group) || group.Trim().Length > MaxGroupNameLength))
+            return $"Category group name is required (maximum {MaxGroupNameLength} characters).";
+        return null;
+    }
+
+    // Groups whose membership the server owns; a loan category can neither be chosen from nor created in them.
+    public static bool IsProtectedGroup(string groupId) => groupId is CreditCardRules.PaymentGroupId or WishlistRules.GroupId;
+    public static bool IsProtectedCategory(string categoryId) => CreditCardRules.IsPaymentCategory(categoryId) || WishlistRules.IsWishlistCategory(categoryId);
+    public static bool SameName(string a, string b) => string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
 
     public static string? ValidateContract(ContractTermsRequest contract)
     {
@@ -169,10 +210,53 @@ public static class LoanRules
     // Transfers between two loan accounts are budget-neutral.
     public sealed record Flows(IReadOnlyDictionary<string, decimal> CategoryActivity, decimal Income);
 
-    public static Flows Project(IEnumerable<TransactionEntity> monthEntries, IReadOnlyDictionary<Guid, string?> loanPairs, Func<string, bool> categoryExists)
+    // A loan's pairing as the projection uses it. DeviceCategoryId applies only when SeparateDevice is set on a contract
+    // that includes a device; a null category means that share uses Ready to Assign.
+    public sealed record Pairing(string? CategoryId, bool SeparateDevice = false, string? DeviceCategoryId = null, ContractTermsRequest? Contract = null);
+
+    // Scheduled (contract/service, device) amounts for a calendar month: schedule items due in that month, plus the
+    // upfront cost in the start month (device cost when the contract includes a device, contract cost otherwise).
+    public static (decimal Service, decimal Device) ScheduledInMonth(ContractTermsRequest contract, string month)
+    {
+        var items = ContractSchedule(contract).Where(item => Month(item.DueDate) == month).ToList();
+        decimal service = items.Sum(item => item.Service), device = items.Sum(item => item.Device);
+        if (Month(contract.StartDate) == month)
+        {
+            if (contract.IncludesDevice) device += contract.UpfrontCost; else service += contract.UpfrontCost;
+        }
+        return (service, device);
+    }
+
+    // Splits one payment (positive) or draw (negative) of a contract with a separate device category. The ratio is the
+    // payment month's scheduled contract vs device amounts; a month with nothing scheduled (before the start or after
+    // the end) uses the whole contract's totals instead. The contract part is amount x contract / (contract + device),
+    // truncated toward zero to whole cents; the device part is the remainder, so the parts always add up exactly, any
+    // rounding cent goes to the device, and a draw of the same amount reverses a payment exactly.
+    public static (decimal Contract, decimal Device) SplitContractPayment(decimal amount, ContractTermsRequest contract, DateOnly date)
+    {
+        var (service, device) = ScheduledInMonth(contract, Month(date));
+        if (service + device <= 0)
+        {
+            var schedule = ContractSchedule(contract);
+            service = schedule.Sum(item => item.Service) + (contract.IncludesDevice ? 0 : contract.UpfrontCost);
+            device = schedule.Sum(item => item.Device) + (contract.IncludesDevice ? contract.UpfrontCost : 0);
+        }
+        if (device <= 0) return (amount, 0);
+        if (service <= 0) return (0, amount);
+        var part = decimal.Truncate(amount * service / (service + device) * 100) / 100;
+        return (part, amount - part);
+    }
+
+    public static Flows Project(IEnumerable<TransactionEntity> monthEntries, IReadOnlyDictionary<Guid, Pairing> loanPairs, Func<string, bool> categoryExists)
     {
         var activity = new Dictionary<string, decimal>(StringComparer.Ordinal);
         decimal income = 0;
+        void Apply(string? categoryId, decimal amount)
+        {
+            if (amount == 0) return;
+            if (categoryId is not null && categoryExists(categoryId)) activity[categoryId] = activity.GetValueOrDefault(categoryId) - amount;
+            else income -= amount;
+        }
         var transfers = monthEntries.Where(t => !t.IsDeleted && t.TransferId is not null).GroupBy(t => t.TransferId!.Value);
         foreach (var legs in transfers)
         {
@@ -180,17 +264,22 @@ public static class LoanRules
             if (pair.Count != 2) continue;
             foreach (var leg in pair)
             {
-                if (!loanPairs.TryGetValue(leg.AccountId, out var categoryId)) continue;
+                if (!loanPairs.TryGetValue(leg.AccountId, out var pairing)) continue;
                 var other = pair.Single(t => t.Id != leg.Id);
                 if (loanPairs.ContainsKey(other.AccountId)) continue;
-                if (categoryId is not null && categoryExists(categoryId)) activity[categoryId] = activity.GetValueOrDefault(categoryId) - leg.Amount;
-                else income -= leg.Amount;
+                if (pairing.SeparateDevice && pairing.Contract is { IncludesDevice: true } contract)
+                {
+                    var (service, device) = SplitContractPayment(leg.Amount, contract, leg.Date);
+                    Apply(pairing.CategoryId, service);
+                    Apply(pairing.DeviceCategoryId, device);
+                }
+                else Apply(pairing.CategoryId, leg.Amount);
             }
         }
         return new(activity, income);
     }
 
-    // Keeps the Loans group and each automatically paired loan category present in a month.
+    // Keeps the legacy Loans group and each legacy automatically paired loan category present in a month.
     public static bool EnsureCategories(BudgetEntity month, IReadOnlyList<(AccountEntity Account, string CategoryId)> autoPaired)
     {
         var changed = false;
@@ -230,6 +319,9 @@ public sealed class LoanTermsEntity
     public decimal MinimumPayment { get; set; }
     public decimal EscrowAmount { get; set; }
     public string? PairedCategoryId { get; set; }
+    // Contracts with a device: when set, the device share of each payment uses DevicePairedCategoryId (null = Ready to Assign).
+    public bool SeparateDeviceCategory { get; set; }
+    public string? DevicePairedCategoryId { get; set; }
     // Debt when the account was created (contracts: the total contract cost); the base for "% remaining".
     public decimal OriginalBalance { get; set; }
     public DateTimeOffset? BalanceConfirmedAt { get; set; }

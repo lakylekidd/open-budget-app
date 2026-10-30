@@ -27,7 +27,22 @@ public sealed partial class LedgerService
             contract is null ? terms.MinimumPayment : projection.MonthlyPayment, terms.EscrowAmount, terms.OriginalBalance,
             terms.OriginalBalance > 0 ? decimal.Round(debt / terms.OriginalBalance * 100, 1, MidpointRounding.ToEven) : null,
             terms.BalanceConfirmedAt, LoanRules.MonthlyInterest(debt, terms.InterestRate), await PairedCategoryAsync(terms.PairedCategoryId, account.Id, currentMonth, ct),
-            projection, history, await ActivityAsync(entries, terms.InterestRate, currentMonth, ct), contract is null ? null : ToContractDto(contract, today));
+            projection, history, await ActivityAsync(entries, terms.InterestRate, currentMonth, ct), contract is null ? null : ToContractDto(contract, today),
+            terms.SeparateDeviceCategory, terms.SeparateDeviceCategory ? await PairedCategoryAsync(terms.DevicePairedCategoryId, account.Id, currentMonth, ct) : null);
+    }
+
+    // Every paired slot in the active budget, so pickers can show categories already paired with a loan as unavailable.
+    public async Task<LoanPairingsDto> GetLoanPairingsAsync(CancellationToken ct)
+    {
+        var rows = await db.LoanTerms.AsNoTracking().Join(db.Accounts.AsNoTracking(), t => t.AccountId, a => a.Id,
+            (t, a) => new { t.AccountId, a.Name, t.PairedCategoryId, t.SeparateDeviceCategory, t.DevicePairedCategoryId }).ToListAsync(ct);
+        var items = new List<LoanPairingDto>();
+        foreach (var row in rows.OrderBy(r => r.Name, StringComparer.Ordinal).ThenBy(r => r.AccountId))
+        {
+            if (row.PairedCategoryId is { } main) items.Add(new(row.AccountId, row.Name, main, "loan"));
+            if (row.SeparateDeviceCategory && row.DevicePairedCategoryId is { } device) items.Add(new(row.AccountId, row.Name, device, "device"));
+        }
+        return new(items);
     }
 
     // Read-only payoff simulation. Either a monthly payment (including escrow/fees) or a payoff month is given;
@@ -66,8 +81,8 @@ public sealed partial class LedgerService
             if (!LoanRules.IsLoan(account.AccountType)) throw new LedgerException("Only loan accounts have loan details.");
             var terms = await db.LoanTerms.SingleOrDefaultAsync(t => t.AccountId == id, ct) ?? throw new LedgerException("Loan details not found.", 404);
             var before = ToTermsAudit(terms);
-            await ApplyLoanTermsAsync(account, account.AccountType, terms, request.Terms, ct);
-            return new Change(id, before, ToTermsAudit(terms));
+            var created = await ApplyLoanTermsAsync(account, account.AccountType, terms, request.Terms, ct);
+            return new Change(id, before, created.Count == 0 ? ToTermsAudit(terms) : new { loan = ToTermsAudit(terms), createdCategories = created });
         }, ct);
 
     public Task<MutationDto> ConfirmLoanBalanceAsync(Guid id, LoanBalanceRequest request, CancellationToken ct) =>
@@ -99,32 +114,31 @@ public sealed partial class LedgerService
     }
 
     // Validates and applies terms and pairing for a (new or existing) loan account. The caller has verified the type family.
-    private async Task ApplyLoanTermsAsync(AccountEntity account, string accountType, LoanTermsEntity terms, LoanTermsRequest? request, CancellationToken ct)
+    // Categories (and groups) requested by NewPairedCategory/NewDevicePairedCategory are created in every initialized month
+    // inside the same ledger command, so a failure anywhere rolls back the account, terms and categories together.
+    private async Task<List<CreatedPairCategory>> ApplyLoanTermsAsync(AccountEntity account, string accountType, LoanTermsEntity terms, LoanTermsRequest? request, CancellationToken ct)
     {
         if (LoanRules.ValidateTerms(accountType, request) is { } error) throw new LedgerException(error);
         var currentMonth = LoanRules.Month(Today());
-        string? paired = null;
-        if (request!.CreatePairedCategory)
-        {
-            paired = LoanRules.AutoCategoryId(account.Id);
-            await RestoreAutoCategoryAsync(paired, currentMonth, ct);
-        }
-        else if (request.PairedCategoryId is { } categoryId)
-        {
-            if (CreditCardRules.IsPaymentCategory(categoryId)) throw new LedgerException("Credit card payment categories cannot be paired with a loan.");
-            if (categoryId.StartsWith(LoanRules.CategoryPrefix, StringComparison.Ordinal) && categoryId != LoanRules.AutoCategoryId(account.Id))
-                throw new LedgerException("That category belongs to another loan.");
-            var month = await budgets.GetMonthAsync(db.ActiveBudgetId, currentMonth, ct);
-            if (!month.Groups.Any(g => !g.IsArchived && g.Categories.Any(c => c.Id == categoryId && !c.IsArchived)))
-                throw new LedgerException("Choose an active category from this month's plan.");
-            paired = categoryId;
-        }
-        if (paired is not null && await db.LoanTerms.AnyAsync(t => t.AccountId != account.Id && t.PairedCategoryId == paired, ct))
-            throw new LedgerException("That category is already paired with another loan.");
+        // The current month is only needed (and initialized) when a slot is paired.
+        var pairs = request!.PairedCategoryId is not null || request.NewPairedCategory is not null
+            || request.SeparateDeviceCategory && (request.DevicePairedCategoryId is not null || request.NewDevicePairedCategory is not null);
+        var month = pairs ? await budgets.GetMonthAsync(db.ActiveBudgetId, currentMonth, ct) : null!;
+        var created = new List<CreatedPairCategory>();
+        var paired = await ResolvePairSlotAsync(account, month, request.PairedCategoryId, request.NewPairedCategory, terms.PairedCategoryId, terms.DevicePairedCategoryId, true, created, ct);
+        string? device = null;
+        if (request.SeparateDeviceCategory)
+            device = await ResolvePairSlotAsync(account, month, request.DevicePairedCategoryId, request.NewDevicePairedCategory, terms.DevicePairedCategoryId, terms.PairedCategoryId, false, created, ct);
+        if (paired is not null && paired == device) throw new LedgerException("Choose different categories for the contract and the device.");
+        foreach (var categoryId in new[] { paired, device }.OfType<string>())
+            if (await db.LoanTerms.AnyAsync(t => t.AccountId != account.Id && (t.PairedCategoryId == categoryId || t.DevicePairedCategoryId == categoryId), ct))
+                throw new LedgerException("That category is already paired with another loan. A category can be paired with only one loan.");
         terms.InterestRate = request.InterestRate;
         terms.MinimumPayment = request.MinimumPayment;
         terms.EscrowAmount = request.EscrowAmount;
         terms.PairedCategoryId = paired;
+        terms.SeparateDeviceCategory = request.SeparateDeviceCategory;
+        terms.DevicePairedCategoryId = device;
         var contract = request.Contract;
         terms.ContractMonths = contract?.Months;
         terms.ContractStartDate = contract?.StartDate;
@@ -135,6 +149,83 @@ public sealed partial class LedgerService
         terms.DiscountMonths = contract?.DiscountMonths ?? 0;
         terms.DiscountedServiceCost = contract?.DiscountedServiceCost;
         terms.UpdatedAt = clock.GetUtcNow();
+        return created;
+    }
+
+    private sealed record CreatedPairCategory(string Slot, string CategoryId, string Name, string GroupId, string GroupName, bool NewGroup);
+
+    // Resolves one pairing slot to a category ID (null = unpaired). An existing category must be active in the current month,
+    // outside the server-owned Credit Card Payments and Wishlist groups, and not another loan's legacy category. Keeping a
+    // slot's current pairing (or moving it from the other slot of the same loan) is always allowed so unrelated edits never
+    // fail because the category was archived later. The account's own legacy "loan-{id}" category is restored when re-paired.
+    private async Task<string?> ResolvePairSlotAsync(AccountEntity account, BudgetEntity month, string? categoryId, NewPairedCategoryRequest? create,
+        string? current, string? otherSlot, bool main, List<CreatedPairCategory> created, CancellationToken ct)
+    {
+        if (create is not null) return await CreatePairCategoryAsync(month, create, main ? "loan" : "device", created, ct);
+        if (categoryId is null) return null;
+        if (LoanRules.IsProtectedCategory(categoryId)) throw new LedgerException("Credit card payment and Wishlist categories cannot be paired with a loan.");
+        if (categoryId.StartsWith(LoanRules.CategoryPrefix, StringComparison.Ordinal) && categoryId != LoanRules.AutoCategoryId(account.Id))
+            throw new LedgerException("That category belongs to another loan.");
+        var row = month.Groups.SelectMany(g => g.Categories.Select(c => (Group: g, Category: c))).FirstOrDefault(x => x.Category.Id == categoryId);
+        if (main && row.Category is not null && categoryId == LoanRules.AutoCategoryId(account.Id))
+        {
+            await RestoreAutoCategoryAsync(categoryId, month.Month, ct);
+            return categoryId;
+        }
+        if (row.Category is not null && (categoryId == current || categoryId == otherSlot)) return categoryId;
+        if (row.Category is null || row.Category.IsArchived || row.Group.IsArchived)
+            throw new LedgerException("Choose an active category from this month's plan.");
+        if (LoanRules.IsProtectedGroup(row.Group.Id)) throw new LedgerException("Credit card payment and Wishlist categories cannot be paired with a loan.");
+        return categoryId;
+    }
+
+    // Creates a user category (and, when requested, its group) in every initialized month of the active budget, appended
+    // after existing groups/categories like other server-created categories. Names follow Plan rules: a category name is
+    // unique (case-insensitive) within its group and a new group's name is unique among active groups.
+    private async Task<string> CreatePairCategoryAsync(BudgetEntity current, NewPairedCategoryRequest request, string slot, List<CreatedPairCategory> created, CancellationToken ct)
+    {
+        const int maxGroups = 100, maxCategoriesPerGroup = 500;
+        var name = request.Name.Trim();
+        string groupId, groupName;
+        var newGroup = request.NewGroupName is not null;
+        var reused = created.FirstOrDefault(c => c.NewGroup && request.NewGroupName is not null && LoanRules.SameName(c.GroupName, request.NewGroupName));
+        if (reused is not null) { groupId = reused.GroupId; groupName = reused.GroupName; newGroup = false; }
+        else if (request.NewGroupName is { } newName)
+        {
+            groupName = newName.Trim();
+            if (current.Groups.Any(g => !g.IsArchived && LoanRules.SameName(g.Name, groupName))) throw new LedgerException("A category group with that name already exists. Choose it from the list instead.");
+            if (current.Groups.Count >= maxGroups) throw new LedgerException("The plan already has the maximum number of category groups.");
+            groupId = $"group-{Guid.NewGuid():D}";
+        }
+        else
+        {
+            var group = current.Groups.SingleOrDefault(g => g.Id == request.GroupId);
+            if (group is null || group.IsArchived) throw new LedgerException("Choose an active category group from this month's plan.");
+            if (LoanRules.IsProtectedGroup(group.Id)) throw new LedgerException("Categories cannot be added to the Credit Card Payments or Wishlist groups.");
+            groupId = group.Id;
+            groupName = group.Name;
+        }
+        var existing = current.Groups.SingleOrDefault(g => g.Id == groupId)?.Categories ?? [];
+        if (existing.Any(c => LoanRules.SameName(c.Name, name)) || created.Any(c => c.GroupId == groupId && LoanRules.SameName(c.Name, name)))
+            throw new LedgerException("This category group already has a category with that name.");
+        if (existing.Count >= maxCategoriesPerGroup) throw new LedgerException("That category group already has the maximum number of categories.");
+        var categoryId = $"category-{Guid.NewGuid():D}";
+        var months = await db.Budgets.Where(b => b.BudgetId == db.ActiveBudgetId).Include(b => b.Groups).ThenInclude(g => g.Categories).ToListAsync(ct);
+        foreach (var month in months)
+        {
+            var group = month.Groups.SingleOrDefault(g => g.Id == groupId);
+            if (group is null)
+            {
+                group = new CategoryGroupEntity { BudgetId = month.BudgetId, BudgetMonth = month.Month, Id = groupId, Name = groupName,
+                    SortOrder = month.Groups.Count == 0 ? 0 : month.Groups.Max(g => g.SortOrder) + 1 };
+                month.Groups.Add(group);
+            }
+            group.Categories.Add(new CategoryEntity { BudgetId = month.BudgetId, BudgetMonth = month.Month, GroupId = groupId, Id = categoryId, Name = name,
+                SortOrder = group.Categories.Count == 0 ? 0 : group.Categories.Max(c => c.SortOrder) + 1 });
+            month.Version++;
+        }
+        created.Add(new(slot, categoryId, name, groupId, groupName, newGroup));
+        return categoryId;
     }
 
     // Re-pairing the account's own category restores it (and the Loans group) from the current month on.
@@ -270,7 +361,7 @@ public sealed partial class LedgerService
 
     private static object ToTermsAudit(LoanTermsEntity t) => new
     {
-        t.InterestRate, t.MinimumPayment, t.EscrowAmount, t.PairedCategoryId, t.OriginalBalance, t.BalanceConfirmedAt, Contract = t.Contract
+        t.InterestRate, t.MinimumPayment, t.EscrowAmount, t.PairedCategoryId, t.SeparateDeviceCategory, t.DevicePairedCategoryId, t.OriginalBalance, t.BalanceConfirmedAt, Contract = t.Contract
     };
 
     private DateOnly Today() => DateOnly.FromDateTime(clock.GetLocalNow().DateTime);
