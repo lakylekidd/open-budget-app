@@ -16,14 +16,14 @@ type Dialog = { kind: 'account'; account?: Account } | { kind: 'transaction'; en
 
 export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMenu, onPendingChange, createAccountRequest, editAccountRequest, focusTransaction }: {
   selectedAccount: string; onSelectAccount: (id: string) => void; onChanged: () => void; onMenu: () => void; onPendingChange?: (pending: boolean) => void; createAccountRequest?: number; editAccountRequest?: {id:string;token:number};
-  focusTransaction?: { id: string; accountId: string; date: string; scheduled: boolean; projected?: Entry; source?: 'Plan' | 'Long-Term Planning' } | null;
+  focusTransaction?: { id: string; accountId: string; date: string; scheduled: boolean; projected?: Entry; splitIndex?: number; source?: 'Plan' | 'Long-Term Planning' } | null;
 }) {
   const [managePayees,setManagePayees]=useState(false);
   const [payeePending,setPayeePending]=useState(false);const [payeeFilter,setPayeeFilter]=useState<string|null>(null);
   const [inline, setInline] = useState<{key:string;entry?:Entry;schedule?:ScheduledItem;transferAccountId?:string} | null>(null);
   const [flags,setFlags]=useState(defaultFlags);const [flagVersion,setFlagVersion]=useState(1);
   const [schedules, setSchedules] = useState<Schedules | null>(null);
-  const [schedulePage, setSchedulePage] = useState(1); const [scheduledOpen, setScheduledOpen] = useState(true);
+  const [schedulePage, setSchedulePage] = useState(1);
   const handledEdit = useRef<number | null>(null);
   const handledCreate = useRef(0);
   useEffect(() => {
@@ -48,6 +48,7 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   const [savedView, setSavedView] = useState<{ scope: string; value: ViewOptions } | null>(null);
   const scope = selectedAccount || 'all';
   const view = savedView?.scope === scope ? savedView.value : defaultView;
+  const scheduledOpen = view.showScheduledTransactions;
   const [resizing, setResizing] = useState<{ scope: string; widths: ColumnWidths } | null>(null);
   const resizeRef = useRef<{ key: string; pointerId: number; startX: number; startWidth: number } | null>(null);
   const latestWidths = useRef<ColumnWidths>({});
@@ -81,6 +82,15 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
       setSavedView({ scope, value: next });
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not save column widths.'); }
     finally { viewInFlight.current = false; setViewSaving(false); setResizing(current => current?.scope === scope ? null : current); }
+  }
+  async function persistScheduledVisibility(show: boolean) {
+    if (viewInFlight.current) return;
+    viewInFlight.current = true; setViewSaving(true);
+    try {
+      const next = await requestJson<ViewOptions>(`/api/register-views/${scope}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...view, showScheduledTransactions: show }) });
+      setSavedView({ scope, value: next });
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not save scheduled transaction visibility.'); }
+    finally { viewInFlight.current = false; setViewSaving(false); }
   }
   async function finishColumnResize(event: PointerEvent<HTMLSpanElement>) {
     if (!resizeRef.current || resizeRef.current.pointerId !== event.pointerId) return;
@@ -167,9 +177,14 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   },[scope,selectedAccount,from,to,schedulePage,refresh,savedView,focusTransaction?.id]);
   useEffect(() => {
     if (!focusTransaction || focusTransaction.accountId !== selectedAccount) return;
-    const timer = window.setTimeout(() => document.querySelector(`[data-transaction-id="${focusTransaction.id}"]`)?.scrollIntoView?.({ block: 'center' }), 0);
+    const timer = window.setTimeout(() => {
+      const selector = focusTransaction.splitIndex === undefined
+        ? `[data-transaction-id="${focusTransaction.id}"]`
+        : `[data-transaction-id="${focusTransaction.id}"][data-split-index="${focusTransaction.splitIndex}"]`;
+      document.querySelector(selector)?.scrollIntoView?.({ block: 'center' });
+    }, 0);
     return () => window.clearTimeout(timer);
-  }, [focusTransaction?.id, selectedAccount, loading, register, schedules]);
+  }, [focusTransaction?.id, focusTransaction?.splitIndex, selectedAccount, loading, register, schedules]);
   useEffect(() => {
     if(editAccountRequest && editAccountRequest.token !== handledEdit.current && selectedAccount === editAccountRequest.id && !loading) {
       const account=accounts.accounts.find(a=>a.id===editAccountRequest.id);
@@ -290,11 +305,11 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
           <th aria-label="DATE" aria-sort="descending">{resizeHandle('date','date')}DATE <span className="register-sort-arrow">▾</span></th><th aria-label="PAYEE">{resizeHandle('payee','payee')}PAYEE</th><th aria-label="CATEGORY">{resizeHandle('category','category')}CATEGORY</th><th aria-label="MEMO">{resizeHandle('memo','memo')}MEMO</th><th aria-label="OUTFLOW" className="register-money">{resizeHandle('outflow','outflow')}OUTFLOW</th><th aria-label="INFLOW" className="register-money">{resizeHandle('inflow','inflow')}INFLOW</th>{view.showRunningBalance && <th aria-label="BALANCE" className="register-money">{resizeHandle('balance','balance')}BALANCE</th>}<th aria-label="Cleared status">{resizeHandle('status','cleared status')}<span className="cleared-symbol" title="Cleared status" aria-hidden="true">c</span><span className="sr-only">Cleared status</span></th></tr></thead>
         <tbody>
           {inline&&(!inline.entry||(!loading&&(inline.schedule?!schedules?.items.some(s=>s.occurrenceId===inline.entry!.id):!register?.items.some(t=>t.id===inline.entry!.id))))&&editor()}
-          {Boolean(schedules?.total) && <tr className="scheduled-transactions-row"><td colSpan={9+Number(view.showFlags)+Number(view.showImages)+Number(view.showRunningBalance)}><button aria-expanded={scheduledOpen} onClick={()=>setScheduledOpen(!scheduledOpen)}><RegisterIcon name="calendar"/>Scheduled Transactions <svg className="scheduled-chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m5 3 5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg> ({schedules?.total})</button></td></tr>}
-          {scheduledOpen&&!loading&&schedules?.items.map(item=>inline?.entry?.id===item.occurrenceId? <ReactFragment key={item.occurrenceId}>{editor()}</ReactFragment> : <TransactionRow key={item.occurrenceId} entry={{...item.transaction,memo:item.postingError?`Needs review: ${item.postingError}`:item.transaction.memo}} onRowSelect={()=>setSelectedIds([item.occurrenceId])} flags={flags} onFlag={color=>mutate(`/api/schedules/${item.id}/flag`,'POST',{color})} onRenameFlags={renameFlags} view={view} scheduled paused={item.isPaused} account={accounts.accounts.find(a=>a.id===item.transaction.accountId)} categories={categories} selected={selectedIds.includes(item.occurrenceId)} disabled={disabled} onSelect={()=>setSelectedIds(ids=>ids.includes(item.occurrenceId)?ids.filter(id=>id!==item.occurrenceId):[...ids,item.occurrenceId])} onEdit={()=>void edit(item.transaction)} onToggle={()=>{}}/>)}
-          {scheduledOpen&&!loading&&focusTransaction?.scheduled&&focusTransaction.accountId===selectedAccount&&focusTransaction.projected&&!schedules?.items.some(item=>item.occurrenceId===focusTransaction.id)&&<TransactionRow key={focusTransaction.id} entry={focusTransaction.projected} view={view} scheduled account={accounts.accounts.find(a=>a.id===focusTransaction.accountId)} categories={categories} selected={selectedIds.includes(focusTransaction.id)} disabled onSelect={()=>setSelectedIds([focusTransaction.id])} onEdit={()=>{}} onToggle={()=>{}}/>}
+          {Boolean(schedules?.total) && <tr className="scheduled-transactions-row"><td colSpan={9+Number(view.showFlags)+Number(view.showImages)+Number(view.showRunningBalance)}><button disabled={viewSaving} aria-expanded={scheduledOpen} onClick={()=>void persistScheduledVisibility(!scheduledOpen)}><RegisterIcon name="calendar"/>Scheduled Transactions <svg className="scheduled-chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m5 3 5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg> ({schedules?.total})</button></td></tr>}
+          {scheduledOpen&&!loading&&schedules?.items.map(item=>inline?.entry?.id===item.occurrenceId? <ReactFragment key={item.occurrenceId}>{editor()}</ReactFragment> : <TransactionRow key={item.occurrenceId} entry={{...item.transaction,memo:item.postingError?`Needs review: ${item.postingError}`:item.transaction.memo}} onRowSelect={()=>setSelectedIds([item.occurrenceId])} flags={flags} onFlag={color=>mutate(`/api/schedules/${item.id}/flag`,'POST',{color})} onRenameFlags={renameFlags} view={view} scheduled paused={item.isPaused} focusedSplitIndex={focusTransaction?.id===item.occurrenceId?focusTransaction.splitIndex:undefined} account={accounts.accounts.find(a=>a.id===item.transaction.accountId)} categories={categories} selected={selectedIds.includes(item.occurrenceId)} disabled={disabled} onSelect={()=>setSelectedIds(ids=>ids.includes(item.occurrenceId)?ids.filter(id=>id!==item.occurrenceId):[...ids,item.occurrenceId])} onEdit={()=>void edit(item.transaction)} onToggle={()=>{}}/>)}
+          {scheduledOpen&&!loading&&focusTransaction?.scheduled&&focusTransaction.accountId===selectedAccount&&focusTransaction.projected&&!schedules?.items.some(item=>item.occurrenceId===focusTransaction.id)&&<TransactionRow key={focusTransaction.id} entry={focusTransaction.projected} view={view} focusedSplitIndex={focusTransaction.splitIndex} scheduled account={accounts.accounts.find(a=>a.id===focusTransaction.accountId)} categories={categories} selected={selectedIds.includes(focusTransaction.id)} disabled onSelect={()=>setSelectedIds([focusTransaction.id])} onEdit={()=>{}} onToggle={()=>{}}/>}
           {scheduledOpen&&schedules&&schedules.total>25&&<tr><td colSpan={12}><nav className="register-pagination" aria-label="Scheduled transaction pages"><button disabled={schedulePage===1||loading} onClick={()=>setSchedulePage(p=>p-1)}>Previous scheduled</button><span>Page {schedulePage}</span><button disabled={schedulePage*25>=schedules.total||loading} onClick={()=>setSchedulePage(p=>p+1)}>Next scheduled</button></nav></td></tr>}
-          {!loading && register?.items.map(entry => inline?.entry?.id===entry.id&&!inline.schedule ? <ReactFragment key={entry.id}>{editor()}</ReactFragment> : <TransactionRow key={entry.id} view={view} entry={entry} onRowSelect={()=>setSelectedIds([entry.id])} onReview={action=>mutate(`/api/transactions/${entry.id}/review`,'POST',{action})} flags={flags} onFlag={color=>mutate(`/api/transactions/${entry.id}/flag`,'POST',{color})} onRenameFlags={renameFlags} account={accounts.accounts.find(a => a.id === entry.accountId)} categories={categories}
+          {!loading && register?.items.map(entry => inline?.entry?.id===entry.id&&!inline.schedule ? <ReactFragment key={entry.id}>{editor()}</ReactFragment> : <TransactionRow key={entry.id} view={view} entry={entry} focusedSplitIndex={focusTransaction?.id===entry.id?focusTransaction.splitIndex:undefined} onRowSelect={()=>setSelectedIds([entry.id])} onReview={action=>mutate(`/api/transactions/${entry.id}/review`,'POST',{action})} flags={flags} onFlag={color=>mutate(`/api/transactions/${entry.id}/flag`,'POST',{color})} onRenameFlags={renameFlags} account={accounts.accounts.find(a => a.id === entry.accountId)} categories={categories}
             selected={selectedIds.includes(entry.id)} disabled={disabled} onSelect={() => setSelectedIds(ids => ids.includes(entry.id) ? ids.filter(id => id !== entry.id) : [...ids, entry.id])}
             onEdit={() => void edit(entry)} onToggle={() => void mutate('/api/transactions/' + entry.id + '/status', 'POST', {status:entry.status === 'uncleared' ? 'cleared' : 'uncleared'})}/>)}
         </tbody>

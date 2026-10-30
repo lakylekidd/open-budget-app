@@ -32,13 +32,13 @@ Groups and categories are keyed by `(BudgetId, BudgetMonth, Id)` and their forei
 
 ### Register view preferences
 
-`RegisterViews` stores one row per `(BudgetId, Scope)` using a canonical account UUID or independent `all` scope. It contains its own optimistic version, date preset, nullable From/To month selectors and four visibility switches. The application validates account existence and every selection before writing under the budget-specific PostgreSQL gate. Reads of unsaved scopes return defaults without inserting. Account deletion is not supported; closed-account preferences remain available. Preferences are server-owned and shared across clients of the same budget.
+`RegisterViews` stores one row per `(BudgetId, Scope)` using a canonical account UUID or independent `all` scope. It contains its own optimistic version, date preset, nullable From/To month selectors, five visibility switches, and column widths. The application validates account existence and every selection before writing under the budget-specific PostgreSQL gate. Reads of unsaved scopes return defaults without inserting. Account deletion is not supported; closed-account preferences remain available. Preferences are server-owned and shared across clients of the same budget.
 
 ### Ledger tables
 
 - `Accounts`: UUID, `BudgetId`, name, closed flag, account type (`checking`/`savings`/`cash`) favorite flag and notes (AccountNotes migration, empty default). Balance is derived from nondeleted transactions in the same budget; cleared balance includes cleared/reconciled entries, uncleared balance is the remainder. `AccountRegisterPresentation` adds type/favorite with checking/false defaults, preserving existing balances.
 - `Transactions`: UUID, `BudgetId`, account/payee FKs, date, signed decimal amount, memo, optional logical category ID, cleared status, optional shared transfer ID, opening and soft-delete flags. Indexes support date/account/UUID pagination and transfer lookup. Account/payee deletion is restricted.
-- `SplitEntity`: transaction FK plus position key, category ID and amount. Parts must sum exactly to the parent amount. The service validates categories against the transaction month's retained category records.
+- `SplitEntity`: transaction FK plus position key, category ID and signed amount, with optional per-part payee and memo. Parts must sum exactly to the parent amount. The service validates categories against the transaction month's retained category records.
 - `Payees`: UUID, `BudgetId`, display/normalized name; normalized names have a budget-scoped unique index and are reused case-insensitively.
 - `LedgerStates`: one row per budget (ID 1) with that budget's revision. A budget-keyed PostgreSQL advisory lock plus `SELECT ... FOR UPDATE` orders commands, Plan writes and month initialization across API processes.
 - `LedgerCommands`: command ID primary key and `BudgetId`, resource ID, kind/path, SHA-256 input fingerprint, before/after JSON, revision and UTC timestamp. Append-only receipts provide replay safety and audit atomically with ledger/projection changes.

@@ -53,6 +53,8 @@ public sealed class SplitEntity
     public int Position { get; set; }
     public string CategoryId { get; set; } = "";
     public decimal Amount { get; set; }
+    public string Payee { get; set; } = "";
+    public string Memo { get; set; } = "";
 }
 
 public sealed class LedgerStateEntity
@@ -125,6 +127,8 @@ public static class LedgerModel
             e.HasKey(x => new { x.TransactionId, x.Position });
             e.Property(x => x.CategoryId).HasMaxLength(100);
             e.Property(x => x.Amount).HasPrecision(14, 2);
+            e.Property(x => x.Payee).HasMaxLength(160);
+            e.Property(x => x.Memo).HasMaxLength(1000);
         });
         model.Entity<LedgerStateEntity>(e => { e.HasKey(x => new { x.BudgetId, x.Id }); e.Property(x => x.BudgetId).HasMaxLength(100); e.Property(x => x.Version).IsConcurrencyToken(); e.HasData(new LedgerStateEntity()); });
         model.Entity<LedgerCommandEntity>(e =>
@@ -155,6 +159,7 @@ public sealed class RegisterViewEntity
     public bool ShowRunningBalance { get; set; } = true;
     public bool ShowFlags { get; set; } = true;
     public bool ShowImages { get; set; } = true;
+    public bool ShowScheduledTransactions { get; set; } = true;
     public string ColumnWidthsJson { get; set; } = "{}";
 }
 

@@ -31,7 +31,7 @@ public sealed class RegisterViewService(BudgetDbContext db)
     {
         await CheckScope(scope, ct);
         var row = await db.RegisterViews.FindAsync([db.ActiveBudgetId, scope.ToLowerInvariant()], ct);
-        return row is null ? new(0, "allDates", null, null, true, true, true, true, []) : ToDto(row);
+        return row is null ? new(0, "allDates", null, null, true, true, true, true, [], true) : ToDto(row);
     }
 
     public async Task<RegisterViewDto> SaveAsync(string scope, RegisterViewDto request, CancellationToken ct)
@@ -49,6 +49,7 @@ public sealed class RegisterViewService(BudgetDbContext db)
         row.DatePreset = request.DatePreset; row.FromMonth = request.FromMonth; row.ToMonth = request.ToMonth;
         row.ShowReconciled = request.ShowReconciled; row.ShowRunningBalance = request.ShowRunningBalance;
         row.ShowFlags = request.ShowFlags; row.ShowImages = request.ShowImages;
+        row.ShowScheduledTransactions = request.ShowScheduledTransactions;
         row.ColumnWidthsJson = JsonSerializer.Serialize(request.ColumnWidths ?? []);
         await db.SaveChangesAsync(ct);
         return ToDto(row);
@@ -56,7 +57,7 @@ public sealed class RegisterViewService(BudgetDbContext db)
 
     private static RegisterViewDto ToDto(RegisterViewEntity row) => new(row.Version, row.DatePreset, row.FromMonth, row.ToMonth,
         row.ShowReconciled, row.ShowRunningBalance, row.ShowFlags, row.ShowImages,
-        JsonSerializer.Deserialize<Dictionary<string, int>>(row.ColumnWidthsJson) ?? []);
+        JsonSerializer.Deserialize<Dictionary<string, int>>(row.ColumnWidthsJson) ?? [], row.ShowScheduledTransactions);
 
     private static bool Equivalent(RegisterViewDto left, RegisterViewDto right) =>
         left with { ColumnWidths = null } == right with { ColumnWidths = null } &&

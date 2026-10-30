@@ -54,6 +54,17 @@ beforeEach(() => {
 function show(selectedAccount = '') { const onChanged = vi.fn(); render(<AccountsPage selectedAccount={selectedAccount} onSelectAccount={vi.fn()} onChanged={onChanged} onMenu={vi.fn()} />); return onChanged; }
 async function ready() { await screen.findByRole('button', { name: 'Edit Shop 2026-10-21' }); }
 
+it('renders each saved split as a category detail row beneath its parent transaction',async()=>{
+ register.items[0]={...register.items[0],categoryId:null,needsAttention:false,splits:[{categoryId:'food',amount:-7,payee:'Market',memo:'Fruit'},{categoryId:'food',amount:-3,payee:'Cafe',memo:'Coffee'}]};
+ show('checking');await ready();
+ expect(screen.getByRole('row',{name:'Split 1'})).toHaveTextContent('Food · Market');expect(screen.getByRole('row',{name:'Split 1'})).toHaveTextContent('Fruit');
+ expect(screen.getByRole('row',{name:'Split 1'})).toHaveTextContent('€7.00');expect(screen.getByRole('row',{name:'Split 2'})).toHaveTextContent('Cafe');
+ const disclosure=screen.getByRole('button',{name:'Collapse split categories'});expect(disclosure).toHaveAttribute('aria-expanded','true');await userEvent.click(disclosure);
+ expect(screen.queryByRole('row',{name:'Split 1'})).not.toBeInTheDocument();expect(screen.queryByRole('row',{name:'Split 2'})).not.toBeInTheDocument();
+ const expand=screen.getByRole('button',{name:'Expand split categories'});expect(expand).toHaveAttribute('aria-expanded','false');await userEvent.click(expand);expect(screen.getByRole('row',{name:'Split 1'})).toBeInTheDocument();
+ await userEvent.dblClick(screen.getByRole('row',{name:'Split 2'}));expect(screen.getByRole('row',{name:'Edit transaction inline'})).toBeInTheDocument();
+});
+
 it('resizes every visible register column and persists the selected column width', async () => {
   show('checking'); await ready();
   const handle = screen.getByRole('separator', { name: 'Resize payee column' });
@@ -375,10 +386,11 @@ it('tabs from the payee field to the next editable field and skips inline dropdo
 
 it('expands scheduled rows, posts Enter Now explicitly, and keeps forecast actions separate',async()=>{
  scheduledItems=[{id:'rule',occurrenceId:'occurrence',repeat:'monthly',startDate:'2036-10-25',isPaused:false,endDate:null,count:null,toAccountId:null,transaction:{...register.items[0],id:'occurrence',date:'2036-10-25',payee:'Employer',memo:'Next salary',amount:2500}}];
- show('checking');await ready();await screen.findByRole('button',{name:'Edit Employer 2036-10-25'});
+ const page=render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);await ready();await screen.findByRole('button',{name:'Edit Employer 2036-10-25'});
  await userEvent.click(screen.getByText('Next salary'));expect(screen.queryByText('1 selected')).not.toBeInTheDocument();await userEvent.click(screen.getByRole('button',{name:'More account actions'}));expect(screen.getByRole('button',{name:'Enter Now'})).toBeEnabled();
  await userEvent.click(screen.getByRole('button',{name:'Enter Now'}));await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0]).toMatchObject({path:'/api/schedules/rule/actions',body:{action:'post',occurrenceId:'occurrence'}});
- await ready();const scheduledToggle=screen.getByRole('button',{name:/Scheduled Transactions/});expect(scheduledToggle).toHaveAttribute('aria-expanded','true');await userEvent.click(scheduledToggle);expect(scheduledToggle).toHaveAttribute('aria-expanded','false');expect(screen.queryByText('Next salary')).not.toBeInTheDocument();
+ await ready();const scheduledToggle=screen.getByRole('button',{name:/Scheduled Transactions/});expect(scheduledToggle).toHaveAttribute('aria-expanded','true');await userEvent.click(scheduledToggle);await waitFor(()=>expect(views['/api/register-views/checking']?.showScheduledTransactions).toBe(false));expect(scheduledToggle).toHaveAttribute('aria-expanded','false');expect(screen.queryByText('Next salary')).not.toBeInTheDocument();
+ page.unmount();show('checking');await ready();expect(await screen.findByRole('button',{name:/Scheduled Transactions/})).toHaveAttribute('aria-expanded','false');expect(screen.queryByText('Next salary')).not.toBeInTheDocument();
 });
 
 it('hides scheduled transactions for an account without any',async()=>{
@@ -396,9 +408,13 @@ it('shows the approval banner and review i only for unapproved entries and sends
  await waitFor(()=>expect(vi.mocked(fetch).mock.calls.some(([path])=>String(path).includes('needsAttention=true'))).toBe(true));
 });
 
-it('validates exact signed splits in the new inline row before submitting',async()=>{
+it('shows YNAB-style split subrows, calculates the remainder and validates exact signed allocations',async()=>{
  show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Add Transaction'}));await userEvent.type(screen.getByRole('textbox',{name:'Outflow'}),'20');await userEvent.click(screen.getByRole('combobox',{name:'Category'}));await userEvent.click(screen.getByRole('button',{name:'Split'}));
- await userEvent.click(screen.getByRole('combobox',{name:'Split 1 category'}));await userEvent.click(screen.getByRole('option',{name:/^Food/}));await userEvent.click(screen.getByRole('combobox',{name:'Split 2 category'}));await userEvent.click(screen.getByRole('option',{name:/^Food/}));await userEvent.type(screen.getByLabelText('Split 1 amount'),'-10');await userEvent.type(screen.getByLabelText('Split 2 amount'),'-5');
+ expect(screen.getByRole('row',{name:'Split 1'})).toBeInTheDocument();expect(screen.getByRole('button',{name:/Add another split/})).toBeInTheDocument();
+ await userEvent.click(screen.getByRole('combobox',{name:'Split 1 category'}));await userEvent.click(screen.getByRole('option',{name:/^Food/}));await userEvent.click(screen.getByRole('combobox',{name:'Split 2 category'}));await userEvent.click(screen.getByRole('option',{name:/^Food/}));
+ await userEvent.click(screen.getByRole('combobox',{name:'Split 1 payee'}));await userEvent.click(screen.getByRole('option',{name:'Shop'}));expect(screen.getByRole('combobox',{name:'Split 1 payee'})).toHaveValue('Shop');
+ await userEvent.type(screen.getByLabelText('Split 1 outflow'),'10');await userEvent.clear(screen.getByLabelText('Split 1 payee'));await userEvent.type(screen.getByLabelText('Split 1 payee'),'Market');await userEvent.type(screen.getByLabelText('Split 1 memo'),'Produce');await userEvent.type(screen.getByLabelText('Split 2 outflow'),'5');
+ expect(screen.getByText('Amount remaining to assign:').nextElementSibling).toHaveTextContent('5.00');
  await userEvent.click(screen.getByRole('button',{name:'Save'}));expect(screen.getByRole('alert')).toHaveTextContent('Split amounts must equal');expect(mutations).toHaveLength(0);
- await userEvent.clear(screen.getByLabelText('Split 2 amount'));await userEvent.type(screen.getByLabelText('Split 2 amount'),'-10');await userEvent.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0].body).toMatchObject({amount:-20,splits:[{categoryId:'food',amount:-10},{categoryId:'food',amount:-10}]});
+ await userEvent.clear(screen.getByLabelText('Split 2 outflow'));await userEvent.type(screen.getByLabelText('Split 2 outflow'),'10');await userEvent.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0].body).toMatchObject({amount:-20,splits:[{categoryId:'food',amount:-10,payee:'Market',memo:'Produce'},{categoryId:'food',amount:-10,payee:'',memo:''}]});
 });

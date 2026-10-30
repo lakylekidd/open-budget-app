@@ -16,9 +16,9 @@ type Shared = {
   onPendingChange?: (pending: boolean) => void; onShowTransactions?: (payee: SavedPayee) => void;
 };
 
-export function PayeePicker({ value, onChange, accountId, disabled, form, categories, accounts, onChanged, onPendingChange, onShowTransactions, paymentsRequest=0 }: Shared & {
+export function PayeePicker({ value, onChange, accountId, disabled, form, categories, accounts, onChanged, onPendingChange, onShowTransactions, paymentsRequest=0, allowTransfers=true, label='Payee' }: Shared & {
   value: string; onChange: (name: string, transferId?: string, categoryId?: string | null) => void;
-  accountId: string; disabled?: boolean; form: string;paymentsRequest?:number;
+  accountId: string; disabled?: boolean; form: string;paymentsRequest?:number;allowTransfers?:boolean;label?:string;
 }) {
   const [open, setOpen] = useState(false); const [manage, setManage] = useState(false);
   const [paymentsOnly,setPaymentsOnly]=useState(false);
@@ -45,7 +45,7 @@ export function PayeePicker({ value, onChange, accountId, disabled, form, catego
     return () => { document.removeEventListener('mousedown', close); window.removeEventListener('resize', positionPopup); window.removeEventListener('scroll', positionPopup, true); };
   }, [open]);
   const needle = value.trim().toLocaleLowerCase(); const selected = data?.payees.find(p => !p.isHidden && p.name.toLocaleLowerCase() === needle);
-  const transfers = accounts.filter(a => paymentsOnly || !needle || ('Transfer to ' + a.name).toLocaleLowerCase().includes(needle));
+  const transfers = allowTransfers ? accounts.filter(a => paymentsOnly || !needle || ('Transfer to ' + a.name).toLocaleLowerCase().includes(needle)) : [];
   const saved = (data?.payees ?? []).filter(p => !paymentsOnly&&!p.isHidden && (!needle || p.name.toLocaleLowerCase().includes(needle)));
   const options = [
     ...(selected ? [{ key: 'selected', label: selected.name, choose: () => onChange(selected.name, undefined, selected.effectiveCategoryId), disabled: false }] : []),
@@ -66,7 +66,7 @@ export function PayeePicker({ value, onChange, accountId, disabled, form, catego
   }
   const option = (index: number) => <button type="button" role="option" id={form + '-payee-' + index} aria-selected={active === index} key={options[index].key} disabled={options[index].disabled} onClick={() => choose(index)}>{options[index].label}{options[index].disabled ? transfers.find(a => a.id === options[index].key)?.isClosed ? ' (closed)' : ' (this account)' : ''}</button>;
   return <>
-    <span className="payee-input-wrap"><input ref={input} form={form} role="combobox" aria-label="Payee" aria-expanded={open} aria-controls={form + '-payee-list'} aria-activedescendant={open && active >= 0 ? form + '-payee-' + active : undefined} aria-autocomplete="list" autoComplete="off" value={value} disabled={disabled} maxLength={160} placeholder="payee"
+    <span className="payee-input-wrap"><input ref={input} form={form} role="combobox" aria-label={label} aria-expanded={open} aria-controls={form + '-payee-list'} aria-activedescendant={open && active >= 0 ? form + '-payee-' + active : undefined} aria-autocomplete="list" autoComplete="off" value={value} disabled={disabled} maxLength={160} placeholder="payee"
       onClick={() => { setPaymentsOnly(false);setActive(-1); setOpen(true); }} onChange={e => {setPaymentsOnly(false); onChange(e.target.value); setActive(-1); setOpen(true); }}
       onKeyDown={e => {
         if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false); }

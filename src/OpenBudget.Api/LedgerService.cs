@@ -193,6 +193,8 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
                 if (split is null) { split = new SplitEntity { TransactionId = entry.Id, Position = position }; entry.Splits.Add(split); }
                 split.CategoryId = splits[position].CategoryId;
                 split.Amount = splits[position].Amount;
+                split.Payee = splits[position].Payee?.Trim() ?? "";
+                split.Memo = splits[position].Memo?.Trim() ?? "";
             }
             if (id is null) db.Transactions.Add(entry);
             if (request.Repeat != "never" && !entry.IsOpening)
@@ -387,7 +389,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
     }
     private static string Month(DateOnly date) => date.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture);
     private static TransactionDto ToDto(TransactionEntity t) => new(t.Id, t.AccountId, t.Date, t.Amount, t.Payee?.Name ?? "", t.Memo,
-        t.CategoryId, t.Status, t.TransferId, t.IsOpening, t.Splits.OrderBy(s => s.Position).Select(s => new SplitDto(s.CategoryId, s.Amount)).ToList(), !t.IsApproved || LedgerRules.NeedsAttention(t), FlagColor:t.FlagColor, ScheduleId:t.ScheduleId, IsApproved:t.IsApproved, NeedsCategory:LedgerRules.NeedsAttention(t));
+        t.CategoryId, t.Status, t.TransferId, t.IsOpening, t.Splits.OrderBy(s => s.Position).Select(s => new SplitDto(s.CategoryId, s.Amount, string.IsNullOrEmpty(s.Payee) ? null : s.Payee, string.IsNullOrEmpty(s.Memo) ? null : s.Memo)).ToList(), !t.IsApproved || LedgerRules.NeedsAttention(t), FlagColor:t.FlagColor, ScheduleId:t.ScheduleId, IsApproved:t.IsApproved, NeedsCategory:LedgerRules.NeedsAttention(t));
     private sealed record Change(Guid Id, object? Before, object? After);
 }
 

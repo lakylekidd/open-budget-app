@@ -969,6 +969,9 @@ namespace OpenBudget.Api.Migrations
                     b.Property<bool>("ShowRunningBalance")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("ShowScheduledTransactions")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("ToMonth")
                         .HasColumnType("text");
 
@@ -1146,6 +1149,16 @@ namespace OpenBudget.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Memo")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Payee")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
 
                     b.HasKey("TransactionId", "Position");
 

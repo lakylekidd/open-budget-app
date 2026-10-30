@@ -15,7 +15,7 @@ function rememberActiveBudget(id: string | null) {
   }
 }
 import { categoryProgress, categoryTransactionAmount, moveItem } from './planHelpers';
-import { PlanTransactionList, type PlanTransactionItem } from './PlanTransactionList';
+import { expandActivityEntries, PlanTransactionList, type PlanTransactionItem } from './PlanTransactionList';
 import { LongTermPlanning } from './longTermPlanning/LongTermPlanning';
 import { AuthGate } from './AuthGate';
 import { AdminPanel } from './admin/AdminPanel';
@@ -59,7 +59,7 @@ const monthBounds = (month: string) => {
   return { from: `${month}-01`, to: format(new Date(year, monthNumber, 0)) };
 };
 
-type PlanFocus = { id: string; accountId: string; date: string; scheduled: boolean; projected?: Entry; source?: 'Plan' | 'Long-Term Planning' };
+type PlanFocus = { id: string; accountId: string; date: string; scheduled: boolean; projected?: Entry; splitIndex?: number; source?: 'Plan' | 'Long-Term Planning' };
 type CategoryTransactionDialog = { title: string; categoryId: string; kind: 'activity' | 'upcoming'; items: PlanTransactionItem[]; loading: boolean; error: string; requestId: number };
 
 function Icon({ name, size = 18 }: { name: string; size?: number }) {
@@ -730,26 +730,25 @@ function BudgetApplication() {
       const first = await loadPage(1);
       const entries = [...first.items];
       for (let page = 2; (page - 1) * first.pageSize < first.total; page++) entries.push(...(await loadPage(page)).items);
-      setCategoryDialog(current => current?.requestId === requestId ? { ...current, items: entries.map(entry => ({ entry, scheduled: false })), loading: false } : current);
+      setCategoryDialog(current => current?.requestId === requestId ? { ...current, items: expandActivityEntries(entries, false, [category.id], { [category.id]: category.name }), loading: false } : current);
     } catch (error) {
       setCategoryDialog(current => current?.requestId === requestId ? { ...current, loading: false, error: error instanceof Error ? error.message : 'Could not load transactions.' } : current);
     }
   }
 
   function openUpcoming(category: Category) {
-    const items = currentMonthUpcomingItems.flatMap(item => {
-      const amount = categoryTransactionAmount(item.transaction, category.id);
-      return amount < 0 ? [{ entry: item.transaction, scheduled: true, categoryAmount: amount }] : [];
-    });
+    const categoryNames = Object.fromEntries(visibleCategories.map(item => [item.id, item.name]));
+    const items = expandActivityEntries(currentMonthUpcomingItems.map(item => item.transaction), true, [category.id], categoryNames)
+      .filter(item => (item.categoryAmount ?? item.entry.amount) < 0);
     const requestId = ++dialogRequestId.current;
     setCategoryDialog({ title: `Upcoming activity · ${category.name}`, categoryId: category.id, kind: 'upcoming', items, loading: false, error: upcomingError, requestId });
   }
 
   function closeCategoryDialog() { dialogRequestId.current++; setCategoryDialog(null); }
 
-  function showTransactionInAccount(entry: Entry, scheduled: boolean, source: 'Plan' | 'Long-Term Planning' = 'Plan') {
+  function showTransactionInAccount(entry: Entry, scheduled: boolean, source: 'Plan' | 'Long-Term Planning' = 'Plan', splitIndex?: number) {
     closeCategoryDialog();
-    navigate('Accounts', entry.accountId, { id: entry.id, accountId: entry.accountId, date: entry.date, scheduled, projected: scheduled ? entry : undefined, source });
+    navigate('Accounts', entry.accountId, { id: entry.id, accountId: entry.accountId, date: entry.date, scheduled, projected: scheduled ? entry : undefined, splitIndex, source });
   }
 
   function addFunds() {
@@ -1105,7 +1104,7 @@ function BudgetApplication() {
 
     <main className="main-area">
       <header className="topbar"><div className="breadcrumbs"><span>{plan.name}</span><Icon name="right" size={13} /><strong>{activePage}</strong></div><div className="topbar-right"><button className="share-button" onClick={() => setToast('Sharing is not connected in this local demo')}>Share</button><button className="top-avatar" aria-label="Profile" onClick={() => setProfileOpen(true)}>A</button></div></header>
-      {activePage==='Budget Together'&&selectedBudgetId?<BudgetTogether budgetId={selectedBudgetId} budgetName={plan.name} currentUserEmail={userEmail} onBack={()=>navigate('Plan')}/>:activePage === 'Accounts' ? <AccountsPage createAccountRequest={accountCreateRequest} editAccountRequest={accountEditRequest} focusTransaction={focusTransaction} onPendingChange={setLedgerPending} selectedAccount={selectedAccount} onSelectAccount={setSelectedAccount} onChanged={() => setLedgerRefresh(value => value + 1)} onMenu={() => setMobileMenu(true)} /> : activePage === 'Plan' ? <div className="page-content"><div className="page-heading"><div><span className="eyebrow">YOUR MONEY, WITH A PLAN</span><h1>Plan</h1></div></div>{budgetsLoaded && ownedBudgets.length === 0 ? <section className="empty-state"><p>You do not have an active budget yet.</p><button type="button" onClick={createBudget}>Create your first budget</button></section> : budgetPage}<div className="ledger-plan-status" role="status">{saveState === 'saved' ? 'Plan saved' : saveState === 'saving' ? 'Saving plan…' : saveState === 'loading' ? 'Loading plan…' : saveState === 'conflict' ? 'Resolve the conflicting plan edits' : 'Plan changes could not be saved'} {saveState === 'offline' && <button onClick={() => setBudgetRefresh(value => value + 1)}>Reload saved plan</button>}</div></div> : activePage === 'Long-Term Planning' ? <div className="page-content"><LongTermPlanning accounts={accounts.accounts} onSelectTransaction={(entry, scheduled) => showTransactionInAccount(entry, scheduled, 'Long-Term Planning')} onPendingChange={setPlanningPending} /></div> : <div className="page-content other-page"><div className="page-heading"><div><span className="eyebrow">MY BUDGET</span><h1>{activePage}</h1></div></div><section className="coming-card"><div className="coming-icon"><Icon name={otherPages[activePage].icon} size={24} /></div><h2>{otherPages[activePage].title}</h2><p>{otherPages[activePage].subtitle}</p><div className="coming-preview"><span /><span /><span /></div><button className="button button-primary" onClick={() => setActivePage('Plan')}>Back to your plan <Icon name="right" size={15} /></button><small>This view is queued for the next build slice.</small></section></div>}
+      {activePage==='Budget Together'&&selectedBudgetId?<BudgetTogether budgetId={selectedBudgetId} budgetName={plan.name} currentUserEmail={userEmail} onBack={()=>navigate('Plan')}/>:activePage === 'Accounts' ? <AccountsPage createAccountRequest={accountCreateRequest} editAccountRequest={accountEditRequest} focusTransaction={focusTransaction} onPendingChange={setLedgerPending} selectedAccount={selectedAccount} onSelectAccount={setSelectedAccount} onChanged={() => setLedgerRefresh(value => value + 1)} onMenu={() => setMobileMenu(true)} /> : activePage === 'Plan' ? <div className="page-content"><div className="page-heading"><div><span className="eyebrow">YOUR MONEY, WITH A PLAN</span><h1>Plan</h1></div></div>{budgetsLoaded && ownedBudgets.length === 0 ? <section className="empty-state"><p>You do not have an active budget yet.</p><button type="button" onClick={createBudget}>Create your first budget</button></section> : budgetPage}<div className="ledger-plan-status" role="status">{saveState === 'saved' ? 'Plan saved' : saveState === 'saving' ? 'Saving plan…' : saveState === 'loading' ? 'Loading plan…' : saveState === 'conflict' ? 'Resolve the conflicting plan edits' : 'Plan changes could not be saved'} {saveState === 'offline' && <button onClick={() => setBudgetRefresh(value => value + 1)}>Reload saved plan</button>}</div></div> : activePage === 'Long-Term Planning' ? <div className="page-content"><LongTermPlanning accounts={accounts.accounts} onSelectTransaction={(entry, scheduled, splitIndex) => showTransactionInAccount(entry, scheduled, 'Long-Term Planning', splitIndex)} onPendingChange={setPlanningPending} /></div> : <div className="page-content other-page"><div className="page-heading"><div><span className="eyebrow">MY BUDGET</span><h1>{activePage}</h1></div></div><section className="coming-card"><div className="coming-icon"><Icon name={otherPages[activePage].icon} size={24} /></div><h2>{otherPages[activePage].title}</h2><p>{otherPages[activePage].subtitle}</p><div className="coming-preview"><span /><span /><span /></div><button className="button button-primary" onClick={() => setActivePage('Plan')}>Back to your plan <Icon name="right" size={15} /></button><small>This view is queued for the next build slice.</small></section></div>}
       <footer className="footer-note"><span>{saveState === 'loading' ? 'Loading budget…' : saveState === 'saving' ? 'Saving changes…' : saveState === 'conflict' ? 'Budget changed elsewhere' : saveState === 'offline' ? 'Changes not saved' : 'Changes saved to PostgreSQL'}</span><span>OpenBudget <span className="footer-separator">·</span> Local workspace</span></footer>
     </main>
 
@@ -1113,7 +1112,7 @@ function BudgetApplication() {
     {profileOpen && <ProfileSettings onClose={() => setProfileOpen(false)} />}
     {conflictBudget && <div className="modal-backdrop" role="presentation"><section className="move-modal conflict-modal" role="dialog" aria-modal="true" aria-labelledby="conflict-title"><span className="eyebrow">BUDGET UPDATED ELSEWHERE</span><h2 id="conflict-title">Choose which plan to keep</h2><p className="modal-copy">Another session saved this month while you were editing. Load that version or reapply your edits over it.</p><div className="conflict-actions"><button className="button" onClick={() => resolveConflict(false)}>Load latest</button><button className="button button-primary" onClick={() => resolveConflict(true)}>Reapply my changes</button></div></section></div>}
     {moveOpen && <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMoveOpen(false); }}><section className="move-modal move-available-modal" role="dialog" aria-modal="true" aria-labelledby="move-title"><h2 id="move-title">{moveCovering ? 'Cover overspending' : 'Move'}</h2><form onSubmit={applyMove}>{moveCovering && <CategoryPicker label="Move from" categories={moveCategoryOptions.filter(category => category.available > 0 && category.id !== moveTo)} value={moveFrom} onChange={setMoveFrom} includeInflow={false} /> }<label>Amount<input autoFocus inputMode="decimal" value={moveAmount} onChange={event => setMoveAmount(event.target.value)} aria-label="Amount to move" /></label><CategoryPicker label="Move to" categories={moveCategoryOptions.filter(category => category.id !== moveFrom)} value={moveTo} onChange={setMoveTo} includeInflow={false} disabled={moveCovering} /><div className="move-available-actions"><button type="button" onClick={() => setMoveOpen(false)}>Cancel</button><button className="button-primary" type="submit" disabled={!moveFrom || !moveTo || moveTo === moveFrom}>OK</button></div></form></section></div>}
-    {categoryDialog && <PlanTransactionList title={categoryDialog.title} items={categoryDialog.items} accounts={accounts.accounts} loading={categoryDialog.loading} error={categoryDialog.error} onClose={closeCategoryDialog} onRetry={categoryDialog.kind === 'activity' ? () => { const category = visibleCategories.find(item => item.id === categoryDialog.categoryId); if (category) void openActivity(category); } : undefined} onSelect={showTransactionInAccount} />}
+    {categoryDialog && <PlanTransactionList title={categoryDialog.title} items={categoryDialog.items} accounts={accounts.accounts} loading={categoryDialog.loading} error={categoryDialog.error} onClose={closeCategoryDialog} onRetry={categoryDialog.kind === 'activity' ? () => { const category = visibleCategories.find(item => item.id === categoryDialog.categoryId); if (category) void openActivity(category); } : undefined} onSelect={(entry, scheduled, splitIndex) => showTransactionInAccount(entry, scheduled, 'Plan', splitIndex)} />}
     {toast && <div className="toast" role="status"><span className="toast-check"><Icon name="check" size={14} /></span>{toast}<button aria-label="Dismiss notification" onClick={() => setToast('')}><Icon name="close" size={14} /></button></div>}
   </div>;
 }

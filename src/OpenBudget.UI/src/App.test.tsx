@@ -30,11 +30,11 @@ beforeEach(()=>{
       return response(planningHistory[year]??{year,version:1,hasPlanningData:false,months:Array.from({length:12},(_,index)=>({month:`${year}-${String(index+1).padStart(2,'0')}`,expectedIncome:0,hasExpectedIncome:false,expectedExpenses:0,remaining:0,hasActualData:false})),groups:[]});
     }
     if(path.startsWith('/api/schedules?'))return response({version:1,page:1,pageSize:100,total:scheduleRows.length,items:scheduleRows});
-    if(path.startsWith('/api/register-views/'))return response({version:1,datePreset:'all',fromMonth:null,toMonth:null,showReconciled:false,showRunningBalance:false,showFlags:false,showImages:false});
+    if(path.startsWith('/api/register-views/'))return response({version:1,datePreset:'all',fromMonth:null,toMonth:null,showReconciled:false,showRunningBalance:false,showFlags:false,showImages:false,showScheduledTransactions:true});
     if(path==='/api/flags')return response({version:1,flags:[]});
     if(path.startsWith('/api/transactions?')){
       const query=new URLSearchParams(path.slice(path.indexOf('?')+1));
-      const items=query.has('accountId')?focusRows:focusRows.filter(item=>(item as {categoryId?:string}).categoryId===query.get('categoryId'));
+      const items=query.has('accountId')?focusRows:focusRows.filter(item=>{const entry=item as {categoryId?:string;splits?:{categoryId:string}[]};return entry.categoryId===query.get('categoryId')||entry.splits?.some(split=>split.categoryId===query.get('categoryId'));});
       return response({version:1,page:Number(query.get('page')??1),pageSize:Number(query.get('pageSize')??100),total:items.length,items,accounts:{version:1,accounts:focusAccounts}});
     }
     if(path.startsWith('/api/budgets/')&&path.includes('/months/')){
@@ -456,6 +456,22 @@ it('opens category activity and takes a reconciled transaction to its account de
   expect(await screen.findByRole('checkbox',{name:`Select transaction ${transactionId}`})).toBeChecked();
   const requests=vi.mocked(fetch).mock.calls.map(([path])=>String(path)).filter(path=>path.startsWith('/api/transactions?'));
   expect(requests.some(path=>{const query=new URL(path,'http://localhost').searchParams;return query.get('accountId')===accountId&&query.get('includeReconciled')==='true'&&query.get('from')==='2026-10-27'&&query.get('to')==='2026-10-27'&&!query.has('categoryId')&&!query.has('status');})).toBe(true);
+});
+
+it('opens the matching split detail from category activity and focuses that subtransaction in the register',async()=>{
+  const accountId='11111111-1111-4111-8111-111111111111';
+  const transactionId='22222222-2222-4222-8222-222222222222';
+  const account={id:accountId,name:'Household',isClosed:false,balance:15,clearedBalance:0,unclearedBalance:15,accountType:'checking',isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0};
+  const entry={id:transactionId,accountId,date:'2026-10-27',amount:-35,payee:'Phone company',memo:'Combined bill',categoryId:null,status:'reconciled',transferId:null,isOpening:false,splits:[{categoryId:'utilities',amount:-25,payee:'Internet plan',memo:'Internet'},{categoryId:'mobile',amount:-10,payee:'Phone plan',memo:'Mobile'}],needsAttention:false,runningBalance:15,transferAccountName:null,categoryName:null,isLocked:true};
+  focusAccounts=[account];focusRows=[entry];months['2026-10']=budget('2026-10',0,-25,-25);
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'View transactions for Electricity activity'}));
+  const splitItem=await screen.findByRole('button',{name:'Open Electricity split for Internet plan in Household account'});
+  expect(splitItem).toHaveTextContent('Internet');expect(splitItem).toHaveTextContent('-€25.00');
+  expect(screen.queryByRole('button',{name:/Open Phone plan/})).not.toBeInTheDocument();
+  await userEvent.click(splitItem);
+  await screen.findByText(/Showing the transaction selected from the Plan screen/);
+  await waitFor(()=>expect(document.querySelector(`tr[data-transaction-id="${transactionId}"][data-split-index="0"]`)).toHaveClass('register-split-focused'));
 });
 
 it('disables the activity amount when the category has no activity',async()=>{

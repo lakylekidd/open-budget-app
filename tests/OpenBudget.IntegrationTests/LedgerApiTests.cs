@@ -43,8 +43,11 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
         var spend = await AddTransaction(client, account, -30, "groceries", "Shop");
         await AddTransaction(client, account, 200, null, "Salary");
         await AddTransaction(client, account, 5, "groceries", "Shop");
-        var splitRequest = (await Request(client, account, -20)) with { Splits = [new("groceries", -12), new("rent", -8)] };
+        var splitRequest = (await Request(client, account, -20)) with { Splits = [new("groceries", -12, "Market", "Produce"), new("rent", -8, "Cafe", "Lunch")] };
         var split = await Post<MutationDto>(client, "/api/transactions", splitRequest);
+        var savedSplits = Assert.Single((await Register(client)).Items, entry => entry.Id == split.Id).Splits;
+        Assert.Equal(new SplitDto("groceries", -12, "Market", "Produce"), savedSplits[0]);
+        Assert.Equal(new SplitDto("rent", -8, "Cafe", "Lunch"), savedSplits[1]);
         Assert.Equal(1155, (await Accounts(client)).Accounts[0].Balance);
         var budget = await Budget(client);
         Assert.Equal(1200, budget.ReadyToAssign);
@@ -411,7 +414,7 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
         var defaults = await Get<RegisterViewDto>(client, path);
         Assert.Equal(new RegisterViewDto(0, "allDates", null, null, true, true, true, true, []), defaults);
         var before = await Accounts(client);
-        var selected = defaults with { DatePreset = "custom", FromMonth = "2024-02", ToMonth = "2036-10", ShowReconciled = false, ShowRunningBalance = false, ShowFlags = false, ShowImages = false, ColumnWidths = new Dictionary<string, int> { ["date"] = 145, ["payee"] = 240 } };
+        var selected = defaults with { DatePreset = "custom", FromMonth = "2024-02", ToMonth = "2036-10", ShowReconciled = false, ShowRunningBalance = false, ShowFlags = false, ShowImages = false, ShowScheduledTransactions = false, ColumnWidths = new Dictionary<string, int> { ["date"] = 145, ["payee"] = 240 } };
         var saved = await Put<RegisterViewDto>(client, path, selected);
         Assert.Equal(selected with { Version = 1 }, saved);
         Assert.Equal(saved, await Put<RegisterViewDto>(client, path, selected)); // lost-response retry
@@ -531,9 +534,12 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
         Assert.Single(responses,r=>r.IsSuccessStatusCode);Assert.Single(responses,r=>r.StatusCode==HttpStatusCode.Conflict);
         Assert.Equal(100,(await Accounts(client)).Accounts.Sum(a=>a.Balance));
         var pair=(await Register(client)).Items.Where(t=>t.TransferId!=null).ToList();Assert.Equal(2,pair.Count);Assert.Equal(0,pair.Sum(t=>t.Amount));
-        await Post<MutationDto>(client,"/api/schedules",request with {CommandId=Guid.NewGuid(),Version=(await Accounts(client)).Version,ToAccountId=null,Date=new(2027,1,12),CategoryId=null,Splits=[new("groceries",-4),new("rent",-6)],Repeat="never"});
-        var page=await Schedules(client,$"accountId={source}&pageSize=1&from=2027-01-12&to=2027-01-12");Assert.Equal(1,page.Total);Assert.Single(page.Items);
-        await ScheduleAction(client,page.Items[0],"post");Assert.Equal(90,(await Accounts(client)).Accounts.Sum(a=>a.Balance));
+        await Post<MutationDto>(client,"/api/schedules",request with {CommandId=Guid.NewGuid(),Version=(await Accounts(client)).Version,ToAccountId=null,Date=new(2027,1,12),CategoryId=null,Splits=[new("groceries",-4,"Market","Produce"),new("rent",-6,"Cafe","Lunch")],Repeat="never"});
+        var page=await Schedules(client,$"accountId={source}&pageSize=1&from=2027-01-12&to=2027-01-12");Assert.Equal(1,page.Total);var splitSchedule=Assert.Single(page.Items);
+        Assert.Equal(new SplitDto("groceries",-4,"Market","Produce"),splitSchedule.Transaction.Splits[0]);
+        await ScheduleAction(client,splitSchedule,"post");Assert.Equal(90,(await Accounts(client)).Accounts.Sum(a=>a.Balance));
+        var postedSplits=Assert.Single((await Register(client)).Items,t=>t.Date==new DateOnly(2027,1,12)).Splits;
+        Assert.Equal(new SplitDto("rent",-6,"Cafe","Lunch"),postedSplits[1]);
         Assert.Single((await Schedules(client)).Items);
     }
 

@@ -1,7 +1,7 @@
 export type Account = { unapprovedCount?:number; attentionCount?:number; notes?:string; id: string; name: string; isClosed: boolean; balance: number; clearedBalance: number; unclearedBalance: number;
   accountType: 'checking' | 'savings' | 'cash'; isFavorite: boolean; connectionStatus: 'unlinked' | 'connected'; lastReconciledAt: string | null; needsCategoryCount: number };
 export type Accounts = { version: number; accounts: Account[] };
-export type Split = { categoryId: string; amount: number };
+export type Split = { categoryId: string; amount: number; payee?: string; memo?: string };
 export type Entry = { id: string; accountId: string; date: string; amount: number; payee: string; memo: string; categoryId: string | null;
   status: 'uncleared' | 'cleared' | 'reconciled'; transferId: string | null; isOpening: boolean; splits: Split[]; needsAttention: boolean;
   isApproved?:boolean; needsCategory?:boolean; canEdit?:boolean; flagColor?:string|null; scheduleId?:string|null; runningBalance: number | null; transferAccountName: string | null; categoryName: string | null; isLocked: boolean };
