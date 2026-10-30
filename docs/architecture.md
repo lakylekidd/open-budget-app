@@ -161,28 +161,32 @@ For Azure production, implement `ITransactionImageStore` over Azure Blob Storage
 
 ## URL routing
 
-The budget application uses clean, lowercase paths: `/{budgetKey}/{page}`. Routing is a small in-house module (no router dependency): `src/OpenBudget.UI/src/routing/routes.ts` holds pure parse/format/resolve helpers and `useAppRouter.ts` keeps the address bar in sync with `App.tsx` state through `history.pushState`/`replaceState` and `popstate`. `App.tsx` still owns page, account, month and budget state; `navigate()` only changes that state and the hook writes the URL. The Long-Term Planning year is shared between the hook and `LongTermPlanning` through the small store in `routing/longTermYear.ts`.
+The budget application uses clean, lowercase paths: `/{budget-slug}/{page}`. Routing is a small in-house module (no router dependency): `src/OpenBudget.UI/src/routing/routes.ts` holds pure parse/format/resolve helpers and `useAppRouter.ts` keeps the address bar in sync with `App.tsx` state through `history.pushState`/`replaceState` and `popstate`. `App.tsx` still owns page, account, month and budget state; `navigate()` only changes that state and the hook writes the URL. The Long-Term Planning year is shared between the hook and `LongTermPlanning` through the small store in `routing/longTermYear.ts`.
 
 | Path | Screen |
 |---|---|
-| `/` | Redirects (replace) to the active budget's `/{budgetKey}/plan` |
-| `/{budgetKey}/plan` | Plan, default month (the month the app opens on) |
-| `/{budgetKey}/plan/{YYYY-MM}` | Plan for that month; browsing months pushes history entries |
-| `/{budgetKey}/long-term` | Long-Term Planning, current year |
-| `/{budgetKey}/long-term/{YYYY}` | Long-Term Planning for that year |
-| `/{budgetKey}/wishlist` | Wishlist |
-| `/{budgetKey}/reflect` | Reflect (placeholder page) |
-| `/{budgetKey}/account/all` | All Accounts register |
-| `/{budgetKey}/account/{account-slug}` | One account register (open or closed) |
-| `/{budgetKey}/together` | Budget Together (sharing) |
-| `/{budgetKey}` | Same as `/{budgetKey}/plan` |
+| `/` | Redirects (replace) to the active budget's `/{budget-slug}/plan` |
+| `/{budget-slug}/plan` | Plan, default month (the month the app opens on) |
+| `/{budget-slug}/plan/{YYYY-MM}` | Plan for that month; browsing months pushes history entries |
+| `/{budget-slug}/long-term` | Long-Term Planning, current year |
+| `/{budget-slug}/long-term/{YYYY}` | Long-Term Planning for that year |
+| `/{budget-slug}/wishlist` | Wishlist |
+| `/{budget-slug}/reflect` | Reflect (placeholder page) |
+| `/{budget-slug}/account/all` | All Accounts register |
+| `/{budget-slug}/account/{account-slug}` | One account register (open or closed) |
+| `/{budget-slug}/together` | Budget Together (sharing) |
+| `/{budget-slug}` | Same as `/{budget-slug}/plan` |
 | `/admin` | Administration (not budget-scoped; full page load) |
 | `/login`, `/register`, `/forgot-password`, `/reset-password?userId=&token=`, `/confirm-email?userId=&token=` | Signed-out AuthGate pages; emailed verification and reset links use the last two |
 | `/?page=Accounts&account={id}` | Legacy query links from before routing; mapped to the clean path with `replaceState` |
 
 Account Settings (profile) remains a dialog, and the selected Plan category, filters and other dialogs stay UI state rather than URL state. Page titles follow the route: `Plan · {budget name} · OpenBudget`, `{account name} · {budget name} · OpenBudget`.
 
-**Budget key.** `budgetKey` is the first 11 base64url characters (66 bits) of `SHA-256("openbudget:budget:" + budgetId)`, computed in the browser with a synchronous SHA-256 (Web Crypto is unavailable on plain-HTTP origins). It is resolved by matching against the budgets returned by `GET /api/budgets`, so no server change is needed and a collision within one user's list is negligible. It is an obfuscated identifier for tidy URLs, **not a security boundary**: the API authorizes every budget request (owner/editor membership via the active-budget cookie middleware and per-endpoint checks). An unknown or no-longer-accessible key redirects to the current budget's Plan with a notice.
+**Budget slug.** The first path segment is a readable slug of the budget name, e.g. `My Household Budget` becomes `/my-household-budget/plan`. It uses the same `slugify` function as account slugs (lowercase, diacritics folded, other runs of non-alphanumerics collapsed to `-`, capped at 48 characters), with `budget` as the fallback for names with no ASCII letters or digits (empty, symbol-only, emoji, non-Latin). When several budgets the user can see slugify identically, or the slug is a reserved first segment (`admin`, `api`, `login`, ...), every affected budget gets `-` plus the shortest unique prefix (minimum 4 characters) of its id, e.g. `household-3f9a`; the result depends only on names and ids, never on list order. Slugs are resolved only against the budgets returned by `GET /api/budgets`, so a slug can never name a budget the user cannot see. It is presentational, **not a security boundary**: the API authorizes every budget request by id and membership (owner/editor via the active-budget cookie middleware and per-endpoint checks) and no server code reads the URL. Resolution order for an incoming segment: current slug, legacy hashed key, a slug the budget had earlier in this browser session, then `{words}-{id prefix}` whose prefix matches exactly one visible budget.
+
+**Renaming and old links.** Renaming a budget changes its slug (and can change another budget's slug when their names start or stop colliding). When the open budget is renamed, the budget list refreshes (live `admin` event) and `useAppRouter` rewrites the current URL with `replaceState`, so the user stays on the same page with no new history entry. Back/forward into a history entry from before the rename still works within the session because the router remembers a budget's earlier slugs. On a fresh load, a link with a stale unsuffixed slug (or any unknown slug) is treated like an unknown budget: it falls back to the active budget's Plan at its slug URL with the "budget not found or you no longer have access" notice. A stale `{old-name}-{id prefix}` link still resolves and is canonicalized. Creating a budget whose name collides with another visible budget adds the id suffix to both, so a bookmark to the first one's bare slug stops resolving; this is the same trade-off as for account slugs.
+
+**Legacy budget key.** Bookmarks from before slugs use `/{hashed-key}/...`, where the key is the first 11 base64url characters (66 bits) of `SHA-256("openbudget:budget:" + budgetId)`, computed in the browser (Web Crypto is unavailable on plain-HTTP origins). It is still accepted, matched against the visible budgets, and rewritten to the slug URL with `replaceState` (no notice, no new history entry). Nothing server-side uses the key or the slug: the API and the MCP endpoint address budgets by id only.
 
 **Account slug.** The account name lowercased, diacritics folded to ASCII (`Épargne` becomes `epargne`), other runs of non-alphanumerics collapsed to `-`, trimmed and capped at 48 characters; names with no ASCII letters or digits become `account`. When several accounts in a budget share a slug (or the slug would be `all`), every one of them gets `-` plus the shortest unique prefix (minimum 4 characters) of its account id, e.g. `mastercard-3f9a`. Resolution order: current slug, raw account id (legacy links), then any `{words}-{id prefix}` whose prefix matches exactly one account, which keeps suffixed links working after a rename and canonicalizes the URL. Renaming an account with a unique name changes its slug, so an old unsuffixed link falls back to `/account/all` with a notice. Closed accounts still resolve.
 
@@ -190,4 +194,4 @@ Account Settings (profile) remains a dialog, and the selected Plan category, fil
 
 **Sign-in.** A signed-out visit to a deep link stores the path in `sessionStorage` (`openbudget.returnTo`) before AuthGate moves to `/login`; a successful sign-in returns there. Only same-origin app paths are accepted (no `//`, backslashes, control characters, `/api`, `/health`, `/mcp` or auth pages), so the value cannot become an open redirect.
 
-**Hosting fallback.** Vite's dev server serves `index.html` for any HTML request that is not proxied; the proxy keys are anchored regexes (`^/api(?:[/?]|$)`, `^/health(?:[?]|$)`, `^/mcp(?:[/?]|$)`) so a budget key that happens to start with `api`, `health` or `mcp` is never proxied. In production `deploy/nginx.conf` proxies `/api/`, `= /mcp` and `= /health`, returns 404 for `= /api`, `/mcp/...` and `/health/...`, and uses `try_files $uri $uri/ /index.html` for everything else. The API does not serve the UI (no static files or SPA fallback in `Program.cs`), so API routes are never captured by the fallback.
+**Hosting fallback.** Vite's dev server serves `index.html` for any HTML request that is not proxied; the proxy keys are anchored regexes (`^/api(?:[/?]|$)`, `^/health(?:[?]|$)`, `^/mcp(?:[/?]|$)`) so a budget slug that happens to start with `api`, `health` or `mcp` is never proxied. In production `deploy/nginx.conf` proxies `/api/`, `= /mcp` and `= /health`, returns 404 for `= /api`, `/mcp/...` and `/health/...`, and uses `try_files $uri $uri/ /index.html` for everything else. The API does not serve the UI (no static files or SPA fallback in `Program.cs`), so API routes are never captured by the fallback.

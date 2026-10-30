@@ -12,15 +12,33 @@ const month = (value: string, assigned = 0) => ({
   groups: [{ id: 'home', name: 'Home', sortOrder: 0, isArchived: false, categories: [{ id: 'utilities', name: 'Electricity', assigned, activity: 0, available: assigned, target: 0, icon: '', snoozed: false, sortOrder: 0, isArchived: false } satisfies Category] }],
 });
 const account = (id: string, name: string, extra: Record<string, unknown> = {}) => ({ id, name, isClosed: false, balance: 100, clearedBalance: 100, unclearedBalance: 0, accountType: 'checking', isFavorite: false, connectionStatus: 'unlinked', lastReconciledAt: null, needsCategoryCount: 0, ...extra });
-const budgets = [
+const initialBudgets = [
   { id: 'default', name: 'Test budget', currency: 'EUR', version: 1, isArchived: false, createdAt: '2026-01-01T00:00:00Z' },
   { id: 'travel-budget', name: 'Travel', currency: 'EUR', version: 1, isArchived: false, createdAt: '2026-02-01T00:00:00Z' },
 ];
-const key = budgetKeyFor('default');
-const travelKey = budgetKeyFor('travel-budget');
+const key = 'test-budget';
+const travelKey = 'travel';
+const legacyKey = budgetKeyFor('default');
+let budgets = initialBudgets;
 let accountsByBudget: Record<string, ReturnType<typeof account>[]>;
 let holdSave: boolean;
 let releaseSave: (() => void) | undefined;
+
+// Budget live-update stream: lets a test emit the "budget changed" (rename) notification another session would cause.
+class FakeEventSource {
+  static instances: FakeEventSource[] = [];
+  onopen: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  private listeners = new Map<string, ((event: MessageEvent) => void)[]>();
+  constructor(public url: string) { FakeEventSource.instances.push(this); }
+  addEventListener(type: string, listener: (event: MessageEvent) => void) { this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]); }
+  close() { this.listeners.clear(); }
+  emit(data: unknown) { this.listeners.get('change')?.forEach(listener => listener({ data: JSON.stringify(data) } as MessageEvent)); }
+}
+const emitBudgetChanged = (budgetId: string) => act(async () => {
+  FakeEventSource.instances.filter(source => source.url.includes(`/api/budgets/${budgetId}/events`)).forEach(source => source.emit({ budgetId, kind: 'admin', month: null, version: null, at: '2026-01-01T00:00:00Z' }));
+  await new Promise(resolve => setTimeout(resolve, 20));
+});
 
 const activeBudget = () => /openbudget\.activeBudgetId=([^;]+)/.exec(document.cookie)?.[1] ?? 'default';
 
@@ -28,11 +46,12 @@ beforeEach(() => {
   window.history.replaceState(null, '', '/');
   window.localStorage.clear();
   document.cookie = 'openbudget.activeBudgetId=; Path=/; Max-Age=0';
-  holdSave = false; releaseSave = undefined;
+  holdSave = false; releaseSave = undefined; budgets = initialBudgets; FakeEventSource.instances = [];
   accountsByBudget = {
     default: [account('3f9a1111-0000-4000-8000-000000000001', 'Salary'), account('7c2e2222-0000-4000-8000-000000000002', 'Old Savings', { isClosed: true })],
     'travel-budget': [account('b0b00000-0000-4000-8000-000000000003', 'Travel Card')],
   };
+  vi.stubGlobal('EventSource', FakeEventSource);
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input);
     if (path === '/api/auth/session') return json({ id: 'u1', userName: 'alice', email: 'alice@example.test', isAdministrator: true });
@@ -60,7 +79,7 @@ beforeEach(() => {
     return json({}, 404);
   }));
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); });
 
 const planSaved = () => screen.findByText('Plan saved');
 const path = () => window.location.pathname;
@@ -161,6 +180,86 @@ it('redirects unknown budgets and pages to a plan with a notice', async () => {
   expect(await toast()).toHaveTextContent(routeNotices.unknownPage);
   await waitFor(() => expect(path()).toBe(`/${travelKey}/plan`));
   expect(screen.getByRole('button', { name: 'Budget menu' })).toHaveTextContent('Travel');
+});
+
+it('rewrites an old hashed budget key bookmark to the slug URL without adding history', async () => {
+  window.history.replaceState(null, '', `/${legacyKey}/account/salary`);
+  const length = window.history.length;
+  render(<App />);
+  await waitFor(() => expect(screen.getByRole('button', { name: /^Salary/ })).toHaveAttribute('aria-current', 'page'));
+  await waitFor(() => expect(path()).toBe(`/${key}/account/salary`));
+  expect(window.history.length).toBe(length);
+  expect(screen.queryByText(routeNotices.budgetNotFound)).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Budget menu' })).toHaveTextContent('Test budget');
+});
+
+it('opens another budget from its legacy key and canonicalises to its slug', async () => {
+  window.history.replaceState(null, '', `/${budgetKeyFor('travel-budget')}/long-term/2030`);
+  render(<App />);
+  await waitFor(() => expect(path()).toBe(`/${travelKey}/long-term/2030`));
+  expect(screen.getByRole('button', { name: 'Budget menu' })).toHaveTextContent('Travel');
+});
+
+it('falls back to the current plan with a notice for an unknown budget slug', async () => {
+  window.history.replaceState(null, '', '/someone-elses-budget/wishlist');
+  render(<App />);
+  expect(await toast()).toHaveTextContent(routeNotices.budgetNotFound);
+  await waitFor(() => expect(path()).toBe(`/${key}/plan`));
+  expect(screen.getByRole('button', { name: 'Budget menu' })).toHaveTextContent('Test budget');
+});
+
+it('disambiguates budgets whose names slugify identically', async () => {
+  budgets = [
+    { ...initialBudgets[0], name: 'Household' },
+    { ...initialBudgets[1], id: 'travel-budget', name: 'household!' },
+  ];
+  render(<App />); await planSaved();
+  await waitFor(() => expect(path()).toMatch(/^\/household-defa\/plan$/));
+  await userEvent.click(screen.getByRole('button', { name: 'Budget menu' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: /Open Plan/ }));
+  await userEvent.click(within(screen.getByRole('menu', { name: 'Recent Plans' })).getAllByRole('menuitem', { name: /household!/ })[0]);
+  await waitFor(() => expect(path()).toBe('/household-trav/plan'));
+});
+
+it('updates the URL in place when the open budget is renamed elsewhere', async () => {
+  render(<App />); await planSaved();
+  await userEvent.click(nav().getByRole('button', { name: 'Reflect' }));
+  await waitFor(() => expect(path()).toBe(`/${key}/reflect`));
+  await waitFor(() => expect(FakeEventSource.instances.some(source => source.url.includes('/api/budgets/default/events'))).toBe(true));
+  const length = window.history.length;
+
+  budgets = [{ ...initialBudgets[0], name: 'My Household Budget', version: 2 }, initialBudgets[1]];
+  await emitBudgetChanged('default');
+  await waitFor(() => expect(path()).toBe('/my-household-budget/reflect'));
+  expect(window.history.length).toBe(length);
+  expect(screen.getByRole('heading', { name: 'Reflect' })).toBeInTheDocument();
+  await waitFor(() => expect(document.title).toBe('Reflect · My Household Budget · OpenBudget'));
+});
+
+it('treats a pre-rename slug on a fresh load as an unknown budget', async () => {
+  budgets = [{ ...initialBudgets[0], name: 'My Household Budget', version: 2 }, initialBudgets[1]];
+  window.history.replaceState(null, '', `/${key}/reflect`);
+  render(<App />);
+  expect(await toast()).toHaveTextContent(routeNotices.budgetNotFound);
+  await waitFor(() => expect(path()).toBe('/my-household-budget/plan'));
+});
+
+it('still resolves a pre-rename history entry on back within the same session', async () => {
+  render(<App />); await planSaved();
+  await userEvent.click(nav().getByRole('button', { name: 'Reflect' }));
+  await waitFor(() => expect(path()).toBe(`/${key}/reflect`));
+  await userEvent.click(nav().getByRole('button', { name: 'Long-Term' }));
+  await waitFor(() => expect(path()).toBe(`/${key}/long-term`));
+  await waitFor(() => expect(FakeEventSource.instances.some(source => source.url.includes('/api/budgets/default/events'))).toBe(true));
+
+  budgets = [{ ...initialBudgets[0], name: 'Renamed', version: 2 }, initialBudgets[1]];
+  await emitBudgetChanged('default');
+  await waitFor(() => expect(path()).toBe('/renamed/long-term'));
+
+  await goBack();
+  await waitFor(() => expect(path()).toBe('/renamed/reflect'));
+  expect(screen.queryByText(routeNotices.budgetNotFound)).not.toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Reflect' })).toBeInTheDocument();
 });
 
 it('maps legacy ?page= links to clean paths', async () => {

@@ -26,7 +26,7 @@ In the Compose resource:
 
 The Compose file contains health checks for PostgreSQL, the API, and the UI. The API check calls `/health`, which verifies database connectivity. The UI check reaches the same endpoint through nginx.
 
-`deploy/nginx.conf` serves the UI as a single-page app: `/api/`, `/mcp` and `/health` go to the API, other API-shaped paths return 404, and every other path (for example `/{budgetKey}/plan/2026-11` or `/{budgetKey}/account/visa`) falls back to `index.html` so deep links and refreshes work. Keep that fallback when changing the proxy; see [URL routing](architecture.md#url-routing).
+`deploy/nginx.conf` serves the UI as a single-page app: `/api/`, `/mcp` and `/health` go to the API, other API-shaped paths return 404, and every other path (for example `/{budget-slug}/plan/2026-11` or `/{budget-slug}/account/visa`) falls back to `index.html` so deep links and refreshes work. Keep that fallback when changing the proxy; see [URL routing](architecture.md#url-routing).
 
 Keep the API reachable only from the Compose network behind the `ui` nginx proxy. Nginx forwards the original Host and HTTPS scheme so the API can set Secure cookies and validate Origin/Referer on authenticated writes. Do not publish the API port as a public service.
 

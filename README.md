@@ -41,7 +41,7 @@ On a new machine, [set the local PostgreSQL password](docs/developer-guide.md#fi
 dotnet run --project src/OpenBudget.AppHost
 ```
 
-Open the `ui` endpoint in the Aspire dashboard, or visit `http://127.0.0.1:5173/`. The app redirects to your active budget's Plan at `/{budgetKey}/plan`; every page has a bookmarkable path (see [URL routing](docs/architecture.md#url-routing)).
+Open the `ui` endpoint in the Aspire dashboard, or visit `http://127.0.0.1:5173/`. The app redirects to your active budget's Plan at `/{budget-slug}/plan`; every page has a bookmarkable path (see [URL routing](docs/architecture.md#url-routing)).
 The local Development administrator is `admin` / `admin`. Production deployments require `BootstrapAdmin__Username`, `BootstrapAdmin__Email`, and `BootstrapAdmin__Password`; see the [release deployment guide](docs/release-deployment.md#2-configure-coolify).
 
 ## Documentation

@@ -52,7 +52,7 @@ The local connection string comes from Aspire's `budgetdatabase` reference. For 
 
 ## Request flow
 
-The browser calls same-origin `/api/...` paths. Vite proxies `/api`, `/health` and `/mcp` to the API on port 5080 with `changeOrigin: false`, preserving the UI host for the API's origin checks; the proxy keys are anchored regexes so client-side routes such as `http://127.0.0.1:5173/{budgetKey}/account/{slug}` are never proxied and load `index.html` on refresh (see [URL routing](architecture.md#url-routing)). Do not replace the proxy options with Vite's string shorthand: it rewrites the host, causing browser writes (including login) to return 403. In Aspire, the API and UI have stable local endpoints so the Vite proxy keeps working while Aspire controls startup and health ordering.
+The browser calls same-origin `/api/...` paths. Vite proxies `/api`, `/health` and `/mcp` to the API on port 5080 with `changeOrigin: false`, preserving the UI host for the API's origin checks; the proxy keys are anchored regexes so client-side routes such as `http://127.0.0.1:5173/{budget-slug}/account/{slug}` are never proxied and load `index.html` on refresh (see [URL routing](architecture.md#url-routing)). Do not replace the proxy options with Vite's string shorthand: it rewrites the host, causing browser writes (including login) to return 403. In Aspire, the API and UI have stable local endpoints so the Vite proxy keeps working while Aspire controls startup and health ordering.
 
 The Plan screen starts with an empty loading state and renders budget amounts only after the monthly budget response arrives. This prevents placeholder/demo values from appearing briefly during a reload.
 
