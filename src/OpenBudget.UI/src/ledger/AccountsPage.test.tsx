@@ -1,9 +1,10 @@
+import { defaultColumnWidths } from './ViewOptions';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { defaultFlags } from './Flags';
 import { defaultView, type ViewOptions } from './ViewOptions';
-import { AccountsPage } from './AccountsPage';
+import { AccountsPage, registerColumnOrder, resizeColumnPair } from './AccountsPage';
 import { type Account, type Register } from './api';
 
 const checking: Account = { id: 'checking', name: 'Checking', isClosed: false, balance: 90, clearedBalance: 100, unclearedBalance: -10, accountType:'checking', isFavorite:false, connectionStatus:'unlinked', lastReconciledAt:null, needsCategoryCount:1 };
@@ -69,11 +70,13 @@ it('resizes every visible register column and persists the selected column width
   show('checking'); await ready();
   const handle = screen.getByRole('separator', { name: 'Resize payee column' });
   const payeeColumn = handle.closest('th')?.cellIndex;
-  expect(screen.getAllByRole('separator', { name: /^Resize .* column$/ })).toHaveLength(12);
+  expect(screen.getAllByRole('separator', { name: /^Resize .* column$/ })).toHaveLength(11);
   fireEvent.pointerDown(handle, { pointerId: 1, clientX: 200 });
   fireEvent.pointerMove(handle, { pointerId: 1, clientX: 260 });
   fireEvent.pointerUp(handle, { pointerId: 1, clientX: 260 });
   await waitFor(() => expect(views['/api/register-views/checking']?.columnWidths.payee).toBe(260));
+  // Only the right-hand neighbour gives up the width; every other column is unchanged.
+  expect(views['/api/register-views/checking']?.columnWidths).toEqual({ ...defaultColumnWidths, payee: 260, category: 170 });
   expect(screen.getAllByRole('columnheader')[payeeColumn!].querySelector('.register-resize-handle')).toBeInTheDocument();
 });
 
@@ -465,4 +468,14 @@ it('shows YNAB-style split subrows, calculates the remainder and validates exact
  expect(screen.getByText('Amount remaining to assign:').nextElementSibling).toHaveTextContent('5.00');
  await userEvent.click(screen.getByRole('button',{name:'Save'}));expect(screen.getByRole('alert')).toHaveTextContent('Split amounts must equal');expect(mutations).toHaveLength(0);
  await userEvent.clear(screen.getByLabelText('Split 2 outflow'));await userEvent.type(screen.getByLabelText('Split 2 outflow'),'10');await userEvent.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0].body).toMatchObject({amount:-20,splits:[{categoryId:'food',amount:-10,payee:'Market',memo:'Produce'},{categoryId:'food',amount:-10,payee:'',memo:''}]});
+});
+
+it('trades width only with the right neighbour and keeps both columns at least 24px', () => {
+  const order = registerColumnOrder({ showFlags: false, showImages: false, showRunningBalance: true });
+  expect(order).toEqual(['check', 'info', 'date', 'payee', 'category', 'memo', 'outflow', 'inflow', 'balance', 'status']);
+  const widths = { ...defaultColumnWidths };
+  expect(resizeColumnPair(widths, order, 'memo', -40)).toEqual({ ...widths, memo: 140, outflow: 160 });
+  expect(resizeColumnPair(widths, order, 'outflow', 500)).toEqual({ ...widths, outflow: 216, inflow: 24 });
+  expect(resizeColumnPair(widths, order, 'date', -500)).toEqual({ ...widths, date: 24, payee: 306 });
+  expect(resizeColumnPair(widths, order, 'status', 30)).toBe(widths);
 });

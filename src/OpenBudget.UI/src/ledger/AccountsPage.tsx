@@ -51,9 +51,11 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   const view = savedView?.scope === scope ? savedView.value : defaultView;
   const scheduledOpen = view.showScheduledTransactions;
   const [resizing, setResizing] = useState<{ scope: string; widths: ColumnWidths } | null>(null);
-  const resizeRef = useRef<{ key: string; pointerId: number; startX: number; startWidth: number } | null>(null);
+  const resizeRef = useRef<{ key: string; pointerId: number; startX: number; startWidths: ColumnWidths; scale: number } | null>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
   const latestWidths = useRef<ColumnWidths>({});
   const columnWidths = { ...defaultColumnWidths, ...(view.columnWidths ?? {}), ...(resizing?.scope === scope ? resizing.widths : {}) };
+  const columnOrder = registerColumnOrder(view);
   const { from, to } = viewDates(view);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [auditPage, setAuditPage] = useState(1); const [auditTotal, setAuditTotal] = useState(0);
@@ -65,13 +67,16 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     const widths = { ...columnWidths };
     latestWidths.current = widths;
     setResizing({ scope, widths });
-    resizeRef.current = { key, pointerId: event.pointerId, startX: event.clientX, startWidth: widths[key] ?? 100 };
+    // The table may be stretched to fill the page; convert screen pixels into stored width units.
+    const total = columnOrder.reduce((sum, column) => sum + (widths[column] ?? 0), 0);
+    const rendered = tableRef.current?.getBoundingClientRect().width || total;
+    resizeRef.current = { key, pointerId: event.pointerId, startX: event.clientX, startWidths: widths, scale: total / rendered };
     event.currentTarget.setPointerCapture?.(event.pointerId);
   }
   function moveColumnResize(event: PointerEvent<HTMLSpanElement>) {
     const active = resizeRef.current;
     if (!active || active.pointerId !== event.pointerId) return;
-    const widths = { ...latestWidths.current, [active.key]: Math.max(24, Math.min(1200, Math.round(active.startWidth + event.clientX - active.startX))) };
+    const widths = resizeColumnPair(active.startWidths, columnOrder, active.key, Math.round((event.clientX - active.startX) * active.scale));
     latestWidths.current = widths;
     setResizing({ scope, widths });
   }
@@ -101,10 +106,12 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     await persistColumnWidths(widths);
   }
   function resizeHandle(key: string, label: string) {
+    // The last column has no right-hand neighbour to trade width with.
+    if (columnOrder.at(-1) === key) return null;
     return <span className="register-resize-handle" role="separator" aria-label={`Resize ${label} column`} aria-orientation="vertical" aria-valuemin={24} aria-valuemax={1200} aria-valuenow={columnWidths[key]} tabIndex={0}
       onPointerDown={event => beginColumnResize(key, event)} onPointerMove={moveColumnResize} onPointerUp={event => void finishColumnResize(event)}
       onPointerCancel={() => { resizeRef.current = null; setResizing(null); }}
-      onKeyDown={event => { if (!viewSaving && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) { event.preventDefault(); const widths = { ...columnWidths, [key]: Math.max(24, Math.min(1200, columnWidths[key] + (event.key === 'ArrowRight' ? 10 : -10))) }; latestWidths.current = widths; setResizing({ scope, widths }); void persistColumnWidths(widths); } }} />;
+      onKeyDown={event => { if (!viewSaving && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) { event.preventDefault(); const widths = resizeColumnPair(columnWidths, columnOrder, key, event.key === 'ArrowRight' ? 10 : -10); latestWidths.current = widths; setResizing({ scope, widths }); void persistColumnWidths(widths); } }} />;
   }
   async function loadView() {
     const value = await requestJson<ViewOptions>(`/api/register-views/${scope}`);
@@ -299,7 +306,7 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     </div>
 
     <div className="register-scroll">
-      <table onKeyDown={e=>{if(e.key==='Escape'&&inline&&!disabled)setInline(null);}} className="register-table" aria-label="Transaction register"><colgroup>
+      <table ref={tableRef} onKeyDown={e=>{if(e.key==='Escape'&&inline&&!disabled)setInline(null);}} className="register-table" aria-label="Transaction register"><colgroup>
         <col style={{width:columnWidths.check}}/><col style={{width:columnWidths.info}}/>{view.showFlags && <col style={{width:columnWidths.flag}}/>}{view.showImages && <col style={{width:columnWidths.image}}/>}<col style={{width:columnWidths.date}}/><col style={{width:columnWidths.payee}}/><col style={{width:columnWidths.category}}/><col style={{width:columnWidths.memo}}/><col style={{width:columnWidths.outflow}}/><col style={{width:columnWidths.inflow}}/>{view.showRunningBalance && <col style={{width:columnWidths.balance}}/>}<col style={{width:columnWidths.status}}/></colgroup>
         <thead><tr><th aria-label="Select transactions">{resizeHandle('check','selection')}<input type="checkbox" aria-label="Select visible transactions" checked={Boolean(register?.items.length && register.items.every(t => selectedIds.includes(t.id)))} onChange={e => setSelectedIds(e.target.checked ? register?.items.map(t => t.id) ?? [] : [])}/></th>
           <th aria-label="Attention">{resizeHandle('info','attention')}<span className="transaction-info muted-info" aria-hidden="true">i</span><span className="sr-only">Attention</span></th>{view.showFlags && <th className="register-decoration-heading" aria-label="Flag">{resizeHandle('flag','flag')}<RegisterIcon name="flag" size={15}/><span className="sr-only">Flag</span></th>}{view.showImages && <th className="register-decoration-heading" aria-label="Attachment">{resizeHandle('image','attachment')}<RegisterIcon name="image" size={15}/><span className="sr-only">Attachment</span></th>}
@@ -379,4 +386,18 @@ function ReconcileForm({ account, busy, onSubmit }: { account: Account; busy: bo
     <p>Clear or correct entries until the difference is zero. Confirming records a snapshot and locks cleared entries; use a new correcting entry for later corrections.</p>
     <button disabled={busy || difference !== 0} className="button-primary">Confirm reconciliation</button>
   </form>;
+}
+
+export function registerColumnOrder(view: Pick<ViewOptions, 'showFlags' | 'showImages' | 'showRunningBalance'>) {
+  return ['check', 'info', ...(view.showFlags ? ['flag'] : []), ...(view.showImages ? ['image'] : []), 'date', 'payee', 'category', 'memo', 'outflow', 'inflow', ...(view.showRunningBalance ? ['balance'] : []), 'status'];
+}
+
+// Dragging a column's right edge trades width only with the column to its right, so the table's
+// total width and every other column stay unchanged. Both columns keep at least 24px.
+export function resizeColumnPair(widths: ColumnWidths, order: string[], key: string, delta: number): ColumnWidths {
+  const neighbour = order[order.indexOf(key) + 1];
+  if (!neighbour) return widths;
+  const current = widths[key] ?? 0, next = widths[neighbour] ?? 0;
+  const applied = Math.max(24 - current, Math.min(next - 24, delta));
+  return { ...widths, [key]: current + applied, [neighbour]: next - applied };
 }
