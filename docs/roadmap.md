@@ -18,15 +18,16 @@ This roadmap turns product workflows documented publicly by YNAB into independen
 | 1 | Reliable budget core and month lifecycle | Authoritative assignments, available-to-assign calculations, month carry-forward, and conflict-safe writes. | Current / implemented | [Milestone 1](milestones/milestone-01-budget-core.md) |
 | 2 | Accounts and transaction register | Cash accounts, transaction ledger, transfers, reconciliation, and budget activity calculations. | Current / implemented | [Milestone 2](milestones/milestone-02-accounts-register.md) |
 | 2a | Multi-user authentication and administration | Secure sign-in, administrator controls, configurable registration, independent budgets, and membership limits. | Current / implemented | [Milestone 2a](milestones/milestone-02a-multiuser-auth-and-admin.md) |
-| 3 | Goals, templates, and guided assignment | Targets, progress, category templates, and explainable auto-assignment. | Planned | [Milestone 3](milestones/milestone-03-goals-and-assignment.md) |
+| 3 | Goals, templates, and guided assignment | Targets, progress, category templates, and explainable auto-assignment. | In progress: category targets and monthly Auto-Assign implemented; templates and previews planned | [Milestone 3](milestones/milestone-03-goals-and-assignment.md) |
 | 4 | Scheduled transactions and cash-flow awareness | Recurring entries, upcoming/overdue review, and posting occurrences once. | Scheduled register slice implemented | [Milestone 4](milestones/milestone-04-scheduled-transactions.md) |
-| 5 | Credit cards and debt payoff planning | Credit-card payment reservations and loan payoff planning/projections. | Planned | [Milestone 5](milestones/milestone-05-credit-and-debt.md) |
+| 5 | Credit cards and debt payoff planning | Credit-card payment reservations and loan payoff planning/projections. | Credit-card slice and debt payoff targets implemented; loans planned | [Milestone 5](milestones/milestone-05-credit-and-debt.md) |
 | 6 | Focused plan views and reports | Action-focused category views and ledger-backed spending, income, and net-worth reports. | Planned | [Milestone 6](milestones/milestone-06-views-and-reports.md) |
 | 7 | File import, matching, and portable data | Validated CSV import, duplicate/match review, and portable budget/transaction exports. | Planned | [Milestone 7](milestones/milestone-07-file-import.md) |
 | 8 | Identity, multiple budgets, and household sharing | Secure sign-in, isolated budgets, invitations, membership roles, and sharing. | Planned | [Milestone 8](milestones/milestone-08-identity-and-sharing.md) |
 | 9 | Cross-device experience and offline resilience | Responsive installable UI, offline changes, synchronization, and conflict handling. | Planned | [Milestone 9](milestones/milestone-09-cross-device-offline.md) |
 | 10 | Optional linked-account import | Consent-based provider connection, transaction sync/review, reconnect, and disconnect. | Planned; provider availability to be assessed | [Milestone 10](milestones/milestone-10-linked-accounts.md) |
 | 11 | Annual long-term budget planning | Full-year planned-versus-actual forecast grid with effective-month overrides, carry-forward, and year navigation. | Current / implemented | [Milestone 11](milestones/milestone-11-anual-budget-planning.md) |
+| 12 | Icons and suggested icons | Emoji icon picker for accounts, payees, category groups and subcategories, with suggestions from names. | Planned; open questions | [Milestone 12](milestones/milestone-12-icons-and-suggestions.md) |
 
 ## Cross-cutting completion criteria
 

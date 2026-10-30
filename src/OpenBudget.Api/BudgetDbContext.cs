@@ -28,6 +28,8 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
     public DbSet<LedgerStateEntity> LedgerStates => Set<LedgerStateEntity>();
     public DbSet<LedgerCommandEntity> LedgerCommands => Set<LedgerCommandEntity>();
     public DbSet<ReconciliationEntity> Reconciliations => Set<ReconciliationEntity>();
+    public DbSet<CreditPayoffTargetEntity> CreditPayoffTargets => Set<CreditPayoffTargetEntity>();
+    public DbSet<CategoryTargetEntity> CategoryTargets => Set<CategoryTargetEntity>();
     public DbSet<ApplicationSettingEntity> ApplicationSettings => Set<ApplicationSettingEntity>();
     public DbSet<SmtpSettingsEntity> SmtpSettings => Set<SmtpSettingsEntity>();
     public DbSet<AdminAuditLogEntity> AdminAuditLogs => Set<AdminAuditLogEntity>();
@@ -108,6 +110,20 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
             entity.HasIndex(x => new { x.BudgetId, x.CreatedAt });
             entity.HasOne<BudgetPlanEntity>().WithMany().HasForeignKey(x => x.BudgetId).OnDelete(DeleteBehavior.Cascade);
         });
+        modelBuilder.Entity<CategoryTargetEntity>(entity =>
+        {
+            entity.HasKey(x => new { x.BudgetId, x.CategoryId });
+            entity.Property(x => x.BudgetId).HasMaxLength(100);
+            entity.Property(x => x.CategoryId).HasMaxLength(100);
+            entity.Property(x => x.Kind).HasMaxLength(10);
+            entity.Property(x => x.Behavior).HasMaxLength(10);
+            entity.Property(x => x.RepeatUnit).HasMaxLength(5);
+            entity.Property(x => x.StartMonth).HasMaxLength(7);
+            entity.Property(x => x.Amount).HasPrecision(14, 2);
+            entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.HasIndex(x => x.Id).IsUnique();
+            entity.HasOne<BudgetPlanEntity>().WithMany().HasForeignKey(x => x.BudgetId).OnDelete(DeleteBehavior.Cascade);
+        });
         modelBuilder.Entity<LongTermPlanningStateEntity>(entity =>
         {
             entity.HasKey(x => new { x.BudgetId, x.Id });
@@ -164,6 +180,7 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
             entity.Property(x => x.Assigned).HasPrecision(14, 2);
             entity.Property(x => x.Activity).HasPrecision(14, 2);
             entity.Property(x => x.LegacyActivity).HasPrecision(14, 2);
+            entity.Property(x => x.CreditOverspending).HasPrecision(14, 2);
             entity.Property(x => x.Target).HasPrecision(14, 2);
         });
 
@@ -173,6 +190,8 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
         modelBuilder.Entity<LedgerStateEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
         modelBuilder.Entity<LedgerCommandEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
         modelBuilder.Entity<ReconciliationEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
+        modelBuilder.Entity<CreditPayoffTargetEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
+        modelBuilder.Entity<CategoryTargetEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
         modelBuilder.Entity<RegisterViewEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
         modelBuilder.Entity<FlagDefinitionEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
         modelBuilder.Entity<ScheduleEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
@@ -206,6 +225,8 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
                 case LedgerStateEntity row: row.BudgetId = budgetContext.BudgetId; break;
                 case LedgerCommandEntity row: row.BudgetId = budgetContext.BudgetId; break;
                 case ReconciliationEntity row: row.BudgetId = budgetContext.BudgetId; break;
+                case CreditPayoffTargetEntity row: row.BudgetId = budgetContext.BudgetId; break;
+                case CategoryTargetEntity row: row.BudgetId = budgetContext.BudgetId; break;
                 case RegisterViewEntity row: row.BudgetId = budgetContext.BudgetId; break;
                 case FlagDefinitionEntity row: row.BudgetId = budgetContext.BudgetId; break;
                 case ScheduleEntity row: row.BudgetId = budgetContext.BudgetId; break;
@@ -381,6 +402,9 @@ public sealed class CategoryEntity
     public decimal LegacyActivity { get; set; }
     // Materialized legacy baseline plus ledger activity; only the server can change it.
     public decimal Activity { get; set; }
+    // Server-owned portion of negative Available caused by unfunded credit-card spending. It becomes card
+    // debt at rollover instead of reducing the next month's Ready to Assign.
+    public decimal CreditOverspending { get; set; }
     public decimal Target { get; set; }
     public string? Icon { get; set; }
     public bool Snoozed { get; set; }

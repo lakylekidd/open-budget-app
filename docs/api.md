@@ -85,7 +85,7 @@ Renames the default budget using optimistic concurrency. Request `{ "name": "Hou
 
 Reads or initializes a month using `YYYY-MM`. The first requested month receives a deterministic blank starter category structure. An unseen later month is created from the nearest prior month: positive category available balances become opening balances, while uncovered negative balances reset to zero in the category and reduce opening Ready to Assign. The operation is idempotent under repeated or concurrent reads.
 
-The response includes `month`, `note`, `version`, `openingReadyToAssign`, legacy `fundsAdded`, server-owned `ledgerIncome`, calculated `readyToAssign`, and ordered groups/categories. Each category includes `assigned`, total legacy-plus-ledger `activity`, calculated `available`, target and archive/display fields.
+The response includes `month`, `note`, `version`, `openingReadyToAssign`, legacy `fundsAdded`, server-owned `ledgerIncome`, calculated `readyToAssign`, and ordered groups/categories. Each category includes `assigned`, total legacy-plus-ledger `activity`, calculated `available`, the legacy `target` amount, archive/display fields, and the structured `categoryTarget` with its server-calculated `targetProgress` (see [category targets](#category-targets)).
 
 The Plan summary's **Expected Income** value displays this month's `ledgerIncome`; it does not use a separate fixed estimate.
 
@@ -93,9 +93,9 @@ The Plan summary's **Expected Income** value displays this month's `ledgerIncome
 
 Saves the editable monthly snapshot. The route month must match `body.month`. The request accepts `note`, `version`, `fundsAdded`, groups, and category assignments/metadata. It does not accept `activity`, `available`, or opening balance fields; those remain server-owned. Amounts use decimal precision of two places. Existing groups/categories must be retained and archived rather than deleted. New categories must start with zero assigned. Ordering values and identifiers must be unique.
 
-Successful writes increment the version and return authoritative calculated totals. Changes to assignments also recalculate every initialized later month's opening category/Ready to Assign amounts atomically, retaining those months' own assignments and activity. The recalculation is chronological because each rollover resets uncovered category overspending to zero and withholds that shortfall from Ready to Assign. Affected later versions increment, so previously loaded snapshots must reload before writing. A stale version returns 409 with the latest budget so the UI can reload or reapply. Invalid requests return 400. `fundsAdded` must equal its preserved legacy value; record new income through a cash account transaction. Monthly initialization/writes and ledger commands share a database lock/transaction. Ledger changes increase affected month versions.
+Successful writes increment the version and return authoritative calculated totals. Changes to assignments also recalculate every initialized later month's opening category/Ready to Assign amounts atomically, retaining those months' own assignments and activity. The recalculation is chronological because each rollover resets uncovered category overspending to zero and withholds that shortfall from Ready to Assign. Affected later versions increment, so previously loaded snapshots must reload before writing. Group/category ordering and category group membership changes synchronize matching rows in every initialized month; names, archive state, assignments, activity and other month-specific values are not copied. Newly initialized months inherit the latest available order. A stale version returns 409 with the latest budget so the UI can reload or reapply. Invalid requests return 400. `fundsAdded` must equal its preserved legacy value; record new income through a cash account transaction. Monthly initialization/writes and ledger commands share a database lock/transaction. Ledger changes increase affected month versions.
 
-Category IDs must be unique across the month and remain stable when a category moves between active groups. Keep every existing category ID in the submitted snapshot; changing its containing group changes membership and sort order while preserving its assignment, activity and available balance. Group/category drag ordering is saved through this same versioned endpoint. Archived categories/groups must be restored before moving a category.
+Category IDs must be unique across the month and remain stable when a category moves between active groups. Keep every existing category ID in the submitted snapshot; changing its containing group changes membership and sort order while preserving its assignment, activity and available balance. Group/category drag ordering is saved through this same versioned endpoint and is applied to matching initialized months, so the position remains stable when navigating between months until another reorder is saved. Archived categories/groups must be restored before moving a category.
 
 ## Long-Term Planning
 
@@ -130,9 +130,102 @@ Stale writes return 409 `{ "error": "..." }`; reload and review before sending a
 
 Closed accounts retain history and must be reopened before writes. Reconciliation compares the current cleared ledger balance rather than a date cutoff. There is no automatic adjustment: clear/correct entries until the difference is zero, then explicitly confirm. Reconciled entries cannot be deleted or have their status toggled directly. Transaction/transfer edits require explicit `confirmReconciledEdit=true` when either affected leg is reconciled. Confirmed edits retain the reconciliation row with `isInvalidated=true`, mark reconciled legs cleared, and store before/after audit (including invalidated snapshot IDs). The account reports its latest non-invalidated reconciliation, or null until reconciled again. Closed accounts still require reopening.
 
-Account responses also include `accountType` (`checking`, `savings`, `cash`), `isFavorite`, read-only `connectionStatus`, nullable UTC `lastReconciledAt`, and `needsCategoryCount`. Create requests optionally accept `accountType` (default `checking`). Updates optionally accept `accountType` and `isFavorite`; omission preserves their values. Existing accounts are migrated to checking/nonfavorite without changing ledger balances. Connection status currently returns `unlinked` because automatic provider sync is not implemented; callers cannot mark an account connected through the account-edit API. Last reconciliation time comes from the latest persisted confirmation, and category-attention counts use the complete account ledger.
+Account responses also include `accountType` (`checking`, `savings`, `cash`, `creditCard`, `lineOfCredit`), `isFavorite`, read-only `connectionStatus`, nullable UTC `lastReconciledAt`, and `needsCategoryCount`. Create requests optionally accept `accountType` (default `checking`). Updates optionally accept `accountType` and `isFavorite`; omission preserves their values. Existing accounts are migrated to checking/nonfavorite without changing ledger balances. Connection status currently returns `unlinked` because automatic provider sync is not implemented; callers cannot mark an account connected through the account-edit API. Last reconciliation time comes from the latest persisted confirmation, and category-attention counts use the complete account ledger.
 
 Header calculations are `clearedBalance + unclearedBalance = balance` (Working Balance). Cleared includes both cleared and reconciled entries. Filters never alter those account totals.
+
+## Credit accounts and card payments
+
+`accountType` also accepts `creditCard` and `lineOfCredit`. An account cannot later switch between cash and credit types (`400`). A credit account's opening balance is the existing debt as a negative amount; it is excluded from Ready to Assign.
+
+Each credit account owns one server-managed payment category, ID `ccp-{accountId}`, named after the account in the first group `credit-card-payments` ("Credit Card Payments"). Monthly Plan saves may assign to these categories but cannot create, move or add other categories to that group (`400`). Transactions and schedules cannot use a payment category (`400`); pay a card with a transfer.
+
+Rules applied by the ledger projection for each month:
+
+| Card activity | Effect |
+|---|---|
+| Purchase from a funded category (e.g. 40 from Groceries with 100 available) | Groceries activity −40; payment category +40. |
+| Purchase from a partially funded category (40, only 25 available) | Groceries −40 (Available −15, reported as `creditOverspending: 15`); payment +25. The 15 becomes card debt: the next month opens Groceries at zero **without** reducing Ready to Assign. Assigning 15 later moves it into the payment category. |
+| Refund (+10 to Groceries) | Groceries +10; payment −10. |
+| Fee or interest | Enter as categorized spending; follows the purchase rules. |
+| Payment (transfer 30 cash → card) | Budget-neutral for cash; payment category −30. |
+
+Credit account transactions without a category or split are rejected with `Credit account transactions require a category.` Opening entries and transfers are exempt.
+
+`GET /api/accounts/{id}/credit-summary/{YYYY-MM}` returns `priorBalance` (before the month), `spendingAndOutflows`, `interestCharges` (currently always 0), `paymentsAndInflows` and `currentBalance` for a credit account. Monthly category DTOs include read-only `creditOverspending`.
+
+### Debt payoff targets
+
+Each credit account may have one debt payoff target on its payment category. Targets are ledger commands: they require `commandId` and the current ledger `version`, replay an identical command, reject a reused command ID with a different body (`409`) or a stale version (`409`), write an audit receipt (`payoffTarget.save/{accountId}`, `payoffTarget.delete/{accountId}`) and increment the ledger version. They never change Plan amounts, category `target` values or ledger balances.
+
+| Method | Route | Body / result |
+|---|---|---|
+| `GET` | `/api/accounts/{id}/payoff-target/{YYYY-MM}` | `{ accountId, month, version, target, progress }`; `target` and `progress` are `null` when none is saved. |
+| `PUT` | `/api/accounts/{id}/payoff-target` | `{ commandId, version, kind, targetMonth?, monthlyAmount? }` creates or replaces the target; returns `{ id, version }`. |
+| `POST` | `/api/accounts/{id}/payoff-target/delete` | `{ commandId, version }`; `404` when no target exists. |
+
+`kind` is `payByDate` (requires `targetMonth` `YYYY-MM`, from the current calendar month up to 50 years ahead; no `monthlyAmount`) or `monthlyAmount` (requires a positive `monthlyAmount` with at most two decimals; no `targetMonth`). Saving requires an open credit account; cash accounts and past months return `400`. `target.payoffAmount` is the card debt (`max(-balance, 0)` over all entries) recorded on every save and shown as the "Pay off" headline; `createdAt` is kept across edits and `updatedAt` changes.
+
+`progress` is calculated by the server for the requested Plan month (it initializes that month like `GET /api/budget/{month}`):
+
+| Field | Rule |
+|---|---|
+| `neededForPayoff` | `max(-card balance through the end of the month, 0)` |
+| `availableForPayment` | payment category Available in that month (negative counts as 0 below) |
+| `assignedThisMonth` | payment category Assigned in that month |
+| `toGo` | `max(needed - max(available, 0), 0)` |
+| `payByDate` `monthsRemaining` | months from the viewed month to `targetMonth` inclusive; `1` when the target month has passed (`isPastDue` is then true while money is still to go) |
+| `payByDate` `assignThisMonth` | `max(0, roundUpToCent((needed - (available - assigned)) / monthsRemaining) - assigned)`, capped at `toGo` |
+| `payByDate` `percent` | `floor(min(available / needed, 1) × 100)`; `100` when nothing is owed |
+| `monthlyAmount` `assignThisMonth` | month target `min(monthlyAmount, assigned + toGo)`; `max(monthTarget - assigned, 0)` |
+| `monthlyAmount` `percent` | `floor(min(assigned / monthTarget, 1) × 100)`; `100` when the month target is 0 |
+| `status` | `funded` when `toGo` is 0, `onTrack` when `assignThisMonth` is 0, otherwise `behind` |
+
+Worked example (October 2026, target March 2027, balance −2,674.47, Available 500.40, Assigned 0): needed 2,674.47, to go 2,174.07, percent 18, six months remaining, assign `ceil(2,174.07 / 6)` = 362.35.
+
+## Category targets
+
+A regular Plan category (any category outside the `credit-card-payments` group; `ccp-*` payment categories use [debt payoff targets](#debt-payoff-targets)) may have one structured target per budget. Targets are keyed by the logical category ID, so the same target applies in every month. They never change assignments, Available, Ready to Assign or ledger balances.
+
+Routes use the same access rule as `/api/budgets/{id}/months/{month}` (owner or joined editor of an active budget; others get `404`) and run under the budget's `LedgerGate`. Validation and conflict responses roll the gate transaction back, including a month initialized by that request.
+
+| Method | Path | Body / result |
+|---|---|---|
+| `GET` | `/api/budgets/{id}/categories/{categoryId}/target/{YYYY-MM}` | `{ categoryId, month, target, progress }`; `target`/`progress` are `null` without a target. |
+| `PUT` | `/api/budgets/{id}/categories/{categoryId}/target` | `{ commandId, version, month, kind, amount, behavior, weekday?, dayOfMonth?, dueDate?, repeatEvery?, repeatUnit? }` creates (`version: 0`) or replaces (current `target.version`) the target; returns the result for `month`. |
+| `POST` | `/api/budgets/{id}/categories/{categoryId}/target/delete` | `{ commandId, version, month }`; returns the result with `target: null`. |
+
+Validation (`400` without writes): the category must exist in `month` and be visible (not archived, group not archived) and must not be a payment category; `kind` is `weekly`, `monthly`, `yearly` or `custom`; `amount` is greater than zero with at most two decimals (maximum 999,999,999.99); `behavior` is `setAside` or `refill`. Weekly requires `weekday` 0 (Sunday)–6 (Saturday) and `setAside`. Monthly takes optional `dayOfMonth` 1–31 (null or 0 = last day; later days clamp to short months). Yearly and custom require `dueDate` (`YYYY-MM-DD`, years 1900–9998). Only custom takes `repeatEvery` 1–99 with `repeatUnit` `day`/`week`/`month`/`year` (both or neither); a non-repeating custom target cannot be due before the server's local date. Fields that do not belong to the kind are rejected. A missing category returns `404`.
+
+Writes use the target's own optimistic `version` (incremented on each save): a stale version, or deleting a target that no longer exists, returns `409` with `{ error, current }`, where `current` is the latest `{ target, progress }`. Each write appends a command receipt (`categoryTarget.save/{categoryId}` or `categoryTarget.delete/{categoryId}`) with before/after JSON to the ledger audit feed (`GET /api/ledger/audit`); targets do not advance the ledger revision. An identical replay of a `commandId` returns the current target state without a second write; a reused `commandId` with a different body returns `409`. Plan **Recent Moves** remains assignment-only, so target changes are not listed there.
+
+Changing kind, behavior, due date or repeat starts a new funding cycle (`startMonth` becomes the request month); changing only the amount, weekday or day keeps it. Each month DTO category (`GET/PUT /api/budgets/{id}/months/{month}` and the legacy month routes) includes `categoryTarget` (the definition) and `targetProgress` (calculated for that month; `null` for hidden categories). The legacy decimal `target` field is still accepted and returned for compatibility, but the Plan UI no longer edits it.
+
+### Target progress
+
+`targetProgress` is `{ needed, funded, moreNeeded, segments, fundedFraction, status, nextDueDate, monthsRemaining, isPastDue, cadence }`. Let A be the amount, `funded = max(Assigned this month, 0)` and `before = Available − Assigned` (opening balance plus this month's activity).
+
+| Target | `needed` this month |
+|---|---|
+| Weekly | `A × occurrences of the weekday in the month`; `segments` = occurrences (4 or 5) |
+| Monthly, set aside | `A` |
+| Monthly, refill | `max(A − before, 0)` (top Available up to A) |
+| Yearly / dated, set aside | `max(roundUpToCent((A − Assigned in earlier months of the cycle) / monthsRemaining), 0)` |
+| Yearly / dated, refill (fill up) | `max(roundUpToCent((A − before) / monthsRemaining), 0)` |
+| Custom repeating every N days/weeks | `A × due dates in the month` (minus `before` when filling up); a month with no due date spreads A towards the next one like a dated target |
+| Non-repeating custom after its due date | the whole unfunded remainder (`isPastDue` true; 0 once funded) |
+
+`monthsRemaining` counts the viewed month through the due month inclusive. Yearly targets (and custom targets repeating every N months/years) advance their due date by the period once it has passed; the next cycle starts the month after the previous due month and never before the target's `startMonth`. `moreNeeded = max(needed − funded, 0)`, `funded` in the response is capped at `needed`, `fundedFraction = min(funded / needed, 1)` (truncated to 4 decimals; 1 when nothing is needed) and `status` is `underfunded` while `moreNeeded > 0`, otherwise `funded`. `cadence` is a short schedule description such as `Every Friday` or `Every year by 15-03-2027`.
+
+Worked examples (amounts in EUR):
+
+- Weekly 25 every Friday, October 2026 (five Fridays), Assigned 50: needed 125, more needed 75, 5 segments, fraction 0.4. In November 2026 (four Fridays) needed is 100.
+- Monthly set aside 100, Assigned 30, Available 230: needed 100, more needed 70 (carried money does not count).
+- Monthly refill up to 150, Assigned 20, Available 80: before = 60, needed 90, more needed 70.
+- Yearly 1,000 by 15-03-2027 viewed in October 2026: six months, 1,000 / 6 = 166.666… → 166.67. In December with 166.67 and 100 assigned in October/November: (1,000 − 266.67) / 4 = 183.3325 → 183.34.
+- Custom 40 every 2 weeks from 02-10-2026: October has 2, 16 and 30 October → needed 120 in 3 segments; November (13 and 27) → 80.
+
+The Plan **Underfunded** filter shows categories whose `targetProgress.moreNeeded` is above zero (snoozed categories excluded); **Overfunded** shows categories whose Assigned exceeds `needed`. Categories without a structured target keep the previous legacy-`target` rule. **Auto-Assign → Underfunded** assigns, per category, the larger of the scheduled-outflow shortfall and `moreNeeded`, still capped by Ready to Assign.
 
 ## Register and payees
 
@@ -142,7 +235,7 @@ Pagination: `page` 1–1,000,000 (default 1), `pageSize` 1–100 (default 50). R
 
 An optional `payeeId` UUID filters by the exact saved payee before pagination.
 
-Items contain `id`, `accountId`, `date`, signed `amount`, `payee`, `memo`, nullable `categoryId`, `status`, nullable shared `transferId`, `isOpening`, `splits: [{ categoryId, amount }]`, and `needsAttention`. `GET /api/payees` returns visible saved name suggestions in name order (hidden payees excluded); trimmed names are reused case-insensitively and retained after deletion of an entry.
+Items contain `id`, `accountId`, `date`, signed `amount`, `payee`, `memo`, nullable `categoryId`, `status`, nullable shared `transferId`, `isOpening`, `splits: [{ categoryId, amount, payee?, memo? }]`, and `needsAttention`. Split payee and memo are optional per-part descriptions; each part remains assigned to an active category and the signed split amounts must equal the parent amount. `GET /api/payees` returns visible saved name suggestions in name order (hidden payees excluded); trimmed names are reused case-insensitively and retained after deletion of an entry.
 
 Register items additionally include server-calculated `runningBalance`, `transferAccountName`, historical `categoryName` (group/category label), and `isLocked` for protected status/delete actions. `canEdit` is false when an affected account is closed; otherwise reconciled edits can proceed with the explicit confirmation. Items also contain nullable `flagColor` and `scheduleId`, `isApproved`, and `needsCategory`. `needsAttention` is the union of unapproved state and category attention; income does not need a category merely because it needs approval. Running balances use all nondeleted entries in the entry's account before filters/pagination. The chronological window is date ascending, UUID descending, the exact reverse of the displayed date-descending/UUID-ascending ordering. Each amount is counted once, including transfers and opening entries. Search, category/status/date filters and pages do not reset a running balance. A transfer requires confirmation for editing when either leg is reconciled, and cannot be deleted in that state; closed legs prevent editing/deletion; individual unreconciled legs can still be cleared independently.
 
@@ -165,9 +258,9 @@ Items contain `id`, `resourceId`, `kind`, `version`, UTC `createdAt`, `beforeJso
 
 ## Persisted register View Options
 
-`GET /api/register-views/{scope}` returns `{ version, datePreset, fromMonth, toMonth, showReconciled, showRunningBalance, showFlags, showImages, columnWidths }`. Scope is the account UUID, or `all` for the independent All Accounts view. Unknown accounts return 404. Unsaved views return version 0, `allDates`, null month bounds, all switches true and an empty `columnWidths` object. A GET does not create a row.
+`GET /api/register-views/{scope}` returns `{ version, datePreset, fromMonth, toMonth, showReconciled, showRunningBalance, showFlags, showImages, showScheduledTransactions, columnWidths }`. Scope is the account UUID, or `all` for the independent All Accounts view. Unknown accounts return 404. Unsaved views return version 0, `allDates`, null month bounds, all switches true and an empty `columnWidths` object. A GET does not create a row.
 
-`PUT /api/register-views/{scope}` accepts the same complete object with its expected version. Presets are `thisMonth`, `lastMonth`, `latest3Months`, `thisYear`, `lastYear`, `allDates`, or `custom`. Month bounds are nullable `YYYY-MM` (1900–9998); custom requires both and From <= To. `columnWidths` maps visible column keys (`check`, `info`, `flag`, `image`, `date`, `payee`, `category`, `memo`, `outflow`, `inflow`, `balance`, `status`) to pixel widths from 24 through 1200. All switches, month selectors and column widths are saved atomically. Success returns the incremented view version. A stale edit returns 409; reload saved options, review, and apply a new draft. Exact retry of the immediately preceding identical saved selection returns its existing result, handling a lost response without another write. Invalid input returns 400 without partial changes.
+`PUT /api/register-views/{scope}` accepts the same complete object with its expected version. Presets are `thisMonth`, `lastMonth`, `latest3Months`, `thisYear`, `lastYear`, `allDates`, or `custom`. Month bounds are nullable `YYYY-MM` (1900–9998); custom requires both and From <= To. `columnWidths` maps visible column keys (`check`, `info`, `flag`, `image`, `date`, `payee`, `category`, `memo`, `outflow`, `inflow`, `balance`, `status`) to pixel widths from 24 through 1200. All switches, including whether scheduled transactions are expanded, month selectors and column widths are saved atomically. Success returns the incremented view version. A stale edit returns 409; reload saved options, review, and apply a new draft. Exact retry of the immediately preceding identical saved selection returns its existing result, handling a lost response without another write. Invalid input returns 400 without partial changes.
 
 View settings use their own version and the active budget's database gate. They do not increment the financial ledger revision, alter balances/month projections or create financial audit commands. Preferences are shared by clients of the same owned budget, not across budgets.
 
@@ -248,7 +341,7 @@ The service validates the row, applies payee rules, and writes through the norma
 
 ## Grouped transaction category picker
 
-The inline register and split rows use a searchable grouped picker rather than a native select. Group headings are flush left; their categories are indented, with the server's `available` amount aligned right. The Selected section includes the parent group, and Inflow / Ready to Assign displays the same transaction month's server `readyToAssign`. Positive amounts are green, negative red, zero neutral. The list follows budget ordering and excludes archived categories/groups from ordinary choices. Duplicate display names select by stable category ID.
+The inline register and split rows use searchable grouped pickers rather than native selects. Split parts render as aligned register subrows with payee, category, memo, and outflow/inflow fields; the editor shows the remaining amount to assign and blocks saving until every active category and signed amount totals exactly to the transaction. Split payee and memo persist with the part. Group headings are flush left; their categories are indented, with the server's `available` amount aligned right. The Selected section includes the parent group, and Inflow / Ready to Assign displays the same transaction month's server `readyToAssign`. Positive amounts are green, negative red, zero neutral. The list follows budget ordering and excludes archived categories/groups from ordinary choices. Duplicate display names select by stable category ID.
 
 Amounts come from `GET /api/budget/{transaction month}` with no account-local or draft-derived calculation. Opening the dropdown, changing the transaction date, retrying a read, or creating a category reloads that month's values. Pending reads are cancelled when superseded. Failed/loading reads do not permit selecting stale hidden options. Search matches category and group names; keyboard arrows/Enter select, Escape discards search and keeps the inline draft. Transfer/opening entries retain their protected category behavior.
 

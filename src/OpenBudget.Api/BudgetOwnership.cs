@@ -200,7 +200,7 @@ public sealed class BudgetOwnershipService(BudgetDbContext db, BudgetRequestCont
             if (userId is null) return Results.Unauthorized();
             if (!await ownership.CanAccessBudgetAsync(userId, id, ct)) return Results.NotFound();
             budgetContext.BudgetId = id;
-            return await gate.RunAsync(async () => Results.Ok(BudgetDto.From(await service.GetMonthAsync(id, month, ct))), ct);
+            return await gate.RunAsync(async () => Results.Ok(await service.ToDtoAsync(await service.GetMonthAsync(id, month, ct), ct)), ct);
         });
         budgets.MapPut("/{id}/months/{month}", async (string id, string month, BudgetUpdateDto request, ClaimsPrincipal principal, BudgetOwnershipService ownership, BudgetRequestContext budgetContext, BudgetService service, LedgerGate gate, CancellationToken ct) =>
         {

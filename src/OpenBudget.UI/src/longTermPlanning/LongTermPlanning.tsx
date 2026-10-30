@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { parseAssignment } from '../budgetMoney';
+import { MoneyInput } from '../MoneyInput';
 import { formatMoney, requestJson, type Entry, type Register } from '../ledger/api';
-import { categoryTransactionAmount } from '../planHelpers';
-import { PlanTransactionList, type PlanTransactionItem } from '../PlanTransactionList';
+import { expandActivityEntries, PlanTransactionList, type PlanTransactionItem } from '../PlanTransactionList';
 import {
   previewPlanningChange,
   sumNullable,
@@ -19,7 +19,7 @@ type Metric = 'plannedBudget' | 'plannedExpenses' | 'plannedAvailable' | 'actual
 type ActivityKind = 'income' | 'expenses' | 'plannedExpenses' | 'actualExpenses';
 type ActivitySelection = { month: string; kind: ActivityKind; title: string; categoryIds?: string[] };
 type ActivityDialog = ActivitySelection & { items: PlanTransactionItem[]; loading: boolean; error: string; requestId: number };
-type LongTermPlanningProps = { onPendingChange?: (pending: boolean) => void; accounts?: { id: string; name: string }[]; onSelectTransaction?: (entry: Entry, scheduled: boolean) => void };
+type LongTermPlanningProps = { onPendingChange?: (pending: boolean) => void; accounts?: { id: string; name: string }[]; onSelectTransaction?: (entry: Entry, scheduled: boolean, splitIndex?: number) => void };
 
 const plannedMetrics: Metric[] = ['plannedBudget', 'plannedExpenses', 'plannedAvailable'];
 const actualMetrics: Metric[] = ['actualAssigned', 'actualExpenses', 'actualAvailable'];
@@ -216,16 +216,15 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
       const isEditing = editing?.month === month.month && editing.categoryId === category.id && editing.field === field;
       const display = value.plannedBudget;
       return <div className="lt-value-line" key={metric}>
-        {isEditing ? <input
+        {isEditing ? <MoneyInput
           aria-label={`${category.name} Assigned ${monthName(month.month)} ${year}`}
           className="lt-money-input"
-          inputMode="decimal"
           autoFocus
           value={editing.raw}
           disabled={locked}
           aria-invalid={Boolean(editing.amount === null)}
           onFocus={event => selectInputContents(event.currentTarget)}
-          onChange={event => updateDraft(event.target.value)}
+          onChange={updateDraft}
           onBlur={commitDraft}
           onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); commitDraft(); event.currentTarget.blur(); } if (event.key === 'Escape') { cancelEditRef.current = true; setEditing(null); setMessage(''); onPendingChange?.(false); event.currentTarget.blur(); } }}
         /> : <button
@@ -291,12 +290,14 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
         entries = [...first.items];
         for (let page = 2; (page - 1) * first.pageSize < first.total; page++) entries.push(...(await loadPage(page)).items);
       }
-      const items = entries.flatMap(entry => {
-        if (selection.kind === 'income') return entry.amount > 0 ? [{ entry, scheduled }] : [];
-        if (selection.kind === 'expenses') return entry.amount < 0 ? [{ entry, scheduled }] : [];
-        const amount = selection.categoryIds?.reduce((sum, categoryId) => sum + categoryTransactionAmount(entry, categoryId), 0) ?? 0;
-        return (selection.kind === 'plannedExpenses' ? amount < 0 : amount !== 0)
-          ? [{ entry, scheduled, categoryAmount: amount }] : [];
+      const categoryNames = Object.fromEntries((displayedPlan?.groups.flatMap(group => group.categories) ?? []).map(category => [category.id, category.name]));
+      const expanded = expandActivityEntries(entries, scheduled, selection.categoryIds, categoryNames);
+      const items = expanded.flatMap(item => {
+        const amount = item.categoryAmount ?? item.entry.amount;
+        if (selection.kind === 'income') return amount > 0 ? [item] : [];
+        if (selection.kind === 'expenses') return amount < 0 ? [item] : [];
+        if (selection.kind === 'plannedExpenses') return amount < 0 ? [{ ...item, categoryAmount: amount }] : [];
+        return amount !== 0 ? [{ ...item, categoryAmount: amount }] : [];
       });
       setActivityDialog(current => current?.requestId === requestId ? { ...current, items, loading: false } : current);
     } catch (error) {
@@ -376,7 +377,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
         {activityDialog && <PlanTransactionList title={activityDialog.title} items={activityDialog.items} accounts={accounts}
           loading={activityDialog.loading} error={activityDialog.error} emptyMessage="No transactions for this month."
           onClose={closeActivity} onRetry={() => void openActivity(activityDialog)}
-          onSelect={(entry, scheduled) => { closeActivity(); onSelectTransaction?.(entry, scheduled); }} />}
+          onSelect={(entry, scheduled, splitIndex) => { closeActivity(); onSelectTransaction?.(entry, scheduled, splitIndex); }} />}
       </>}
   </section>;
 }

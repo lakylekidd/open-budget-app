@@ -17,6 +17,9 @@ beforeEach(()=>{
   vi.stubGlobal('fetch',vi.fn(async(path:string,init?:RequestInit)=>{
     if(path==='/api/auth/session')return response({id:'u1',userName:'alice',email:'alice@example.test',isAdministrator:true});
     if(path==='/api/accounts')return response({version:1,accounts:focusAccounts});
+    if(path.startsWith('/api/accounts/card-1/payoff-target/'))return response({accountId:'card-1',month:path.slice(-7),version:1,target:null,progress:null});
+    if(path==='/api/accounts/card-1/payoff-target'&&init?.method==='PUT'){writes.push({path,...JSON.parse(String(init.body))});return response({id:'card-1',version:2});}
+    if(path.startsWith('/api/accounts/card-1/credit-summary/'))return response({accountId:'card-1',month:path.slice(-7),priorBalance:-2674.07,spendingAndOutflows:-134.40,interestCharges:0,paymentsAndInflows:134,currentBalance:-2674.47});
     if(path==='/api/budgets'&&init?.method==='POST')return response({id:'new-budget',name:JSON.parse(String(init.body)).name,currency:'EUR',version:1,isArchived:false,createdAt:'2026-10-01T00:00:00Z'});
     if(path.startsWith('/api/budgets/')&&init?.method==='DELETE'){const id=path.split('/')[3];ownedBudgets=ownedBudgets.filter(item=>item.id!==id);archivedBudgets=archivedBudgets.filter(item=>item.id!==id);return new Response(null,{status:204});}
     if(path.startsWith('/api/budgets/')&&path.endsWith('/archive')){const id=path.split('/')[3];const budget=ownedBudgets.find(item=>item.id===id);if(budget){ownedBudgets=ownedBudgets.filter(item=>item.id!==id);archivedBudgets.push({...budget,isArchived:true,version:budget.version+1});}return new Response(null,{status:204});}
@@ -30,11 +33,11 @@ beforeEach(()=>{
       return response(planningHistory[year]??{year,version:1,hasPlanningData:false,months:Array.from({length:12},(_,index)=>({month:`${year}-${String(index+1).padStart(2,'0')}`,expectedIncome:0,hasExpectedIncome:false,expectedExpenses:0,remaining:0,hasActualData:false})),groups:[]});
     }
     if(path.startsWith('/api/schedules?'))return response({version:1,page:1,pageSize:100,total:scheduleRows.length,items:scheduleRows});
-    if(path.startsWith('/api/register-views/'))return response({version:1,datePreset:'all',fromMonth:null,toMonth:null,showReconciled:false,showRunningBalance:false,showFlags:false,showImages:false});
+    if(path.startsWith('/api/register-views/'))return response({version:1,datePreset:'all',fromMonth:null,toMonth:null,showReconciled:false,showRunningBalance:false,showFlags:false,showImages:false,showScheduledTransactions:true});
     if(path==='/api/flags')return response({version:1,flags:[]});
     if(path.startsWith('/api/transactions?')){
       const query=new URLSearchParams(path.slice(path.indexOf('?')+1));
-      const items=query.has('accountId')?focusRows:focusRows.filter(item=>(item as {categoryId?:string}).categoryId===query.get('categoryId'));
+      const items=query.has('accountId')?focusRows:focusRows.filter(item=>{const entry=item as {categoryId?:string;splits?:{categoryId:string}[]};return entry.categoryId===query.get('categoryId')||entry.splits?.some(split=>split.categoryId===query.get('categoryId'));});
       return response({version:1,page:Number(query.get('page')??1),pageSize:Number(query.get('pageSize')??100),total:items.length,items,accounts:{version:1,accounts:focusAccounts}});
     }
     if(path.startsWith('/api/budgets/')&&path.includes('/months/')){
@@ -203,6 +206,51 @@ it('collapses and expands cash accounts while retaining the total',async()=>{
   expect(screen.queryByText('No Accounts')).not.toBeInTheDocument();
 });
 
+it('keeps the selected category while moving between months',async()=>{
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('checkbox',{name:'Select Electricity'}));
+  await userEvent.click(screen.getByRole('button',{name:'Next month'}));
+  expect(await screen.findByRole('button',{name:'Nov 2026'})).toBeInTheDocument();
+  await waitFor(()=>expect(screen.getByRole('checkbox',{name:'Select Electricity'})).toBeChecked());
+  await userEvent.click(screen.getByRole('button',{name:'Previous month'}));
+  expect(await screen.findByRole('button',{name:'Oct 2026'})).toBeInTheDocument();
+  await waitFor(()=>expect(screen.getByRole('checkbox',{name:'Select Electricity'})).toBeChecked());
+});
+
+it('groups credit accounts under CREDIT and shows the card payment category details',async()=>{
+  const account={isClosed:false,unclearedBalance:0,isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0};
+  focusAccounts=[{...account,id:'cash-1',name:'Salary',balance:4325.87,clearedBalance:4325.87,accountType:'checking'},{...account,id:'card-1',name:'Mastercard',balance:-2674.47,clearedBalance:-2674.47,accountType:'creditCard'}];
+  const october=budget('2026-10',0,0,15);
+  october.groups.unshift({id:'credit-card-payments',name:'Credit Card Payments',sortOrder:0,isArchived:false,categories:[{id:'ccp-card-1',name:'Mastercard',assigned:0,activity:0.40,available:500.40,target:0,icon:'💳',snoozed:false,sortOrder:0,isArchived:false}]});
+  months['2026-10']=october;
+  render(<App/>);await saved();
+  const credit=screen.getByRole('button',{name:/CREDIT/});
+  expect(credit).toHaveTextContent('-€2,674.47');
+  expect(document.getElementById('credit-account-list')).toContainElement(screen.getByRole('button',{name:/Mastercard -€2,674.47/}));
+  expect(document.getElementById('cash-account-list')).not.toContainElement(screen.getByRole('button',{name:/Mastercard -€2,674.47/}));
+  expect(screen.getByRole('button',{name:/CASH/})).toHaveTextContent('€4,325.87');
+  const paymentRow=screen.getByRole('button',{name:'Move available money from Mastercard'}).closest('.category-row') as HTMLElement;
+  expect(paymentRow.querySelector('.available-cell')).toHaveClass('underfunded');
+  expect(screen.getByText('Payment')).toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:'Add category to Credit Card Payments'})).not.toBeInTheDocument();
+  await userEvent.click(within(paymentRow).getByRole('button',{name:'Edit assigned for Mastercard'}));
+  const details=await screen.findByRole('region',{name:'Mastercard payment'});
+  expect(details).toHaveTextContent('Underfunded');
+  expect(details).toHaveTextContent('assign €2,174.07 more');
+  expect(await within(details).findByText('Prior Balance')).toBeInTheDocument();
+  expect(details).toHaveTextContent('Spending and Outflows-€134.40');
+  expect(details).toHaveTextContent('Payments and Inflows€134.00');
+  const createTarget=within(details).getByRole('button',{name:'Create a Debt Payoff Target'});
+  await waitFor(()=>expect(createTarget).toBeEnabled());
+  await userEvent.click(createTarget);
+  const editor=within(details).getByRole('form',{name:'Debt payoff target'});
+  await userEvent.click(within(editor).getByRole('button',{name:'Save Target'}));
+  await waitFor(()=>expect(writes.some(write=>write.path==='/api/accounts/card-1/payoff-target')).toBe(true));
+  expect(writes.find(write=>write.path==='/api/accounts/card-1/payoff-target')).toMatchObject({kind:'payByDate',monthlyAmount:null,version:1});
+  await waitFor(()=>expect(within(details).queryByRole('form',{name:'Debt payoff target'})).not.toBeInTheDocument());
+  expect(screen.queryByText('Debt payoff targets arrive with Goals and targets.')).not.toBeInTheDocument();
+});
+
 it('shows only the no accounts message and add action when the account list is empty',async()=>{
   render(<App/>);await saved();
   expect(await screen.findByText('No Accounts')).toBeInTheDocument();
@@ -236,7 +284,8 @@ it('resizes and collapses the desktop sidebar while preserving its width',async(
 it('opens the account creation form from beneath CASH',async()=>{
   render(<App/>);await saved();
   await userEvent.click(screen.getByRole('button',{name:'Add Account'}));
-  expect(await screen.findByRole('dialog',{name:'Add cash account'})).toBeInTheDocument();
+  expect(await screen.findByRole('dialog',{name:'Select Account Type'})).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button',{name:'Checking'}));
   expect(screen.getByLabelText('Account name')).toBeInTheDocument();
 });
 
@@ -270,13 +319,40 @@ it('shows actual ledger income in the monthly summary instead of a fixed estimat
   expect(incomeSummary).not.toHaveTextContent('€12,500.00');
 });
 
-it.each([{amount:0.01,label:'Ready to assign'},{amount:-0.01,label:'Assigned more than available'}])('retains the nonzero summary for $amount euros',async({amount,label})=>{
+it.each([{amount:0.01,label:'Ready to assign',button:/Assign/},{amount:-0.01,label:'You assigned more than you have',button:/Fix This/}])('retains the nonzero summary for $amount euros',async({amount,label,button})=>{
   months['2026-10'].readyToAssign=amount;
   render(<App/>);await saved();
   const summary=within(screen.getByRole('region',{name:'Ready to assign'}));
   expect(summary.getByText(label)).toBeInTheDocument();
   expect(summary.queryByText('All Money Assigned')).not.toBeInTheDocument();
-  expect(summary.getByRole('button',{name:amount>0?/Assign/:/Record income/})).toBeEnabled();
+  expect(summary.getByRole('button',{name:button})).toBeEnabled();
+});
+
+it('opens Fix This with positive categories and unassigns the selected amount',async()=>{
+  months['2026-10'].readyToAssign=-100;
+  months['2026-10'].groups[0].categories.push({id:'food',name:'Food',assigned:400,activity:0,available:400,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false});
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Fix This'}));
+  const dialog=screen.getByRole('dialog',{name:'Un-assign money from'});
+  expect(within(dialog).getByRole('button',{name:'Month to unassign from'})).toHaveTextContent('Oct 2026');
+  expect(within(dialog).getByRole('button',{name:/Food/})).toHaveTextContent('€400.00');
+  await userEvent.click(within(dialog).getByRole('button',{name:/Food/}));
+  await waitFor(()=>expect(writes.at(-1)?.groups).toEqual(expect.arrayContaining([expect.objectContaining({categories:expect.arrayContaining([expect.objectContaining({id:'food',assigned:300})])})])));
+});
+
+it('keeps the future Fix This category picker empty and can switch back one month',async()=>{
+  months['2026-11'].readyToAssign=-100;
+  months['2026-10'].groups[0].categories.push({id:'food',name:'Food',assigned:400,activity:0,available:400,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false});
+  render(<App/>);await saved();
+  await next('Next','Nov 2026');
+  await userEvent.click(screen.getByRole('button',{name:'Fix This'}));
+  const dialog=screen.getByRole('dialog',{name:'Un-assign money from'});
+  expect(within(dialog).getByText('No categories found.')).toBeInTheDocument();
+  expect(within(dialog).getByRole('combobox',{name:'Category to unassign'})).toBeDisabled();
+  await userEvent.click(within(dialog).getByRole('button',{name:'Month to unassign from'}));
+  await userEvent.click(within(dialog).getByRole('button',{name:'Oct 2026'}));
+  await userEvent.click(within(dialog).getByRole('button',{name:'OK'}));
+  await waitFor(()=>expect(within(dialog).getByRole('button',{name:/Food/})).toHaveTextContent('€400.00'));
 });
 
 it('opens the category group rename popover and persists the new name',async()=>{
@@ -429,6 +505,22 @@ it('opens category activity and takes a reconciled transaction to its account de
   expect(await screen.findByRole('checkbox',{name:`Select transaction ${transactionId}`})).toBeChecked();
   const requests=vi.mocked(fetch).mock.calls.map(([path])=>String(path)).filter(path=>path.startsWith('/api/transactions?'));
   expect(requests.some(path=>{const query=new URL(path,'http://localhost').searchParams;return query.get('accountId')===accountId&&query.get('includeReconciled')==='true'&&query.get('from')==='2026-10-27'&&query.get('to')==='2026-10-27'&&!query.has('categoryId')&&!query.has('status');})).toBe(true);
+});
+
+it('opens the matching split detail from category activity and focuses that subtransaction in the register',async()=>{
+  const accountId='11111111-1111-4111-8111-111111111111';
+  const transactionId='22222222-2222-4222-8222-222222222222';
+  const account={id:accountId,name:'Household',isClosed:false,balance:15,clearedBalance:0,unclearedBalance:15,accountType:'checking',isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0};
+  const entry={id:transactionId,accountId,date:'2026-10-27',amount:-35,payee:'Phone company',memo:'Combined bill',categoryId:null,status:'reconciled',transferId:null,isOpening:false,splits:[{categoryId:'utilities',amount:-25,payee:'Internet plan',memo:'Internet'},{categoryId:'mobile',amount:-10,payee:'Phone plan',memo:'Mobile'}],needsAttention:false,runningBalance:15,transferAccountName:null,categoryName:null,isLocked:true};
+  focusAccounts=[account];focusRows=[entry];months['2026-10']=budget('2026-10',0,-25,-25);
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'View transactions for Electricity activity'}));
+  const splitItem=await screen.findByRole('button',{name:'Open Electricity split for Internet plan in Household account'});
+  expect(splitItem).toHaveTextContent('Internet');expect(splitItem).toHaveTextContent('-€25.00');
+  expect(screen.queryByRole('button',{name:/Open Phone plan/})).not.toBeInTheDocument();
+  await userEvent.click(splitItem);
+  await screen.findByText(/Showing the transaction selected from the Plan screen/);
+  await waitFor(()=>expect(document.querySelector(`tr[data-transaction-id="${transactionId}"][data-split-index="0"]`)).toHaveClass('register-split-focused'));
 });
 
 it('disables the activity amount when the category has no activity',async()=>{
@@ -674,4 +766,102 @@ it('opens Long-Term Planning from the main navigation',async()=>{
   expect(await screen.findByText('Add budget categories in Plan to start long-term planning.')).toBeInTheDocument();
   const year=new Date().getFullYear();
   expect(vi.mocked(fetch)).toHaveBeenCalledWith(`/api/long-term-planning/${year}`,expect.objectContaining({signal:expect.any(AbortSignal)}));
+});
+
+const weeklyTarget={kind:'weekly',amount:25,behavior:'setAside',weekday:5,dayOfMonth:null,dueDate:null,repeatEvery:null,repeatUnit:null,startMonth:'2026-10',version:1,createdAt:'2026-10-01T00:00:00Z',updatedAt:'2026-10-01T00:00:00Z'};
+const weeklyProgress={needed:125,funded:0,moreNeeded:125,segments:5,fundedFraction:0,status:'underfunded',nextDueDate:null,monthsRemaining:null,isPastDue:false,cadence:'Every Friday'};
+function addTarget(month:Month,categoryId:string,target:unknown,progress:unknown){const category=month.groups.flatMap(group=>group.categories).find(item=>item.id===categoryId)!;Object.assign(category,{categoryTarget:target,targetProgress:progress});}
+function routeTargets(handler:(path:string,init?:RequestInit)=>Response|undefined){const base=vi.mocked(fetch).getMockImplementation()!;vi.mocked(fetch).mockImplementation(async(path,init)=>handler(String(path),init)??base(path,init));}
+
+it('shows the weekly target amount still needed and one bar segment per weekday occurrence',async()=>{
+  months['2026-10']=budget('2026-10',0,0,0);
+  addTarget(months['2026-10'],'utilities',weeklyTarget,weeklyProgress);
+  render(<App/>);await saved();
+  const categoryRow=row();
+  expect(within(categoryRow).getByText(/more needed this month/)).toHaveTextContent('€125.00 more needed this month');
+  const bar=within(categoryRow).getByRole('img',{name:'Target progress: 0% of €125.00 funded'});
+  expect(bar).toHaveAttribute('data-segments','5');
+  expect(bar.querySelectorAll('.target-segment')).toHaveLength(5);
+  const available=categoryRow.querySelector('.available-cell') as HTMLElement;
+  expect(available).toHaveClass('underfunded');
+  expect(available.querySelector('.target-ring-icon')).not.toBeNull();
+});
+
+it('fills weekly segments as money is assigned and turns green once funded',async()=>{
+  months['2026-10']=budget('2026-10',62.5,0,62.5);
+  addTarget(months['2026-10'],'utilities',weeklyTarget,{...weeklyProgress,funded:62.5,moreNeeded:62.5,fundedFraction:0.5});
+  months['2026-11']=budget('2026-11',100,0,100);
+  addTarget(months['2026-11'],'utilities',weeklyTarget,{...weeklyProgress,needed:100,funded:100,moreNeeded:0,segments:4,fundedFraction:1,status:'funded'});
+  render(<App/>);await saved();
+  const fills=[...row().querySelectorAll('.target-segment > span')].map(item=>(item as HTMLElement).style.width);
+  expect(fills).toEqual(['100%','100%','50%','0%','0%']);
+  await next('Next','Nov 2026');
+  const funded=row();
+  expect(funded.querySelectorAll('.target-segment')).toHaveLength(4);
+  expect(funded.querySelector('.target-track')).toHaveClass('funded');
+  expect(funded.querySelector('.available-cell')).toHaveClass('positive');
+  expect(funded.querySelector('.target-ring-icon')).toBeNull();
+  expect(within(funded).queryByText(/more needed this month/)).not.toBeInTheDocument();
+});
+
+it('uses the server target need for the Underfunded filter and Auto-Assign Underfunded',async()=>{
+  months['2026-10'].groups[0].categories.push({id:'food',name:'Food',assigned:0,activity:0,available:0,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false});
+  addTarget(months['2026-10'],'food',{...weeklyTarget,kind:'monthly',weekday:null,amount:40},{...weeklyProgress,needed:40,moreNeeded:40,segments:1,cadence:'Every month by the last day'});
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('tab',{name:'Underfunded'}));
+  expect(screen.getByRole('checkbox',{name:'Select Food'})).toBeInTheDocument();
+  expect(screen.queryByRole('checkbox',{name:'Select Electricity'})).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('tab',{name:'All'}));
+  await userEvent.click(screen.getByRole('button',{name:'Assign'}));
+  const underfunded=await screen.findByRole('button',{name:'Underfunded €40.00'});
+  await waitFor(()=>expect(underfunded).toBeEnabled());
+  await userEvent.click(underfunded);
+  await waitFor(()=>expect(writes).toHaveLength(1));
+  const categories=(writes[0].groups as {categories:{id:string;assigned:number}[]}[]).flatMap(group=>group.categories);
+  expect(categories.find(category=>category.id==='food')?.assigned).toBe(40);
+  expect(categories.find(category=>category.id==='utilities')?.assigned).toBe(0);
+});
+
+it('creates a category target from the details panel and updates the row without a Plan save',async()=>{
+  const targetWrites:{path:string;body:Record<string,unknown>}[]=[];
+  routeTargets((path,init)=>{
+    if(path==='/api/budgets/default/categories/utilities/target'&&init?.method==='PUT'){
+      const body=JSON.parse(String(init.body));targetWrites.push({path,body});
+      return response({categoryId:'utilities',month:'2026-10',target:{...weeklyTarget,...body,version:1},progress:{...weeklyProgress,needed:100,moreNeeded:100,segments:4,cadence:'Every Sunday'}});
+    }
+    return undefined;
+  });
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Edit assigned for Electricity'}));
+  await userEvent.keyboard('{Escape}');
+  const card=await screen.findByRole('region',{name:'Electricity target'});
+  expect(card).toHaveTextContent('How much do you need for Electricity?');
+  await userEvent.click(within(card).getByRole('button',{name:'Create Target'}));
+  const editor=screen.getByRole('form',{name:'Category target'});
+  await userEvent.click(within(editor).getByRole('tab',{name:'Weekly'}));
+  const amount=within(editor).getByLabelText('I need');
+  await userEvent.click(amount);await userEvent.clear(amount);await userEvent.type(amount,'25');
+  await userEvent.selectOptions(within(editor).getByLabelText('Every'),'Sunday');
+  await userEvent.click(within(editor).getByRole('button',{name:'Save Target'}));
+  await waitFor(()=>expect(targetWrites).toHaveLength(1));
+  expect(targetWrites[0].body).toMatchObject({version:0,month:'2026-10',kind:'weekly',amount:25,weekday:0,behavior:'setAside'});
+  expect(await within(row()).findByText(/more needed this month/)).toHaveTextContent('€100.00 more needed this month');
+  expect(row().querySelectorAll('.target-segment')).toHaveLength(4);
+  expect(screen.getByRole('region',{name:'Electricity target'})).toHaveTextContent('Set aside €25.00 every Sunday');
+  await new Promise(resolve=>setTimeout(resolve,600));
+  expect(writes).toHaveLength(0);
+});
+
+it('never offers a category target for a credit card payment category',async()=>{
+  const account={isClosed:false,unclearedBalance:0,isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0};
+  focusAccounts=[{...account,id:'card-1',name:'Mastercard',balance:-100,clearedBalance:-100,accountType:'creditCard'}];
+  const october=budget('2026-10',0,0,15);
+  october.groups.unshift({id:'credit-card-payments',name:'Credit Card Payments',sortOrder:0,isArchived:false,categories:[{id:'ccp-card-1',name:'Mastercard',assigned:0,activity:0,available:20,target:0,icon:'💳',snoozed:false,sortOrder:0,isArchived:false}]});
+  months['2026-10']=october;
+  render(<App/>);await saved();
+  const paymentRow=screen.getByRole('button',{name:'Move available money from Mastercard'}).closest('.category-row') as HTMLElement;
+  await userEvent.click(within(paymentRow).getByRole('button',{name:'Edit assigned for Mastercard'}));
+  await screen.findByRole('region',{name:'Mastercard payment'});
+  expect(screen.queryByRole('button',{name:'Create Target'})).not.toBeInTheDocument();
+  expect(screen.queryByRole('region',{name:'Mastercard target'})).not.toBeInTheDocument();
 });

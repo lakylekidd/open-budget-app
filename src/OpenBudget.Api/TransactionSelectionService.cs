@@ -58,7 +58,7 @@ public sealed partial class LedgerService
                         copies.Add(new TransactionEntity { Id = id, AccountId = row.AccountId, Date = row.Date, Amount = row.Amount,
                             PayeeId = row.PayeeId, Payee = row.Payee, Memo = row.Memo, CategoryId = row.CategoryId,
                             Status = "uncleared", FlagColor = row.FlagColor, TransferId = row.TransferId is { } pair ? copiedTransfers[pair] : null,
-                            Splits = row.Splits.Select(s => new SplitEntity { TransactionId = id, Position = s.Position, CategoryId = s.CategoryId, Amount = s.Amount }).ToList() });
+                            Splits = row.Splits.Select(s => new SplitEntity { TransactionId = id, Position = s.Position, CategoryId = s.CategoryId, Amount = s.Amount, Payee = s.Payee, Memo = s.Memo }).ToList() });
                         break;
                     case "repeat":
                         if (row.TransferId is null) await CreateNextScheduleAsync(row, request.Repeat!, ct);

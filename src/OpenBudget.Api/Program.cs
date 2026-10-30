@@ -28,12 +28,14 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     }
 });
 builder.Services.AddScoped<BudgetService>();
+builder.Services.AddScoped<CategoryTargetService>();
 builder.Services.AddScoped<BudgetOwnershipService>();
 builder.Services.AddScoped<BudgetSharingService>();
 builder.Services.AddScoped<EntitlementService>();
 builder.Services.AddScoped<IAuthorizationHandler, EntitlementAuthorizationHandler>();
 builder.Services.AddScoped<LongTermPlanningService>();
 builder.Services.AddScoped<LedgerService>();
+builder.Services.AddScoped<LedgerProjection>();
 builder.Services.AddScoped<LedgerGate>();
 builder.Services.AddScoped<SchedulePostingService>();
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
@@ -162,12 +164,13 @@ app.MapGet("/health", async (BudgetDbContext db, CancellationToken cancellationT
 app.MapAuthenticationEndpoints();
 EntitlementService.MapEndpoints(app);
 BudgetOwnershipService.MapEndpoints(app);
+CategoryTargetService.MapEndpoints(app);
 BudgetSharingService.MapEndpoints(app);
 
 app.MapGet("/api/budget/{month}", async (string month, BudgetService budgets, LedgerGate gate, CancellationToken cancellationToken) =>
 {
     if (!IsMonth(month)) return Results.BadRequest(new { error = "Month must use YYYY-MM format." });
-    return await gate.RunAsync(async () => Results.Ok(BudgetDto.From(await budgets.GetMonthAsync(month, cancellationToken))), cancellationToken);
+    return await gate.RunAsync(async () => Results.Ok(await budgets.ToDtoAsync(await budgets.GetMonthAsync(month, cancellationToken), cancellationToken)), cancellationToken);
 });
 
 app.MapGet("/api/budget", async (BudgetService budgets, CancellationToken cancellationToken) =>
@@ -229,6 +232,12 @@ app.MapPut("/api/register-views/{scope}", (string scope, RegisterViewDto request
     gate.RunAsync(() => views.SaveAsync(scope, request, ct), ct));
 app.MapPost("/api/accounts", (CreateAccountRequest request, LedgerService ledger, CancellationToken ct) => ledger.CreateAccountAsync(request, ct));
 app.MapPut("/api/accounts/{id:guid}", (Guid id, UpdateAccountRequest request, LedgerService ledger, CancellationToken ct) => ledger.UpdateAccountAsync(id, request, ct));
+app.MapGet("/api/accounts/{id:guid}/credit-summary/{month}", (Guid id, string month, LedgerService ledger, LedgerGate gate, CancellationToken ct) =>
+    gate.RunAsync(() => ledger.GetCreditSummaryAsync(id, month, ct), ct));
+app.MapGet("/api/accounts/{id:guid}/payoff-target/{month}", (Guid id, string month, LedgerService ledger, LedgerGate gate, CancellationToken ct) =>
+    gate.RunAsync(() => ledger.GetPayoffTargetAsync(id, month, ct), ct));
+app.MapPut("/api/accounts/{id:guid}/payoff-target", (Guid id, SaveCreditPayoffTargetRequest request, LedgerService ledger, CancellationToken ct) => ledger.SavePayoffTargetAsync(id, request, ct));
+app.MapPost("/api/accounts/{id:guid}/payoff-target/delete", (Guid id, DeleteCreditPayoffTargetRequest request, LedgerService ledger, CancellationToken ct) => ledger.DeletePayoffTargetAsync(id, request, ct));
 app.MapPost("/api/accounts/{id:guid}/reconcile", (Guid id, ReconcileRequest request, LedgerService ledger, CancellationToken ct) => ledger.ReconcileAsync(id, request, ct));
 app.MapGet("/api/transactions", async (Guid? accountId, Guid? transferId, string? search, DateOnly? from, DateOnly? to, string? categoryId, string? status,
     int? page, int? pageSize, bool? includeReconciled, bool? needsAttention, Guid? payeeId, LedgerService ledger, LedgerGate gate, CancellationToken ct) =>

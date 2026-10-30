@@ -400,6 +400,10 @@ namespace OpenBudget.Api.Migrations
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)");
 
+                    b.Property<decimal>("CreditOverspending")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)");
+
                     b.Property<string>("GroupId")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -469,6 +473,112 @@ namespace OpenBudget.Api.Migrations
                     b.HasKey("BudgetId", "BudgetMonth", "Id");
 
                     b.ToTable("CategoryGroups");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.CategoryTargetEntity", b =>
+                {
+                    b.Property<string>("BudgetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("CategoryId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)");
+
+                    b.Property<string>("Behavior")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("DayOfMonth")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly?>("DueDate")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<int?>("RepeatEvery")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RepeatUnit")
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)");
+
+                    b.Property<string>("StartMonth")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("Weekday")
+                        .HasColumnType("integer");
+
+                    b.HasKey("BudgetId", "CategoryId");
+
+                    b.HasIndex("Id")
+                        .IsUnique();
+
+                    b.ToTable("CategoryTargets");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.CreditPayoffTargetEntity", b =>
+                {
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<decimal?>("MonthlyAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)");
+
+                    b.Property<decimal>("PayoffAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)");
+
+                    b.Property<string>("TargetMonth")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("AccountId");
+
+                    b.HasIndex("BudgetId");
+
+                    b.ToTable("CreditPayoffTargets");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.FlagDefinitionEntity", b =>
@@ -969,6 +1079,9 @@ namespace OpenBudget.Api.Migrations
                     b.Property<bool>("ShowRunningBalance")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("ShowScheduledTransactions")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("ToMonth")
                         .HasColumnType("text");
 
@@ -1146,6 +1259,16 @@ namespace OpenBudget.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Memo")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Payee")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
 
                     b.HasKey("TransactionId", "Position");
 
@@ -1389,6 +1512,24 @@ namespace OpenBudget.Api.Migrations
                         .WithMany("Groups")
                         .HasForeignKey("BudgetId", "BudgetMonth")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.CategoryTargetEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.BudgetPlanEntity", null)
+                        .WithMany()
+                        .HasForeignKey("BudgetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.CreditPayoffTargetEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.AccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

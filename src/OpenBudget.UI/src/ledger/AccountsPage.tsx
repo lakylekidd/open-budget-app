@@ -1,5 +1,6 @@
 import { Fragment as ReactFragment, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
-import { type Account, type Accounts, type Audit, type CategoryOption, type Entry, type Register, type Schedules, type ScheduledItem, ApiError, formatMoney, loadCategories, parseMoney, requestJson, today } from './api';
+import { MoneyInput } from '../MoneyInput';
+import { type Account, type Accounts, type Audit, type CategoryOption, type Entry, type Register, type Schedules, type ScheduledItem, ApiError, formatMoney, loadCategories, parseMoney, requestJson, today, type AccountType, accountTypeLabel, accountTypeSections, isCreditAccount } from './api';
 import { LedgerDialog } from './LedgerDialog';
 import { TransactionForm } from './TransactionForm';
 import { AccountHeader, RegisterIcon, TransactionRow } from './AccountRegister';
@@ -11,19 +12,19 @@ import { ManagePayees } from './Payees';
 import { TransactionSelectionBar } from './TransactionSelectionBar';
 import './ledger.css';
 
-type Dialog = { kind: 'account'; account?: Account } | { kind: 'transaction'; entry?: Entry } | { kind: 'transfer'; entry?: Entry; from?: string; to?: string }
+type Dialog = { kind: 'account'; account?: Account; accountType?: AccountType } | { kind: 'transaction'; entry?: Entry } | { kind: 'transfer'; entry?: Entry; from?: string; to?: string }
   | { kind: 'reconcile'; account: Account } | { kind: 'delete'; entry: Entry } | { kind: 'history' };
 
 export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMenu, onPendingChange, createAccountRequest, editAccountRequest, focusTransaction }: {
   selectedAccount: string; onSelectAccount: (id: string) => void; onChanged: () => void; onMenu: () => void; onPendingChange?: (pending: boolean) => void; createAccountRequest?: number; editAccountRequest?: {id:string;token:number};
-  focusTransaction?: { id: string; accountId: string; date: string; scheduled: boolean; projected?: Entry; source?: 'Plan' | 'Long-Term Planning' } | null;
+  focusTransaction?: { id: string; accountId: string; date: string; scheduled: boolean; projected?: Entry; splitIndex?: number; source?: 'Plan' | 'Long-Term Planning' } | null;
 }) {
   const [managePayees,setManagePayees]=useState(false);
   const [payeePending,setPayeePending]=useState(false);const [payeeFilter,setPayeeFilter]=useState<string|null>(null);
   const [inline, setInline] = useState<{key:string;entry?:Entry;schedule?:ScheduledItem;transferAccountId?:string} | null>(null);
   const [flags,setFlags]=useState(defaultFlags);const [flagVersion,setFlagVersion]=useState(1);
   const [schedules, setSchedules] = useState<Schedules | null>(null);
-  const [schedulePage, setSchedulePage] = useState(1); const [scheduledOpen, setScheduledOpen] = useState(true);
+  const [schedulePage, setSchedulePage] = useState(1);
   const handledEdit = useRef<number | null>(null);
   const handledCreate = useRef(0);
   useEffect(() => {
@@ -48,10 +49,13 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   const [savedView, setSavedView] = useState<{ scope: string; value: ViewOptions } | null>(null);
   const scope = selectedAccount || 'all';
   const view = savedView?.scope === scope ? savedView.value : defaultView;
+  const scheduledOpen = view.showScheduledTransactions;
   const [resizing, setResizing] = useState<{ scope: string; widths: ColumnWidths } | null>(null);
-  const resizeRef = useRef<{ key: string; pointerId: number; startX: number; startWidth: number } | null>(null);
+  const resizeRef = useRef<{ key: string; pointerId: number; startX: number; startWidths: ColumnWidths; scale: number } | null>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
   const latestWidths = useRef<ColumnWidths>({});
   const columnWidths = { ...defaultColumnWidths, ...(view.columnWidths ?? {}), ...(resizing?.scope === scope ? resizing.widths : {}) };
+  const columnOrder = registerColumnOrder(view);
   const { from, to } = viewDates(view);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [auditPage, setAuditPage] = useState(1); const [auditTotal, setAuditTotal] = useState(0);
@@ -63,13 +67,16 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     const widths = { ...columnWidths };
     latestWidths.current = widths;
     setResizing({ scope, widths });
-    resizeRef.current = { key, pointerId: event.pointerId, startX: event.clientX, startWidth: widths[key] ?? 100 };
+    // The table may be stretched to fill the page; convert screen pixels into stored width units.
+    const total = columnOrder.reduce((sum, column) => sum + (widths[column] ?? 0), 0);
+    const rendered = tableRef.current?.getBoundingClientRect().width || total;
+    resizeRef.current = { key, pointerId: event.pointerId, startX: event.clientX, startWidths: widths, scale: total / rendered };
     event.currentTarget.setPointerCapture?.(event.pointerId);
   }
   function moveColumnResize(event: PointerEvent<HTMLSpanElement>) {
     const active = resizeRef.current;
     if (!active || active.pointerId !== event.pointerId) return;
-    const widths = { ...latestWidths.current, [active.key]: Math.max(24, Math.min(1200, Math.round(active.startWidth + event.clientX - active.startX))) };
+    const widths = resizeColumnPair(active.startWidths, columnOrder, active.key, Math.round((event.clientX - active.startX) * active.scale));
     latestWidths.current = widths;
     setResizing({ scope, widths });
   }
@@ -82,6 +89,15 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not save column widths.'); }
     finally { viewInFlight.current = false; setViewSaving(false); setResizing(current => current?.scope === scope ? null : current); }
   }
+  async function persistScheduledVisibility(show: boolean) {
+    if (viewInFlight.current) return;
+    viewInFlight.current = true; setViewSaving(true);
+    try {
+      const next = await requestJson<ViewOptions>(`/api/register-views/${scope}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...view, showScheduledTransactions: show }) });
+      setSavedView({ scope, value: next });
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not save scheduled transaction visibility.'); }
+    finally { viewInFlight.current = false; setViewSaving(false); }
+  }
   async function finishColumnResize(event: PointerEvent<HTMLSpanElement>) {
     if (!resizeRef.current || resizeRef.current.pointerId !== event.pointerId) return;
     resizeRef.current = null;
@@ -90,10 +106,12 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     await persistColumnWidths(widths);
   }
   function resizeHandle(key: string, label: string) {
+    // The last column has no right-hand neighbour to trade width with.
+    if (columnOrder.at(-1) === key) return null;
     return <span className="register-resize-handle" role="separator" aria-label={`Resize ${label} column`} aria-orientation="vertical" aria-valuemin={24} aria-valuemax={1200} aria-valuenow={columnWidths[key]} tabIndex={0}
       onPointerDown={event => beginColumnResize(key, event)} onPointerMove={moveColumnResize} onPointerUp={event => void finishColumnResize(event)}
       onPointerCancel={() => { resizeRef.current = null; setResizing(null); }}
-      onKeyDown={event => { if (!viewSaving && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) { event.preventDefault(); const widths = { ...columnWidths, [key]: Math.max(24, Math.min(1200, columnWidths[key] + (event.key === 'ArrowRight' ? 10 : -10))) }; latestWidths.current = widths; setResizing({ scope, widths }); void persistColumnWidths(widths); } }} />;
+      onKeyDown={event => { if (!viewSaving && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) { event.preventDefault(); const widths = resizeColumnPair(columnWidths, columnOrder, key, event.key === 'ArrowRight' ? 10 : -10); latestWidths.current = widths; setResizing({ scope, widths }); void persistColumnWidths(widths); } }} />;
   }
   async function loadView() {
     const value = await requestJson<ViewOptions>(`/api/register-views/${scope}`);
@@ -167,9 +185,14 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   },[scope,selectedAccount,from,to,schedulePage,refresh,savedView,focusTransaction?.id]);
   useEffect(() => {
     if (!focusTransaction || focusTransaction.accountId !== selectedAccount) return;
-    const timer = window.setTimeout(() => document.querySelector(`[data-transaction-id="${focusTransaction.id}"]`)?.scrollIntoView?.({ block: 'center' }), 0);
+    const timer = window.setTimeout(() => {
+      const selector = focusTransaction.splitIndex === undefined
+        ? `[data-transaction-id="${focusTransaction.id}"]`
+        : `[data-transaction-id="${focusTransaction.id}"][data-split-index="${focusTransaction.splitIndex}"]`;
+      document.querySelector(selector)?.scrollIntoView?.({ block: 'center' });
+    }, 0);
     return () => window.clearTimeout(timer);
-  }, [focusTransaction?.id, selectedAccount, loading, register, schedules]);
+  }, [focusTransaction?.id, focusTransaction?.splitIndex, selectedAccount, loading, register, schedules]);
   useEffect(() => {
     if(editAccountRequest && editAccountRequest.token !== handledEdit.current && selectedAccount === editAccountRequest.id && !loading) {
       const account=accounts.accounts.find(a=>a.id===editAccountRequest.id);
@@ -283,18 +306,18 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     </div>
 
     <div className="register-scroll">
-      <table onKeyDown={e=>{if(e.key==='Escape'&&inline&&!disabled)setInline(null);}} className="register-table" aria-label="Transaction register"><colgroup>
+      <table ref={tableRef} onKeyDown={e=>{if(e.key==='Escape'&&inline&&!disabled)setInline(null);}} className="register-table" aria-label="Transaction register"><colgroup>
         <col style={{width:columnWidths.check}}/><col style={{width:columnWidths.info}}/>{view.showFlags && <col style={{width:columnWidths.flag}}/>}{view.showImages && <col style={{width:columnWidths.image}}/>}<col style={{width:columnWidths.date}}/><col style={{width:columnWidths.payee}}/><col style={{width:columnWidths.category}}/><col style={{width:columnWidths.memo}}/><col style={{width:columnWidths.outflow}}/><col style={{width:columnWidths.inflow}}/>{view.showRunningBalance && <col style={{width:columnWidths.balance}}/>}<col style={{width:columnWidths.status}}/></colgroup>
         <thead><tr><th aria-label="Select transactions">{resizeHandle('check','selection')}<input type="checkbox" aria-label="Select visible transactions" checked={Boolean(register?.items.length && register.items.every(t => selectedIds.includes(t.id)))} onChange={e => setSelectedIds(e.target.checked ? register?.items.map(t => t.id) ?? [] : [])}/></th>
           <th aria-label="Attention">{resizeHandle('info','attention')}<span className="transaction-info muted-info" aria-hidden="true">i</span><span className="sr-only">Attention</span></th>{view.showFlags && <th className="register-decoration-heading" aria-label="Flag">{resizeHandle('flag','flag')}<RegisterIcon name="flag" size={15}/><span className="sr-only">Flag</span></th>}{view.showImages && <th className="register-decoration-heading" aria-label="Attachment">{resizeHandle('image','attachment')}<RegisterIcon name="image" size={15}/><span className="sr-only">Attachment</span></th>}
           <th aria-label="DATE" aria-sort="descending">{resizeHandle('date','date')}DATE <span className="register-sort-arrow">▾</span></th><th aria-label="PAYEE">{resizeHandle('payee','payee')}PAYEE</th><th aria-label="CATEGORY">{resizeHandle('category','category')}CATEGORY</th><th aria-label="MEMO">{resizeHandle('memo','memo')}MEMO</th><th aria-label="OUTFLOW" className="register-money">{resizeHandle('outflow','outflow')}OUTFLOW</th><th aria-label="INFLOW" className="register-money">{resizeHandle('inflow','inflow')}INFLOW</th>{view.showRunningBalance && <th aria-label="BALANCE" className="register-money">{resizeHandle('balance','balance')}BALANCE</th>}<th aria-label="Cleared status">{resizeHandle('status','cleared status')}<span className="cleared-symbol" title="Cleared status" aria-hidden="true">c</span><span className="sr-only">Cleared status</span></th></tr></thead>
         <tbody>
           {inline&&(!inline.entry||(!loading&&(inline.schedule?!schedules?.items.some(s=>s.occurrenceId===inline.entry!.id):!register?.items.some(t=>t.id===inline.entry!.id))))&&editor()}
-          {Boolean(schedules?.total) && <tr className="scheduled-transactions-row"><td colSpan={9+Number(view.showFlags)+Number(view.showImages)+Number(view.showRunningBalance)}><button aria-expanded={scheduledOpen} onClick={()=>setScheduledOpen(!scheduledOpen)}><RegisterIcon name="calendar"/>Scheduled Transactions <svg className="scheduled-chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m5 3 5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg> ({schedules?.total})</button></td></tr>}
-          {scheduledOpen&&!loading&&schedules?.items.map(item=>inline?.entry?.id===item.occurrenceId? <ReactFragment key={item.occurrenceId}>{editor()}</ReactFragment> : <TransactionRow key={item.occurrenceId} entry={{...item.transaction,memo:item.postingError?`Needs review: ${item.postingError}`:item.transaction.memo}} onRowSelect={()=>setSelectedIds([item.occurrenceId])} flags={flags} onFlag={color=>mutate(`/api/schedules/${item.id}/flag`,'POST',{color})} onRenameFlags={renameFlags} view={view} scheduled paused={item.isPaused} account={accounts.accounts.find(a=>a.id===item.transaction.accountId)} categories={categories} selected={selectedIds.includes(item.occurrenceId)} disabled={disabled} onSelect={()=>setSelectedIds(ids=>ids.includes(item.occurrenceId)?ids.filter(id=>id!==item.occurrenceId):[...ids,item.occurrenceId])} onEdit={()=>void edit(item.transaction)} onToggle={()=>{}}/>)}
-          {scheduledOpen&&!loading&&focusTransaction?.scheduled&&focusTransaction.accountId===selectedAccount&&focusTransaction.projected&&!schedules?.items.some(item=>item.occurrenceId===focusTransaction.id)&&<TransactionRow key={focusTransaction.id} entry={focusTransaction.projected} view={view} scheduled account={accounts.accounts.find(a=>a.id===focusTransaction.accountId)} categories={categories} selected={selectedIds.includes(focusTransaction.id)} disabled onSelect={()=>setSelectedIds([focusTransaction.id])} onEdit={()=>{}} onToggle={()=>{}}/>}
+          {Boolean(schedules?.total) && <tr className="scheduled-transactions-row"><td colSpan={9+Number(view.showFlags)+Number(view.showImages)+Number(view.showRunningBalance)}><button disabled={viewSaving} aria-expanded={scheduledOpen} onClick={()=>void persistScheduledVisibility(!scheduledOpen)}><RegisterIcon name="calendar"/>Scheduled Transactions <svg className="scheduled-chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m5 3 5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg> ({schedules?.total})</button></td></tr>}
+          {scheduledOpen&&!loading&&schedules?.items.map(item=>inline?.entry?.id===item.occurrenceId? <ReactFragment key={item.occurrenceId}>{editor()}</ReactFragment> : <TransactionRow key={item.occurrenceId} entry={{...item.transaction,memo:item.postingError?`Needs review: ${item.postingError}`:item.transaction.memo}} onRowSelect={()=>setSelectedIds([item.occurrenceId])} flags={flags} onFlag={color=>mutate(`/api/schedules/${item.id}/flag`,'POST',{color})} onRenameFlags={renameFlags} view={view} scheduled paused={item.isPaused} focusedSplitIndex={focusTransaction?.id===item.occurrenceId?focusTransaction.splitIndex:undefined} account={accounts.accounts.find(a=>a.id===item.transaction.accountId)} categories={categories} selected={selectedIds.includes(item.occurrenceId)} disabled={disabled} onSelect={()=>setSelectedIds(ids=>ids.includes(item.occurrenceId)?ids.filter(id=>id!==item.occurrenceId):[...ids,item.occurrenceId])} onEdit={()=>void edit(item.transaction)} onToggle={()=>{}}/>)}
+          {scheduledOpen&&!loading&&focusTransaction?.scheduled&&focusTransaction.accountId===selectedAccount&&focusTransaction.projected&&!schedules?.items.some(item=>item.occurrenceId===focusTransaction.id)&&<TransactionRow key={focusTransaction.id} entry={focusTransaction.projected} view={view} focusedSplitIndex={focusTransaction.splitIndex} scheduled account={accounts.accounts.find(a=>a.id===focusTransaction.accountId)} categories={categories} selected={selectedIds.includes(focusTransaction.id)} disabled onSelect={()=>setSelectedIds([focusTransaction.id])} onEdit={()=>{}} onToggle={()=>{}}/>}
           {scheduledOpen&&schedules&&schedules.total>25&&<tr><td colSpan={12}><nav className="register-pagination" aria-label="Scheduled transaction pages"><button disabled={schedulePage===1||loading} onClick={()=>setSchedulePage(p=>p-1)}>Previous scheduled</button><span>Page {schedulePage}</span><button disabled={schedulePage*25>=schedules.total||loading} onClick={()=>setSchedulePage(p=>p+1)}>Next scheduled</button></nav></td></tr>}
-          {!loading && register?.items.map(entry => inline?.entry?.id===entry.id&&!inline.schedule ? <ReactFragment key={entry.id}>{editor()}</ReactFragment> : <TransactionRow key={entry.id} view={view} entry={entry} onRowSelect={()=>setSelectedIds([entry.id])} onReview={action=>mutate(`/api/transactions/${entry.id}/review`,'POST',{action})} flags={flags} onFlag={color=>mutate(`/api/transactions/${entry.id}/flag`,'POST',{color})} onRenameFlags={renameFlags} account={accounts.accounts.find(a => a.id === entry.accountId)} categories={categories}
+          {!loading && register?.items.map(entry => inline?.entry?.id===entry.id&&!inline.schedule ? <ReactFragment key={entry.id}>{editor()}</ReactFragment> : <TransactionRow key={entry.id} view={view} entry={entry} focusedSplitIndex={focusTransaction?.id===entry.id?focusTransaction.splitIndex:undefined} onRowSelect={()=>setSelectedIds([entry.id])} onReview={action=>mutate(`/api/transactions/${entry.id}/review`,'POST',{action})} flags={flags} onFlag={color=>mutate(`/api/transactions/${entry.id}/flag`,'POST',{color})} onRenameFlags={renameFlags} account={accounts.accounts.find(a => a.id === entry.accountId)} categories={categories}
             selected={selectedIds.includes(entry.id)} disabled={disabled} onSelect={() => setSelectedIds(ids => ids.includes(entry.id) ? ids.filter(id => id !== entry.id) : [...ids, entry.id])}
             onEdit={() => void edit(entry)} onToggle={() => void mutate('/api/transactions/' + entry.id + '/status', 'POST', {status:entry.status === 'uncleared' ? 'cleared' : 'uncleared'})}/>)}
         </tbody>
@@ -306,10 +329,10 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     </div>
     {managePayees&&<ManagePayees accounts={accounts.accounts} categories={categories} onPendingChange={setPayeePending} onClose={()=>setManagePayees(false)} onChanged={()=>{setRefresh(n=>n+1);onChanged();}} onShowTransactions={payee=>{setPayeeFilter(payee.id);setSearch('');setCategory('');setStatus('');setReviewFilter(false);setManagePayees(false);setPage(1);}}/>}
     {selected.length>0&&!inline&&!dialog&&<TransactionSelectionBar key={selected.map(t=>t.id).join(',')} entries={selected} accounts={accounts.accounts} flags={flags} disabled={disabled} scheduled={selected.some(t=>schedules?.items.some(s=>s.occurrenceId===t.id))} onClear={()=>setSelectedIds([])} onRenameFlags={renameFlags} onApply={action=>mutate('/api/transactions/selection','POST',{ids:selected.map(t=>t.id),...action})}/>}
-    {dialog && <LedgerDialog title={dialog.kind === 'account' ? dialog.account ? 'Edit Account' : 'Add cash account' : dialog.kind === 'transaction' ? dialog.entry ? 'Edit transaction' : 'Add transaction' : dialog.kind === 'transfer' ? dialog.entry ? 'Edit transfer' : 'Transfer money' : dialog.kind === 'reconcile' ? 'Reconcile account' : dialog.kind === 'history' ? 'Audit history' : 'Delete transaction'} onClose={close}>
+    {dialog && <LedgerDialog onBack={dialog.kind === 'account' && !dialog.account && dialog.accountType ? () => setDialog({ kind: 'account' }) : undefined} title={dialog.kind === 'account' ? dialog.account ? 'Edit Account' : dialog.accountType ? `Add ${accountTypeLabel(dialog.accountType)} account` : 'Select Account Type' : dialog.kind === 'transaction' ? dialog.entry ? 'Edit transaction' : 'Add transaction' : dialog.kind === 'transfer' ? dialog.entry ? 'Edit transfer' : 'Transfer money' : dialog.kind === 'reconcile' ? 'Reconcile account' : dialog.kind === 'history' ? 'Audit history' : 'Delete transaction'} onClose={close}>
       {feedback}
       {dialog.kind === 'transaction' && <TransactionForm accounts={accounts.accounts} selectedAccount={selectedAccount} entry={dialog.entry} busy={disabled} onSubmit={async fields => { await mutate(`/api/transactions${dialog.entry ? `/${dialog.entry.id}` : ''}`, dialog.entry ? 'PUT' : 'POST', fields); }} />}
-      {dialog.kind === 'account' && (dialog.account ? <EditAccountForm account={dialog.account} busy={disabled} onCancel={close} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account!.id}`, 'PUT', fields); }}/> : <AccountForm busy={disabled} onSubmit={async fields => { await mutate('/api/accounts', 'POST', fields); }}/>) }
+      {dialog.kind === 'account' && (dialog.account ? <EditAccountForm account={dialog.account} busy={disabled} onCancel={close} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account!.id}`, 'PUT', fields); }}/> : dialog.accountType ? <AccountForm key={dialog.accountType} accountType={dialog.accountType} busy={disabled} onSubmit={async fields => { await mutate('/api/accounts', 'POST', fields); }}/> : <AccountTypeList onSelect={accountType => setDialog({ kind: 'account', accountType })}/>) }
       {dialog.kind === 'transfer' && <TransferForm accounts={openAccounts} selectedAccount={selectedAccount} dialog={dialog} busy={disabled} onSubmit={async fields => { await mutate(`/api/transfers${dialog.entry ? `/${dialog.entry.id}` : ''}`, dialog.entry ? 'PUT' : 'POST', fields); }} />}
       {dialog.kind === 'reconcile' && <ReconcileForm account={accounts.accounts.find(a => a.id === dialog.account.id) ?? dialog.account} busy={disabled} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account.id}/reconcile`, 'POST', fields); }} />}
       {dialog.kind === 'delete' && <><p>Delete this entry{dialog.entry.transferId ? ' and its linked transfer entry' : ''}? Balances and budget activity will be recalculated. The audit history is retained.</p><button disabled={disabled} className="button-primary" onClick={() => mutate(`/api/transactions/${dialog.entry.id}/delete`, 'POST', {})}>Confirm deletion</button></>}
@@ -319,14 +342,22 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   </section>;
 }
 
-function AccountForm({ account, busy, onSubmit }: { account?: Account; busy: boolean; onSubmit: (fields: object) => Promise<void> }) {
-  const [name, setName] = useState(account?.name ?? ''); const [date, setDate] = useState(today());
-  const [accountType, setAccountType] = useState<string>(account?.accountType ?? 'checking');
-  const [amount, setAmount] = useState('0'); const [closed, setClosed] = useState(account?.isClosed ?? false); const [error, setError] = useState('');
-  return <form className="ledger-form" onSubmit={async e => { e.preventDefault(); const parsed = parseMoney(amount); if (parsed === null) { setError('Enter a balance with at most two decimal places.'); return; } await onSubmit(account ? { name, accountType, isClosed: closed } : { name, accountType, date, openingBalance: parsed }); }}>
+function AccountTypeList({ onSelect }: { onSelect: (type: AccountType) => void }) {
+  return <div className="account-type-list">{accountTypeSections.map(section => <section key={section.title} aria-label={section.title}>
+    <h3>{section.title}</h3><p>{section.description}</p>
+    {section.types.map(type => <button type="button" key={type.value} onClick={() => onSelect(type.value)}>{type.label}</button>)}
+  </section>)}</div>;
+}
+
+function AccountForm({ accountType, busy, onSubmit }: { accountType: AccountType; busy: boolean; onSubmit: (fields: object) => Promise<void> }) {
+  const credit = isCreditAccount({ accountType });
+  const [name, setName] = useState(''); const [date, setDate] = useState(today());
+  const [amount, setAmount] = useState('0'); const [error, setError] = useState('');
+  return <form className="ledger-form" onSubmit={async e => { e.preventDefault(); const parsed = parseMoney(amount); if (parsed === null || credit && parsed < 0) { setError(credit ? 'Enter the amount you owe as a positive balance with at most two decimal places.' : 'Enter a balance with at most two decimal places.'); return; } await onSubmit({ name, accountType, date, openingBalance: credit && parsed !== 0 ? -parsed : parsed }); }}>
     <label>Account name<input required maxLength={120} value={name} onChange={e => setName(e.target.value)} /></label>
-    <label>Account type<select value={accountType} onChange={e => setAccountType(e.target.value)}><option value="checking">Checking</option><option value="savings">Savings</option><option value="cash">Cash</option></select></label>
-    {!account ? <><label>Opening date<input required min="1900-01-01" max="9998-12-31" type="date" value={date} onChange={e => setDate(e.target.value)} /></label><label>Opening balance<input required inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} /></label><p>The opening balance is recorded once as a cleared ledger entry and contributes to Ready to Assign.</p></> : <label className="checkbox-label"><input type="checkbox" checked={closed} onChange={e => setClosed(e.target.checked)} />Closed account</label>}
+    <label>Opening date<input required min="1900-01-01" max="9998-12-31" type="date" value={date} onChange={e => setDate(e.target.value)} /></label>
+    <label>{credit ? 'Current balance owed' : 'Opening balance'}<MoneyInput required value={amount} onChange={raw => setAmount(raw)} /></label>
+    <p>{credit ? 'The balance owed is recorded once as existing debt. It does not change Ready to Assign; assign money to this account’s payment category to pay it off.' : 'The opening balance is recorded once as a cleared ledger entry and contributes to Ready to Assign.'}</p>
     {error && <p role="alert">{error}</p>}<button className="button-primary" disabled={busy}>Save account</button>
   </form>;
 }
@@ -340,7 +371,7 @@ function TransferForm({ accounts, selectedAccount, dialog, busy, onSubmit }: { a
     <p>Both account entries are saved together. Transfers do not change budget income or spending.</p>
     <label>From account<select required value={from} onChange={e => setFrom(e.target.value)}>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
     <label>To account<select required value={to} onChange={e => setTo(e.target.value)}>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
-    <label>Date<input type="date" required min="1900-01-01" max="9998-12-31" value={date} onChange={e => setDate(e.target.value)} /></label><label>Amount<input inputMode="decimal" required value={amount} onChange={e => setAmount(e.target.value)} /></label>
+    <label>Date<input type="date" required min="1900-01-01" max="9998-12-31" value={date} onChange={e => setDate(e.target.value)} /></label><label>Amount<MoneyInput required value={amount} onChange={raw => setAmount(raw)} /></label>
     <label>Memo<input maxLength={1000} value={memo} onChange={e => setMemo(e.target.value)} /></label>{error && <p role="alert">{error}</p>}<button disabled={busy} className="button-primary">Save transfer</button>
   </form>;
 }
@@ -350,9 +381,23 @@ function ReconcileForm({ account, busy, onSubmit }: { account: Account; busy: bo
   const difference = amount === null ? null : Math.round((amount - account.clearedBalance) * 100) / 100;
   return <form className="ledger-form" onSubmit={async e => { e.preventDefault(); if (amount !== null && difference === 0) await onSubmit({ statementBalance: amount }); }}>
     <p>{account.name} · Cleared balance: {formatMoney(account.clearedBalance)}</p>
-    <label>Statement balance<input required inputMode="decimal" value={statement} onChange={e => setStatement(e.target.value)} /></label>
+    <label>Statement balance<MoneyInput required value={statement} onChange={raw => setStatement(raw)} /></label>
     <p role="status">Difference: {difference === null ? 'Enter your statement balance' : formatMoney(difference)}</p>
     <p>Clear or correct entries until the difference is zero. Confirming records a snapshot and locks cleared entries; use a new correcting entry for later corrections.</p>
     <button disabled={busy || difference !== 0} className="button-primary">Confirm reconciliation</button>
   </form>;
+}
+
+export function registerColumnOrder(view: Pick<ViewOptions, 'showFlags' | 'showImages' | 'showRunningBalance'>) {
+  return ['check', 'info', ...(view.showFlags ? ['flag'] : []), ...(view.showImages ? ['image'] : []), 'date', 'payee', 'category', 'memo', 'outflow', 'inflow', ...(view.showRunningBalance ? ['balance'] : []), 'status'];
+}
+
+// Dragging a column's right edge trades width only with the column to its right, so the table's
+// total width and every other column stay unchanged. Both columns keep at least 24px.
+export function resizeColumnPair(widths: ColumnWidths, order: string[], key: string, delta: number): ColumnWidths {
+  const neighbour = order[order.indexOf(key) + 1];
+  if (!neighbour) return widths;
+  const current = widths[key] ?? 0, next = widths[neighbour] ?? 0;
+  const applied = Math.max(24 - current, Math.min(next - 24, delta));
+  return { ...widths, [key]: current + applied, [neighbour]: next - applied };
 }

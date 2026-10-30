@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { TransactionForm } from './TransactionForm';
@@ -46,4 +46,35 @@ it('disables writes when categories fail to load', async () => {
   render(<TransactionForm accounts={accounts} selectedAccount="cash" busy={false} onSubmit={vi.fn()} />);
   expect(await screen.findByRole('alert')).toHaveTextContent('Could not load categories');
   expect(screen.getByRole('button', { name: 'Save transaction' })).toBeDisabled();
+});
+
+it('requires a category for credit account transactions and hides card payment categories', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (path: string) => new Response(JSON.stringify(path === '/api/payees' ? [] : { groups: [{ id: 'credit-card-payments', categories: [{ id: 'ccp-card', name: 'Visa' }] }, { id: 'daily', categories: [{ id: 'food', name: 'Food' }] }] }), { status: 200 })));
+  const card: Account = { ...accounts[0], id: 'card', name: 'Visa', balance: -50, accountType: 'creditCard' };
+  const submit = vi.fn(async () => {}); const user = userEvent.setup();
+  render(<TransactionForm accounts={[card]} selectedAccount="card" busy={false} onSubmit={submit} />);
+  await screen.findByRole('combobox', { name: 'Category' });
+  await user.type(screen.getByLabelText('Amount'), '-20');
+  await user.click(screen.getByRole('button', { name: 'Save transaction' }));
+  expect(screen.getByRole('alert')).toHaveTextContent('Credit account transactions require a category.');
+  expect(submit).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('combobox', { name: 'Category' }));
+  expect(within(screen.getByRole('listbox', { name: 'Budget categories' })).queryByRole('option', { name: /^Visa/ })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('option', { name: /^Food/ }));
+  await user.click(screen.getByRole('button', { name: 'Save transaction' }));
+  await waitFor(() => expect(submit).toHaveBeenCalledWith(expect.objectContaining({ accountId: 'card', amount: -20, categoryId: 'food' })));
+});
+
+it('calculates arithmetic typed into an amount field', async () => {
+  const submit = vi.fn(async () => {}); const user = userEvent.setup();
+  render(<TransactionForm accounts={accounts} selectedAccount="cash" busy={false} onSubmit={submit} />);
+  await screen.findByRole('combobox', { name: 'Category' });
+  const amount = screen.getByLabelText('Amount');
+  expect(amount.closest('.money-input-shell')?.querySelector('.money-input-icon svg')).not.toBeNull();
+  await user.type(amount, '-12.50-7.25');
+  await user.tab();
+  expect(amount).toHaveValue('-19.75');
+  await user.click(screen.getByRole('combobox', { name: 'Category' })); await user.click(screen.getByRole('option', { name: /^Food/ }));
+  await user.click(screen.getByRole('button', { name: 'Save transaction' }));
+  expect(submit).toHaveBeenCalledWith(expect.objectContaining({ amount: -19.75, categoryId: 'food' }));
 });

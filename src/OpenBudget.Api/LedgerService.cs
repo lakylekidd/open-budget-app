@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace OpenBudget.Api;
 
-public sealed partial class LedgerService(BudgetDbContext db, BudgetService budgets, LedgerGate gate, TimeProvider clock)
+public sealed partial class LedgerService(BudgetDbContext db, BudgetService budgets, LedgerGate gate, TimeProvider clock, LedgerProjection projection)
 {
     private IQueryable<TransactionEntity> Entries => db.Transactions.Include(t => t.Payee).Include(t => t.Splits);
 
@@ -120,6 +120,8 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             ValidateName(request.Name);
             if (request.AccountType is not null) ValidateAccountType(request.AccountType);
             var account = await db.Accounts.SingleOrDefaultAsync(a => a.Id == id, ct) ?? throw new LedgerException("Account not found.", 404);
+            if (request.AccountType is not null && CreditCardRules.IsCredit(request.AccountType) != CreditCardRules.IsCredit(account.AccountType))
+                throw new LedgerException("An account cannot change between cash and credit types. Create a new account instead.");
             if(request.Notes?.Length > 1000 || request.WorkingBalance is not null && !LedgerRules.IsMoney(request.WorkingBalance.Value)) throw new LedgerException("Notes must be at most 1000 characters and the working balance must be valid money.");
             var balance=await db.Transactions.Where(t=>t.AccountId==id&&!t.IsDeleted).SumAsync(t=>t.Amount,ct);
             var before = new { account.Id, account.Name, account.IsClosed, account.AccountType, account.IsFavorite, account.Notes, Balance=balance };
@@ -154,12 +156,17 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             var openingZero = id is not null && request.Amount == 0 && await db.Transactions.AnyAsync(t => t.Id == id && t.IsOpening && !t.IsDeleted, ct);
             var error = LedgerRules.Validate(openingZero ? request with { Amount = 0.01m } : request);
             if (error is not null) throw new LedgerException(error);
-            await OpenAccountAsync(request.AccountId, ct);
+            var account = await OpenAccountAsync(request.AccountId, ct);
             var month = await budgets.GetMonthAsync(db.ActiveBudgetId, Month(request.Date), ct);
             var resolvedPayee = imported ? await ResolveImportedPayeeAsync(request.Payee, ct) : await GetPayeeAsync(request.Payee, ct);
             if (imported && request.CategoryId is null && request.Splits?.Count is not > 0)
                 request = request with { CategoryId = await SuggestedCategoryAsync(resolvedPayee, request.Date, ct) };
-            var categoryIds = (request.Splits ?? []).Select(s => s.CategoryId).Concat(request.CategoryId is null ? [] : [request.CategoryId]);
+            var categoryIds = (request.Splits ?? []).Select(s => s.CategoryId).Concat(request.CategoryId is null ? [] : [request.CategoryId]).ToList();
+            if (categoryIds.Any(CreditCardRules.IsPaymentCategory))
+                throw new LedgerException("Credit card payment categories are funded automatically. Record a card payment as a transfer.");
+            if (!imported && CreditCardRules.IsCredit(account.AccountType) && categoryIds.Count == 0
+                && !(id is not null && await db.Transactions.AnyAsync(t => t.Id == id && t.IsOpening, ct)))
+                throw new LedgerException("Credit account transactions require a category.");
             foreach (var categoryId in categoryIds)
                 if (!month.Groups.Any(g => !g.IsArchived && g.Categories.Any(c => c.Id == categoryId && !c.IsArchived)))
                     throw new LedgerException("Choose an active category belonging to the transaction month.");
@@ -193,6 +200,8 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
                 if (split is null) { split = new SplitEntity { TransactionId = entry.Id, Position = position }; entry.Splits.Add(split); }
                 split.CategoryId = splits[position].CategoryId;
                 split.Amount = splits[position].Amount;
+                split.Payee = splits[position].Payee?.Trim() ?? "";
+                split.Memo = splits[position].Memo?.Trim() ?? "";
             }
             if (id is null) db.Transactions.Add(entry);
             if (request.Repeat != "never" && !entry.IsOpening)
@@ -276,6 +285,20 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             return new Change(entry.TransferId ?? id, before, ToDto(entry));
         }, ct);
 
+    public async Task<CreditSummaryDto> GetCreditSummaryAsync(Guid id, string month, CancellationToken ct)
+    {
+        var account = await db.Accounts.AsNoTracking().SingleOrDefaultAsync(a => a.Id == id, ct) ?? throw new LedgerException("Account not found.", 404);
+        if (!CreditCardRules.IsCredit(account.AccountType)) throw new LedgerException("Only credit accounts have a payment summary.");
+        if (!DateOnly.TryParseExact($"{month}-01", "yyyy-MM-dd", out var start)) throw new LedgerException("Month must use YYYY-MM format.");
+        var end = start.AddMonths(1);
+        var entries = db.Transactions.AsNoTracking().Where(t => t.AccountId == id && !t.IsDeleted);
+        var prior = await entries.Where(t => t.Date < start).SumAsync(t => t.Amount, ct);
+        var outflows = await entries.Where(t => t.Date >= start && t.Date < end && t.Amount < 0).SumAsync(t => t.Amount, ct);
+        var inflows = await entries.Where(t => t.Date >= start && t.Date < end && t.Amount > 0).SumAsync(t => t.Amount, ct);
+        // Interest is not modeled separately yet; interest entered as categorized spending is included in outflows.
+        return new(id, month, prior, outflows, 0, inflows, prior + outflows + inflows);
+    }
+
     public Task<List<string>> GetPayeesAsync(CancellationToken ct) =>
         db.Payees.AsNoTracking().Where(p => !p.IsHidden).OrderBy(p => p.Name).Select(p => p.Name).ToListAsync(ct);
 
@@ -305,43 +328,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             return new MutationDto(change.Id, state.Version);
         }, ct);
 
-    private async Task RecalculateMonthsAsync(CancellationToken ct)
-    {
-        var months = await db.Budgets.Where(b => b.BudgetId == db.ActiveBudgetId)
-            .Include(b => b.Groups).ThenInclude(g => g.Categories).OrderBy(b => b.Month).ToListAsync(ct);
-        var entries = await Entries.Where(t => !t.IsDeleted).ToListAsync(ct);
-        var byMonth = entries.GroupBy(t => Month(t.Date)).ToDictionary(g => g.Key, g => g.ToList());
-        decimal rtaDelta = 0;
-        var categoryDeltas = new Dictionary<string, decimal>();
-        BudgetEntity? previous = null;
-        foreach (var month in months)
-        {
-            var oldRta = BudgetService.CalculateReadyToAssign(month);
-            var oldAvailable = month.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.Available);
-            var monthlyEntries = byMonth.GetValueOrDefault(month.Month) ?? [];
-            var activity = LedgerRules.Activity(monthlyEntries);
-            var income = monthlyEntries.Sum(LedgerRules.Income);
-            var changed = rtaDelta != 0 || income != month.LedgerIncome;
-            if (previous is not null) changed |= BudgetCarryForward.Apply(month, rtaDelta, categoryDeltas, previous);
-            month.LedgerIncome = income;
-            var categories = month.Groups.SelectMany(g => g.Categories).ToList();
-            foreach (var category in categories)
-            {
-                var nextActivity = category.LegacyActivity + activity.GetValueOrDefault(category.Id);
-                changed |= category.Activity != nextActivity;
-                category.Activity = nextActivity;
-            }
-            var carryChanges = BudgetCarryForward.CalculateChanges(
-                oldRta,
-                BudgetService.CalculateReadyToAssign(month),
-                oldAvailable,
-                categories);
-            rtaDelta = carryChanges.ReadyToAssignDelta;
-            categoryDeltas = new Dictionary<string, decimal>(carryChanges.AvailableDeltas, StringComparer.Ordinal);
-            if (changed) month.Version++;
-            previous = month;
-        }
-    }
+    private Task RecalculateMonthsAsync(CancellationToken ct) => projection.RecalculateAsync(db.ActiveBudgetId, ct);
 
     private async Task<AccountEntity> OpenAccountAsync(Guid id, CancellationToken ct)
     {
@@ -374,7 +361,8 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
     }
     private static void ValidateAccountType(string? type)
     {
-        if (type is not ("checking" or "savings" or "cash")) throw new LedgerException("Account type must be checking, savings or cash.");
+        if (type is not ("checking" or "savings" or "cash" or "creditCard" or "lineOfCredit"))
+            throw new LedgerException("Account type must be checking, savings, cash, creditCard or lineOfCredit.");
     }
     private sealed class LedgerBalanceRow
     {
@@ -387,7 +375,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
     }
     private static string Month(DateOnly date) => date.ToString("yyyy-MM", System.Globalization.CultureInfo.InvariantCulture);
     private static TransactionDto ToDto(TransactionEntity t) => new(t.Id, t.AccountId, t.Date, t.Amount, t.Payee?.Name ?? "", t.Memo,
-        t.CategoryId, t.Status, t.TransferId, t.IsOpening, t.Splits.OrderBy(s => s.Position).Select(s => new SplitDto(s.CategoryId, s.Amount)).ToList(), !t.IsApproved || LedgerRules.NeedsAttention(t), FlagColor:t.FlagColor, ScheduleId:t.ScheduleId, IsApproved:t.IsApproved, NeedsCategory:LedgerRules.NeedsAttention(t));
+        t.CategoryId, t.Status, t.TransferId, t.IsOpening, t.Splits.OrderBy(s => s.Position).Select(s => new SplitDto(s.CategoryId, s.Amount, string.IsNullOrEmpty(s.Payee) ? null : s.Payee, string.IsNullOrEmpty(s.Memo) ? null : s.Memo)).ToList(), !t.IsApproved || LedgerRules.NeedsAttention(t), FlagColor:t.FlagColor, ScheduleId:t.ScheduleId, IsApproved:t.IsApproved, NeedsCategory:LedgerRules.NeedsAttention(t));
     private sealed record Change(Guid Id, object? Before, object? After);
 }
 

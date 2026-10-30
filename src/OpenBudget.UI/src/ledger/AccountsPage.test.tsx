@@ -1,9 +1,10 @@
+import { defaultColumnWidths } from './ViewOptions';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { defaultFlags } from './Flags';
 import { defaultView, type ViewOptions } from './ViewOptions';
-import { AccountsPage } from './AccountsPage';
+import { AccountsPage, registerColumnOrder, resizeColumnPair } from './AccountsPage';
 import { type Account, type Register } from './api';
 
 const checking: Account = { id: 'checking', name: 'Checking', isClosed: false, balance: 90, clearedBalance: 100, unclearedBalance: -10, accountType:'checking', isFavorite:false, connectionStatus:'unlinked', lastReconciledAt:null, needsCategoryCount:1 };
@@ -54,15 +55,28 @@ beforeEach(() => {
 function show(selectedAccount = '') { const onChanged = vi.fn(); render(<AccountsPage selectedAccount={selectedAccount} onSelectAccount={vi.fn()} onChanged={onChanged} onMenu={vi.fn()} />); return onChanged; }
 async function ready() { await screen.findByRole('button', { name: 'Edit Shop 2026-10-21' }); }
 
+it('renders each saved split as a category detail row beneath its parent transaction',async()=>{
+ register.items[0]={...register.items[0],categoryId:null,needsAttention:false,splits:[{categoryId:'food',amount:-7,payee:'Market',memo:'Fruit'},{categoryId:'food',amount:-3,payee:'Cafe',memo:'Coffee'}]};
+ show('checking');await ready();
+ expect(screen.getByRole('row',{name:'Split 1'})).toHaveTextContent('Food · Market');expect(screen.getByRole('row',{name:'Split 1'})).toHaveTextContent('Fruit');
+ expect(screen.getByRole('row',{name:'Split 1'})).toHaveTextContent('€7.00');expect(screen.getByRole('row',{name:'Split 2'})).toHaveTextContent('Cafe');
+ const disclosure=screen.getByRole('button',{name:'Collapse split categories'});expect(disclosure).toHaveAttribute('aria-expanded','true');await userEvent.click(disclosure);
+ expect(screen.queryByRole('row',{name:'Split 1'})).not.toBeInTheDocument();expect(screen.queryByRole('row',{name:'Split 2'})).not.toBeInTheDocument();
+ const expand=screen.getByRole('button',{name:'Expand split categories'});expect(expand).toHaveAttribute('aria-expanded','false');await userEvent.click(expand);expect(screen.getByRole('row',{name:'Split 1'})).toBeInTheDocument();
+ await userEvent.dblClick(screen.getByRole('row',{name:'Split 2'}));expect(screen.getByRole('row',{name:'Edit transaction inline'})).toBeInTheDocument();
+});
+
 it('resizes every visible register column and persists the selected column width', async () => {
   show('checking'); await ready();
   const handle = screen.getByRole('separator', { name: 'Resize payee column' });
   const payeeColumn = handle.closest('th')?.cellIndex;
-  expect(screen.getAllByRole('separator', { name: /^Resize .* column$/ })).toHaveLength(12);
+  expect(screen.getAllByRole('separator', { name: /^Resize .* column$/ })).toHaveLength(11);
   fireEvent.pointerDown(handle, { pointerId: 1, clientX: 200 });
   fireEvent.pointerMove(handle, { pointerId: 1, clientX: 260 });
   fireEvent.pointerUp(handle, { pointerId: 1, clientX: 260 });
   await waitFor(() => expect(views['/api/register-views/checking']?.columnWidths.payee).toBe(260));
+  // Only the right-hand neighbour gives up the width; every other column is unchanged.
+  expect(views['/api/register-views/checking']?.columnWidths).toEqual({ ...defaultColumnWidths, payee: 260, category: 170 });
   expect(screen.getAllByRole('columnheader')[payeeColumn!].querySelector('.register-resize-handle')).toBeInTheDocument();
 });
 
@@ -162,6 +176,7 @@ it('distinguishes an empty account list, empty filters, and a failed load with r
 it('creates an account with opening balance and notifies the Plan sidebar', async () => {
   const onChanged = show(); const user = userEvent.setup(); await ready();
   await user.click(screen.getByRole('button', { name: 'Add account' }));
+  await user.click(within(screen.getByRole('dialog', { name: 'Select Account Type' })).getByRole('button', { name: 'Checking' }));
   const dialog = screen.getByRole('dialog');
   await user.type(within(dialog).getByLabelText('Account name'), 'Wallet');
   await user.clear(within(dialog).getByLabelText('Opening balance'));
@@ -172,11 +187,30 @@ it('creates an account with opening balance and notifies the Plan sidebar', asyn
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 
+it('offers cash and credit account types and records a credit balance owed as debt', async () => {
+  show(); const user = userEvent.setup(); await ready();
+  await user.click(screen.getByRole('button', { name: 'Add account' }));
+  const picker = screen.getByRole('dialog', { name: 'Select Account Type' });
+  expect(within(picker).getByRole('region', { name: 'Cash Accounts' })).toHaveTextContent('A cash account holds funds you already own and can spend immediately.');
+  const credit = within(picker).getByRole('region', { name: 'Credit Accounts' });
+  expect(within(credit).getAllByRole('button').map(button => button.textContent)).toEqual(['Credit Card', 'Line of Credit']);
+  await user.click(within(credit).getByRole('button', { name: 'Credit Card' }));
+  const form = screen.getByRole('dialog', { name: 'Add Credit Card account' });
+  await user.click(within(form).getByRole('button', { name: 'Back' }));
+  await user.click(within(screen.getByRole('dialog', { name: 'Select Account Type' })).getByRole('button', { name: 'Credit Card' }));
+  await user.type(screen.getByLabelText('Account name'), 'Mastercard');
+  await user.clear(screen.getByLabelText('Current balance owed'));
+  await user.type(screen.getByLabelText('Current balance owed'), '250');
+  await user.click(screen.getByRole('button', { name: 'Save account' }));
+  await waitFor(() => expect(mutations[0]).toEqual({ path: '/api/accounts', body: expect.objectContaining({ name: 'Mastercard', accountType: 'creditCard', openingBalance: -250 }) }));
+});
+
 it('retries a lost response with the identical command id and body', async () => {
   const onPendingChange = vi.fn();
   render(<AccountsPage selectedAccount="" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()} onPendingChange={onPendingChange} />);
   const user = userEvent.setup(); await ready(); failMutation = 'network';
   await user.click(screen.getByRole('button', { name: 'Add account' }));
+  await user.click(screen.getByRole('button', { name: 'Checking' }));
   await user.type(screen.getByLabelText('Account name'), 'Wallet');
   await user.click(screen.getByRole('button', { name: 'Save account' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Connection lost');
@@ -193,6 +227,7 @@ it('retries a lost response with the identical command id and body', async () =>
 it('keeps edits on conflict and requires a reload before resubmitting', async () => {
   show(); const user = userEvent.setup(); await ready(); failMutation = 'conflict';
   await user.click(screen.getByRole('button', { name: 'Add account' }));
+  await user.click(screen.getByRole('button', { name: 'Checking' }));
   await user.type(screen.getByLabelText('Account name'), 'Wallet');
   await user.click(screen.getByRole('button', { name: 'Save account' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('changed in another session');
@@ -363,6 +398,33 @@ it('requires confirmation when editing a reconciled row and sends the explicit a
  await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0].body).toMatchObject({confirmReconciledEdit:true,status:'cleared'});
 });
 
+it('tabs from date to payee to category and opens each dropdown on focus',async()=>{
+ show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));
+ await userEvent.click(screen.getByRole('textbox',{name:'Date'}));
+ expect(screen.getByLabelText('Transaction calendar')).toBeInTheDocument();
+ await userEvent.tab();
+ expect(screen.getByRole('combobox',{name:'Payee'})).toHaveFocus();
+ expect(screen.queryByLabelText('Transaction calendar')).not.toBeInTheDocument();
+ expect(screen.getByRole('combobox',{name:'Payee'})).toHaveAttribute('aria-expanded','true');
+ await userEvent.tab();
+ const category=screen.getByRole('combobox',{name:'Category'});
+ expect(category).toHaveFocus();expect(category).toHaveAttribute('aria-expanded','true');
+ expect(screen.getByRole('combobox',{name:'Payee'})).toHaveAttribute('aria-expanded','false');
+ await userEvent.keyboard('{Escape}');
+ expect(category).toHaveFocus();expect(category).toHaveAttribute('aria-expanded','false');
+});
+
+it('moves to the next field after choosing a payee and a category',async()=>{
+ show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));
+ await userEvent.click(screen.getByRole('combobox',{name:'Payee'}));
+ await userEvent.keyboard('{ArrowDown}{Enter}');
+ const category=screen.getByRole('combobox',{name:'Category'});
+ await waitFor(()=>expect(category).toHaveFocus());expect(category).toHaveAttribute('aria-expanded','true');
+ await userEvent.click(screen.getByRole('option',{name:/Ready to Assign/}));
+ expect(category).toHaveValue('Inflow: Ready to Assign');
+ await waitFor(()=>expect(screen.getByRole('textbox',{name:'Memo'})).toHaveFocus());
+});
+
 it('tabs from the payee field to the next editable field and skips inline dropdown chevrons',async()=>{
  show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));
  const payee=screen.getByRole('combobox',{name:'Payee'});payee.focus();
@@ -375,10 +437,11 @@ it('tabs from the payee field to the next editable field and skips inline dropdo
 
 it('expands scheduled rows, posts Enter Now explicitly, and keeps forecast actions separate',async()=>{
  scheduledItems=[{id:'rule',occurrenceId:'occurrence',repeat:'monthly',startDate:'2036-10-25',isPaused:false,endDate:null,count:null,toAccountId:null,transaction:{...register.items[0],id:'occurrence',date:'2036-10-25',payee:'Employer',memo:'Next salary',amount:2500}}];
- show('checking');await ready();await screen.findByRole('button',{name:'Edit Employer 2036-10-25'});
+ const page=render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);await ready();await screen.findByRole('button',{name:'Edit Employer 2036-10-25'});
  await userEvent.click(screen.getByText('Next salary'));expect(screen.queryByText('1 selected')).not.toBeInTheDocument();await userEvent.click(screen.getByRole('button',{name:'More account actions'}));expect(screen.getByRole('button',{name:'Enter Now'})).toBeEnabled();
  await userEvent.click(screen.getByRole('button',{name:'Enter Now'}));await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0]).toMatchObject({path:'/api/schedules/rule/actions',body:{action:'post',occurrenceId:'occurrence'}});
- await ready();const scheduledToggle=screen.getByRole('button',{name:/Scheduled Transactions/});expect(scheduledToggle).toHaveAttribute('aria-expanded','true');await userEvent.click(scheduledToggle);expect(scheduledToggle).toHaveAttribute('aria-expanded','false');expect(screen.queryByText('Next salary')).not.toBeInTheDocument();
+ await ready();const scheduledToggle=screen.getByRole('button',{name:/Scheduled Transactions/});expect(scheduledToggle).toHaveAttribute('aria-expanded','true');await userEvent.click(scheduledToggle);await waitFor(()=>expect(views['/api/register-views/checking']?.showScheduledTransactions).toBe(false));expect(scheduledToggle).toHaveAttribute('aria-expanded','false');expect(screen.queryByText('Next salary')).not.toBeInTheDocument();
+ page.unmount();show('checking');await ready();expect(await screen.findByRole('button',{name:/Scheduled Transactions/})).toHaveAttribute('aria-expanded','false');expect(screen.queryByText('Next salary')).not.toBeInTheDocument();
 });
 
 it('hides scheduled transactions for an account without any',async()=>{
@@ -396,9 +459,23 @@ it('shows the approval banner and review i only for unapproved entries and sends
  await waitFor(()=>expect(vi.mocked(fetch).mock.calls.some(([path])=>String(path).includes('needsAttention=true'))).toBe(true));
 });
 
-it('validates exact signed splits in the new inline row before submitting',async()=>{
+it('shows YNAB-style split subrows, calculates the remainder and validates exact signed allocations',async()=>{
  show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Add Transaction'}));await userEvent.type(screen.getByRole('textbox',{name:'Outflow'}),'20');await userEvent.click(screen.getByRole('combobox',{name:'Category'}));await userEvent.click(screen.getByRole('button',{name:'Split'}));
- await userEvent.click(screen.getByRole('combobox',{name:'Split 1 category'}));await userEvent.click(screen.getByRole('option',{name:/^Food/}));await userEvent.click(screen.getByRole('combobox',{name:'Split 2 category'}));await userEvent.click(screen.getByRole('option',{name:/^Food/}));await userEvent.type(screen.getByLabelText('Split 1 amount'),'-10');await userEvent.type(screen.getByLabelText('Split 2 amount'),'-5');
+ expect(screen.getByRole('row',{name:'Split 1'})).toBeInTheDocument();expect(screen.getByRole('button',{name:/Add another split/})).toBeInTheDocument();
+ await userEvent.click(screen.getByRole('combobox',{name:'Split 1 category'}));await userEvent.click(screen.getByRole('option',{name:/^Food/}));await userEvent.click(screen.getByRole('combobox',{name:'Split 2 category'}));await userEvent.click(screen.getByRole('option',{name:/^Food/}));
+ await userEvent.click(screen.getByRole('combobox',{name:'Split 1 payee'}));await userEvent.click(screen.getByRole('option',{name:'Shop'}));expect(screen.getByRole('combobox',{name:'Split 1 payee'})).toHaveValue('Shop');
+ await userEvent.type(screen.getByLabelText('Split 1 outflow'),'10');await userEvent.clear(screen.getByLabelText('Split 1 payee'));await userEvent.type(screen.getByLabelText('Split 1 payee'),'Market');await userEvent.type(screen.getByLabelText('Split 1 memo'),'Produce');await userEvent.type(screen.getByLabelText('Split 2 outflow'),'5');
+ expect(screen.getByText('Amount remaining to assign:').nextElementSibling).toHaveTextContent('5.00');
  await userEvent.click(screen.getByRole('button',{name:'Save'}));expect(screen.getByRole('alert')).toHaveTextContent('Split amounts must equal');expect(mutations).toHaveLength(0);
- await userEvent.clear(screen.getByLabelText('Split 2 amount'));await userEvent.type(screen.getByLabelText('Split 2 amount'),'-10');await userEvent.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0].body).toMatchObject({amount:-20,splits:[{categoryId:'food',amount:-10},{categoryId:'food',amount:-10}]});
+ await userEvent.clear(screen.getByLabelText('Split 2 outflow'));await userEvent.type(screen.getByLabelText('Split 2 outflow'),'10');await userEvent.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0].body).toMatchObject({amount:-20,splits:[{categoryId:'food',amount:-10,payee:'Market',memo:'Produce'},{categoryId:'food',amount:-10,payee:'',memo:''}]});
+});
+
+it('trades width only with the right neighbour and keeps both columns at least 24px', () => {
+  const order = registerColumnOrder({ showFlags: false, showImages: false, showRunningBalance: true });
+  expect(order).toEqual(['check', 'info', 'date', 'payee', 'category', 'memo', 'outflow', 'inflow', 'balance', 'status']);
+  const widths = { ...defaultColumnWidths };
+  expect(resizeColumnPair(widths, order, 'memo', -40)).toEqual({ ...widths, memo: 140, outflow: 160 });
+  expect(resizeColumnPair(widths, order, 'outflow', 500)).toEqual({ ...widths, outflow: 216, inflow: 24 });
+  expect(resizeColumnPair(widths, order, 'date', -500)).toEqual({ ...widths, date: 24, payee: 306 });
+  expect(resizeColumnPair(widths, order, 'status', 30)).toBe(widths);
 });

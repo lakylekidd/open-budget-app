@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace OpenBudget.Api;
 
-public sealed class BudgetService(BudgetDbContext db)
+public sealed class BudgetService(BudgetDbContext db, LedgerProjection projection)
 {
     private const int MaxGroups = 100;
     private const int MaxCategoriesPerGroup = 500;
@@ -89,7 +89,7 @@ public sealed class BudgetService(BudgetDbContext db)
 
         var budget = await GetMonthAsync(budgetId, request.Month, cancellationToken);
         if (budget.Version != request.Version)
-            return BudgetUpdateResult.Conflict(BudgetDto.From(budget));
+            return BudgetUpdateResult.Conflict(await ToDtoAsync(budget, cancellationToken));
         if (budget.FundsAdded != request.FundsAdded)
             return BudgetUpdateResult.Invalid("Funds added is a preserved legacy baseline. Record new income through a cash account transaction.");
 
@@ -105,7 +105,9 @@ public sealed class BudgetService(BudgetDbContext db)
 
         var previousReadyToAssign = CalculateReadyToAssign(budget);
         var previousAvailable = budget.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.Available);
+        var previousCreditOverspending = budget.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.CreditOverspending);
         var previousCategories = budget.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => (c.Name, c.Assigned));
+        var orderingChanged = false;
 
         foreach (var groupRequest in request.Groups)
         {
@@ -114,6 +116,11 @@ public sealed class BudgetService(BudgetDbContext db)
                 group = new CategoryGroupEntity { BudgetId = budgetId, BudgetMonth = request.Month, Id = groupRequest.Id };
                 budget.Groups.Add(group);
                 currentGroups.Add(group.Id, group);
+                orderingChanged = true;
+            }
+            else if (group.SortOrder != groupRequest.SortOrder)
+            {
+                orderingChanged = true;
             }
             group.Name = groupRequest.Name.Trim();
             group.SortOrder = groupRequest.SortOrder;
@@ -121,13 +128,18 @@ public sealed class BudgetService(BudgetDbContext db)
 
             foreach (var categoryRequest in groupRequest.Categories)
             {
+                if (CreditCardRules.IsPaymentCategory(categoryRequest.Id) != (groupRequest.Id == CreditCardRules.PaymentGroupId))
+                    return BudgetUpdateResult.Invalid("Credit card payment categories stay in the Credit Card Payments group, which holds only them.");
                 if (!currentCategories.TryGetValue(categoryRequest.Id, out var category))
                 {
+                    if (CreditCardRules.IsPaymentCategory(categoryRequest.Id))
+                        return BudgetUpdateResult.Invalid("Credit card payment categories are created with their credit account.");
                     if (categoryRequest.Assigned != 0)
                         return BudgetUpdateResult.Invalid("A new category must start with zero assigned.");
                     category = new CategoryEntity { BudgetId = budgetId, BudgetMonth = request.Month, GroupId = groupRequest.Id, Id = categoryRequest.Id };
                     group.Categories.Add(category);
                     currentCategories.Add(category.Id, category);
+                    orderingChanged = true;
                 }
                 else if (category.GroupId != groupRequest.Id)
                 {
@@ -135,11 +147,15 @@ public sealed class BudgetService(BudgetDbContext db)
                     if (previousGroup.IsArchived || group.IsArchived || category.IsArchived)
                         return BudgetUpdateResult.Invalid("An archived category cannot be moved until it is restored.");
                     category.GroupId = groupRequest.Id;
+                    orderingChanged = true;
                 }
                 else if ((group.IsArchived || category.IsArchived) && categoryRequest.Assigned != category.Assigned)
                 {
                     return BudgetUpdateResult.Invalid("An archived category cannot be assigned until it is restored.");
                 }
+
+                if (category.SortOrder != categoryRequest.SortOrder)
+                    orderingChanged = true;
 
                 category.Name = categoryRequest.Name.Trim();
                 category.Assigned = categoryRequest.Assigned;
@@ -151,6 +167,19 @@ public sealed class BudgetService(BudgetDbContext db)
             }
         }
 
+        if (orderingChanged)
+        {
+            var otherMonths = await db.Budgets
+                .Where(b => b.BudgetId == budgetId && b.Month != budget.Month)
+                .Include(b => b.Groups).ThenInclude(g => g.Categories)
+                .ToListAsync(cancellationToken);
+            foreach (var otherMonth in otherMonths)
+            {
+                if (ApplySharedOrdering(otherMonth, request.Groups))
+                    otherMonth.Version++;
+            }
+        }
+
         budget.Note = request.Note.Trim();
         budget.FundsAdded = request.FundsAdded;
         budget.Version++;
@@ -159,7 +188,8 @@ public sealed class BudgetService(BudgetDbContext db)
             previousReadyToAssign,
             CalculateReadyToAssign(budget),
             previousAvailable,
-            budget.Groups.SelectMany(g => g.Categories));
+            budget.Groups.SelectMany(g => g.Categories),
+            previousCreditOverspending);
         if (carryChanges.HasChanges)
         {
             var laterMonths = await db.Budgets.Where(b => b.BudgetId == budgetId && string.Compare(b.Month, budget.Month) > 0)
@@ -169,15 +199,22 @@ public sealed class BudgetService(BudgetDbContext db)
             {
                 var oldReadyToAssign = CalculateReadyToAssign(later);
                 var oldAvailable = later.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.Available);
+                var oldCreditOverspending = later.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.CreditOverspending);
                 if (BudgetCarryForward.Apply(later, carryChanges.ReadyToAssignDelta, carryChanges.AvailableDeltas, source)) later.Version++;
                 carryChanges = BudgetCarryForward.CalculateChanges(
                     oldReadyToAssign,
                     CalculateReadyToAssign(later),
                     oldAvailable,
-                    later.Groups.SelectMany(g => g.Categories));
+                    later.Groups.SelectMany(g => g.Categories),
+                    oldCreditOverspending);
                 source = later;
             }
         }
+
+        // Assigning to a category with credit overspending funds that card spending, so payment
+        // categories and their carry-forward must be recalculated with the new assignments.
+        if (await projection.HasCreditAccountsAsync(budgetId, cancellationToken))
+            await projection.RecalculateAsync(budgetId, cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(actorUserId))
             RecordPlanActions(budget, actorUserId, previousCategories);
@@ -185,18 +222,110 @@ public sealed class BudgetService(BudgetDbContext db)
         try
         {
             await db.SaveChangesAsync(cancellationToken);
-            return BudgetUpdateResult.Success(BudgetDto.From(budget));
+            return BudgetUpdateResult.Success(await ToDtoAsync(budget, cancellationToken));
         }
         catch (DbUpdateConcurrencyException)
         {
             db.ChangeTracker.Clear();
             var latest = await QueryMonth(budgetId, request.Month).SingleAsync(cancellationToken);
-            return BudgetUpdateResult.Conflict(BudgetDto.From(latest));
+            return BudgetUpdateResult.Conflict(await ToDtoAsync(latest, cancellationToken));
         }
+    }
+
+    // Month DTO with each category's structured target and its server-calculated progress for that month.
+    public async Task<BudgetDto> ToDtoAsync(BudgetEntity budget, CancellationToken cancellationToken)
+    {
+        var targets = await db.CategoryTargets.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.BudgetId == budget.BudgetId).ToListAsync(cancellationToken);
+        if (targets.Count == 0) return BudgetDto.From(budget);
+        var history = await LoadTargetHistoryAsync(budget.BudgetId, budget.Month, targets, cancellationToken);
+        var categories = budget.Groups.SelectMany(g => g.Categories.Select(c => (Group: g, Category: c))).ToDictionary(x => x.Category.Id, StringComparer.Ordinal);
+        var result = new Dictionary<string, (CategoryTargetDto Target, CategoryTargetProgressDto? Progress)>(StringComparer.Ordinal);
+        foreach (var target in targets)
+        {
+            if (!categories.TryGetValue(target.CategoryId, out var row)) continue;
+            var active = !row.Category.IsArchived && !row.Group.IsArchived && !CategoryTargetRules.IsPaymentCategory(row.Category.Id, row.Group.Id);
+            result[target.CategoryId] = (target.ToDto(), active ? CalculateTarget(target, budget.Month, row.Category, history) : null);
+        }
+        return BudgetDto.From(budget, result);
+    }
+
+    public static CategoryTargetProgressDto CalculateTarget(CategoryTargetEntity target, string month, CategoryEntity category,
+        IReadOnlyDictionary<string, Dictionary<string, decimal>> history) =>
+        CategoryTargetRules.Calculate(target.ToDefinition(), month, category.Assigned, category.Available,
+            history.TryGetValue(target.CategoryId, out var prior) ? prior : null);
+
+    // Assigned amounts from earlier months, needed only by "set aside" yearly/custom targets.
+    public async Task<IReadOnlyDictionary<string, Dictionary<string, decimal>>> LoadTargetHistoryAsync(string budgetId, string month,
+        IReadOnlyCollection<CategoryTargetEntity> targets, CancellationToken cancellationToken)
+    {
+        var dated = targets.Where(x => CategoryTargetRules.NeedsHistory(x.ToDefinition())).ToList();
+        if (dated.Count == 0) return new Dictionary<string, Dictionary<string, decimal>>();
+        var ids = dated.Select(x => x.CategoryId).ToList();
+        var from = dated.Min(x => x.StartMonth) ?? month;
+        var rows = await db.Categories.AsNoTracking()
+            .Where(c => c.BudgetId == budgetId && ids.Contains(c.Id) && string.Compare(c.BudgetMonth, from) >= 0 && string.Compare(c.BudgetMonth, month) < 0)
+            .Select(c => new { c.Id, c.BudgetMonth, c.Assigned }).ToListAsync(cancellationToken);
+        return rows.GroupBy(x => x.Id, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.ToDictionary(x => x.BudgetMonth, x => x.Assigned, StringComparer.Ordinal), StringComparer.Ordinal);
     }
 
     public static decimal CalculateReadyToAssign(BudgetEntity budget) =>
         decimal.Round(budget.OpeningReadyToAssign + budget.FundsAdded + budget.LedgerIncome - budget.Groups.SelectMany(x => x.Categories).Sum(x => x.Assigned), 2, MidpointRounding.ToEven);
+
+    private static bool ApplySharedOrdering(BudgetEntity target, IReadOnlyList<CategoryGroupUpdateDto> sourceGroups)
+    {
+        var targetGroups = target.Groups.ToDictionary(group => group.Id, StringComparer.Ordinal);
+        var targetCategories = target.Groups.SelectMany(group => group.Categories).ToDictionary(category => category.Id, StringComparer.Ordinal);
+        var changed = false;
+
+        var orderedGroups = sourceGroups.OrderBy(group => group.SortOrder)
+            .Where(group => targetGroups.ContainsKey(group.Id))
+            .Select(group => targetGroups[group.Id])
+            .Concat(target.Groups.OrderBy(group => group.SortOrder).Where(group => !sourceGroups.Any(source => source.Id == group.Id)))
+            .ToList();
+        for (var index = 0; index < orderedGroups.Count; index++)
+        {
+            if (orderedGroups[index].SortOrder != index) changed = true;
+            orderedGroups[index].SortOrder = index;
+        }
+
+        foreach (var sourceGroup in sourceGroups)
+        {
+            if (!targetGroups.ContainsKey(sourceGroup.Id)) continue;
+            foreach (var sourceCategory in sourceGroup.Categories)
+            {
+                if (targetCategories.TryGetValue(sourceCategory.Id, out var targetCategory) && targetCategory.GroupId != sourceGroup.Id)
+                {
+                    targetCategory.GroupId = sourceGroup.Id;
+                    changed = true;
+                }
+            }
+        }
+
+        foreach (var targetGroup in target.Groups)
+        {
+            var categoriesInGroup = targetCategories.Values.Where(category => category.GroupId == targetGroup.Id).ToList();
+            var sourceCategoryIds = sourceGroups.Where(group => group.Id == targetGroup.Id)
+                .SelectMany(group => group.Categories.OrderBy(category => category.SortOrder).Select(category => category.Id))
+                .Where(targetCategories.ContainsKey)
+                .ToHashSet(StringComparer.Ordinal);
+            var orderedCategories = sourceGroups.Where(group => group.Id == targetGroup.Id)
+                .SelectMany(group => group.Categories.OrderBy(category => category.SortOrder))
+                .Where(category => targetCategories.ContainsKey(category.Id) && targetCategories[category.Id].GroupId == targetGroup.Id)
+                .Select(category => targetCategories[category.Id])
+                .Concat(categoriesInGroup.Where(category => !sourceCategoryIds.Contains(category.Id)).OrderBy(category => category.SortOrder))
+                .ToList();
+
+            for (var index = 0; index < orderedCategories.Count; index++)
+            {
+                if (orderedCategories[index].SortOrder != index) changed = true;
+                orderedCategories[index].SortOrder = index;
+            }
+        }
+
+        return changed;
+    }
 
     private void RecordPlanActions(BudgetEntity budget, string actorUserId, IReadOnlyDictionary<string, (string Name, decimal Assigned)> previousCategories)
     {

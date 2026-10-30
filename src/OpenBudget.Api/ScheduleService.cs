@@ -55,7 +55,11 @@ public sealed partial class LedgerService
     {
         var error = LedgerRules.Validate(new(Guid.NewGuid(), 1, accountId, date, template.Amount, template.Payee, template.Memo, template.CategoryId, "uncleared", template.Splits));
         if (error is not null) throw new LedgerException(error);
-        await OpenAccountAsync(accountId, ct);
+        var account = await OpenAccountAsync(accountId, ct);
+        if (toAccountId is null && CreditCardRules.IsCredit(account.AccountType) && template.CategoryId is null && template.Splits?.Count is not > 0)
+            throw new LedgerException("Credit account transactions require a category.");
+        if ((template.Splits ?? []).Select(s => s.CategoryId).Append(template.CategoryId).Any(CreditCardRules.IsPaymentCategory))
+            throw new LedgerException("Credit card payment categories are funded automatically. Record a card payment as a transfer.");
         if (toAccountId is not null)
         {
             if (toAccountId == accountId || template.Amount >= 0 || template.CategoryId is not null || template.Splits?.Count > 0)
@@ -93,7 +97,7 @@ public sealed partial class LedgerService
         var next = RecurrenceRules.Occurrence(entry.Date, repeat, 1);
         if (next is null) throw new LedgerException("This recurrence has no next date within the supported calendar.");
         var data = new ScheduleTemplateDto(entry.Amount, entry.Payee?.Name, entry.Memo, entry.CategoryId,
-            entry.Splits.OrderBy(s => s.Position).Select(s => new SplitDto(s.CategoryId, s.Amount)).ToList());
+            entry.Splits.OrderBy(s => s.Position).Select(s => new SplitDto(s.CategoryId, s.Amount, string.IsNullOrEmpty(s.Payee) ? null : s.Payee, string.IsNullOrEmpty(s.Memo) ? null : s.Memo)).ToList());
         // Editing a posted occurrence leaves its parent rule unchanged unless Repeat is explicitly selected.
         var rule = entry.ScheduleId is null ? new ScheduleEntity { Id = Guid.NewGuid() } : await FindScheduleAsync(entry.ScheduleId.Value, ct);
         if (entry.ScheduleId is not null) { await SupersedePendingAsync(rule, ct); rule.Sequence++; }
@@ -143,7 +147,7 @@ public sealed partial class LedgerService
                     await ValidateScheduleTemplateAsync(rule.AccountId, rule.ToAccountId, effectiveDate, data, ct);
                     var entry = new TransactionEntity { Id = occurrenceId, IsApproved = !request.AutomaticallyPosted, FlagColor = rule.FlagColor, ScheduleId = rule.Id, AccountId = rule.AccountId, Date = effectiveDate, Amount = data.Amount,
                         Memo = data.Memo?.Trim() ?? "", CategoryId = data.CategoryId, Payee = await GetPayeeAsync(data.Payee, ct), Status = "uncleared" };
-                    entry.Splits = (data.Splits ?? []).Select((s,i) => new SplitEntity { TransactionId = entry.Id, Position = i, CategoryId = s.CategoryId, Amount = s.Amount }).ToList();
+                    entry.Splits = (data.Splits ?? []).Select((s,i) => new SplitEntity { TransactionId = entry.Id, Position = i, CategoryId = s.CategoryId, Amount = s.Amount, Payee = s.Payee?.Trim() ?? "", Memo = s.Memo?.Trim() ?? "" }).ToList();
                     db.Transactions.Add(entry);
                     if (rule.ToAccountId is not null)
                     {

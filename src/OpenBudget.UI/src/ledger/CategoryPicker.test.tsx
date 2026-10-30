@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, it, vi } from 'vitest';
 import { useState } from 'react';
-import { CategoryPicker, categoryGroups } from './CategoryPicker';
+import { CategoryPicker, categoryGroups, inflowCategoryId } from './CategoryPicker';
 import { type CategoryOption } from './api';
 
 const categories:CategoryOption[]=[
@@ -44,7 +44,12 @@ it('searches, navigates with the keyboard and Escape discards search without can
 
 it('Ready to Assign clears a category and unknown balances display a dash rather than invented zero',async()=>{
   const change=vi.fn();render(<CategoryPicker value="food" categories={[{id:'food',name:'Food'}]} onChange={change}/>);await userEvent.click(screen.getByRole('combobox',{name:'Category'}));
-  expect(screen.getByLabelText('Ready to Assign available')).toHaveTextContent('—');await userEvent.click(screen.getByRole('option',{name:/Ready to Assign/}));expect(change).toHaveBeenCalledWith('');
+  expect(screen.getByLabelText('Ready to Assign available')).toHaveTextContent('—');await userEvent.click(screen.getByRole('option',{name:/Ready to Assign/}));expect(change).toHaveBeenCalledWith(inflowCategoryId);
+});
+
+it('shows Ready to Assign as the chosen value instead of an empty field',()=>{
+  render(<CategoryPicker value={inflowCategoryId} categories={[{id:'food',name:'Food'}]} onChange={()=>{}}/>);
+  expect(screen.getByRole('combobox',{name:'Category'})).toHaveValue('Inflow: Ready to Assign');
 });
 
 it('opens New Category, Split and Payment/Transfer without submitting the transaction form',async()=>{

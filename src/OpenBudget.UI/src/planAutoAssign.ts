@@ -6,6 +6,8 @@ export type AutoAssignCategory = {
   activity: number;
   available: number;
   target: number;
+  // Server-calculated amount a category target still needs this month (TargetProgress.moreNeeded).
+  targetMoreNeeded?: number;
 };
 
 export type AssignmentAdjustment = { categoryId: string; deltaCents: number };
@@ -47,9 +49,12 @@ export function buildAutoAssignOptions(categories: AutoAssignCategory[], history
     const total = months.reduce((sum, month) => sum + historicalAmount(month, category.id, field), 0);
     return Math.max(0, Math.round(total / Math.max(1, months.length)));
   };
+  // Underfunded covers the larger of a scheduled-outflow shortfall and the server-calculated amount a category
+  // target still needs this month. The legacy manual `target` amount is not a recommendation input.
   const scheduledShortfalls = categories.map(category => {
     const projectedAvailableCents = cents(category.available) + cents(scheduledOutflows[category.id] ?? 0);
-    return { categoryId: category.id, deltaCents: projectedAvailableCents < 0 ? -projectedAvailableCents : 0 };
+    const shortfall = projectedAvailableCents < 0 ? -projectedAvailableCents : 0;
+    return { categoryId: category.id, deltaCents: Math.max(shortfall, Math.max(0, cents(category.targetMoreNeeded ?? 0))) };
   });
 
   return [

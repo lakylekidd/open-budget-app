@@ -53,6 +53,8 @@ public sealed class SplitEntity
     public int Position { get; set; }
     public string CategoryId { get; set; } = "";
     public decimal Amount { get; set; }
+    public string Payee { get; set; } = "";
+    public string Memo { get; set; } = "";
 }
 
 public sealed class LedgerStateEntity
@@ -125,6 +127,8 @@ public static class LedgerModel
             e.HasKey(x => new { x.TransactionId, x.Position });
             e.Property(x => x.CategoryId).HasMaxLength(100);
             e.Property(x => x.Amount).HasPrecision(14, 2);
+            e.Property(x => x.Payee).HasMaxLength(160);
+            e.Property(x => x.Memo).HasMaxLength(1000);
         });
         model.Entity<LedgerStateEntity>(e => { e.HasKey(x => new { x.BudgetId, x.Id }); e.Property(x => x.BudgetId).HasMaxLength(100); e.Property(x => x.Version).IsConcurrencyToken(); e.HasData(new LedgerStateEntity()); });
         model.Entity<LedgerCommandEntity>(e =>
@@ -133,6 +137,16 @@ public static class LedgerModel
             e.Property(x => x.Kind).HasMaxLength(100);
             e.Property(x => x.Fingerprint).HasMaxLength(64);
             e.HasIndex(x => new { x.ResourceId, x.Version });
+        });
+        model.Entity<CreditPayoffTargetEntity>(e =>
+        {
+            e.HasKey(x => x.AccountId); e.Property(x => x.BudgetId).HasMaxLength(100);
+            e.Property(x => x.Kind).HasMaxLength(20);
+            e.Property(x => x.TargetMonth).HasMaxLength(7);
+            e.Property(x => x.MonthlyAmount).HasPrecision(14, 2);
+            e.Property(x => x.PayoffAmount).HasPrecision(14, 2);
+            e.HasOne<AccountEntity>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => x.BudgetId);
         });
         model.Entity<ReconciliationEntity>(e =>
         {
@@ -155,6 +169,7 @@ public sealed class RegisterViewEntity
     public bool ShowRunningBalance { get; set; } = true;
     public bool ShowFlags { get; set; } = true;
     public bool ShowImages { get; set; } = true;
+    public bool ShowScheduledTransactions { get; set; } = true;
     public string ColumnWidthsJson { get; set; } = "{}";
 }
 

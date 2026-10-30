@@ -12,7 +12,7 @@ public static class LedgerRules
         if (request.Payee?.Trim().Length > 160 || request.Memo?.Length > 1000) return "Payee or memo is too long.";
         if (request.CategoryId?.Length > 100) return "Category identifier is too long.";
         var splits = request.Splits ?? [];
-        if (splits.Count > 50 || splits.Any(s => s is null || string.IsNullOrWhiteSpace(s.CategoryId) || s.CategoryId.Length > 100 || !IsMoney(s.Amount) || s.Amount == 0))
+        if (splits.Count > 50 || splits.Any(s => s is null || string.IsNullOrWhiteSpace(s.CategoryId) || s.CategoryId.Length > 100 || !IsMoney(s.Amount) || s.Amount == 0 || s.Payee?.Length > 160 || s.Memo?.Length > 1000))
             return "Splits require a category and a nonzero money amount (maximum 50 splits).";
         if (splits.Count > 0 && (!string.IsNullOrEmpty(request.CategoryId) || splits.Sum(s => s.Amount) != request.Amount))
             return "Split amounts must equal the transaction amount and replace its single category.";

@@ -1,6 +1,6 @@
 # Milestone 5 — Credit cards and debt payoff planning
 
-**Status:** Planned
+**Status:** Credit-card slice implemented (accounts, payment categories, credit overspending, payment transfers, payment details) plus debt payoff targets for card payment categories (pay off by date or a fixed monthly amount, versioned ledger commands, server-calculated monthly progress). Loan terms and the payoff planner remain planned.
 
 ## Goal
 
