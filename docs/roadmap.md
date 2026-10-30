@@ -30,6 +30,7 @@ This roadmap turns product workflows documented publicly by YNAB into independen
 | 11 | Annual long-term budget planning | Full-year planned-versus-actual forecast grid with effective-month overrides, carry-forward, and year navigation. | Current / implemented | [Milestone 11](milestones/milestone-11-anual-budget-planning.md) |
 | 12 | Icons and suggested icons | Emoji icon picker for accounts, payees, category groups and subcategories, with suggestions from names. | Planned; open questions | [Milestone 12](milestones/milestone-12-icons-and-suggestions.md) |
 | 13 | Wishlist | Entitlement-gated ranked wish lists in buckets funded by a server-owned Wishlist Plan group, with next-item progress and ready-to-buy notifications. | Current / implemented | [Milestone 13](milestones/milestone-13-wishlist.md) |
+| 14 | Agent access (MCP) and live updates | Personal agent tokens with Admin/Budget/Reporting scopes, an MCP server over the application services, per-call audit, and server-sent live refresh of open sessions. | Current / implemented | [MCP](mcp.md) |
 
 ## Cross-cutting completion criteria
 

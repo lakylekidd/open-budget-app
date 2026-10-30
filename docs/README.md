@@ -9,6 +9,7 @@ This documentation describes the current OpenBudget implementation and its plann
 - [API reference](api.md) — current HTTP endpoints and request/response behavior.
 - [Data model](data-model.md) — current PostgreSQL schema and the future domain model direction.
 - [Testing and acceptance coverage](testing.md) — unit, HTTP/PostgreSQL integration and UI tests, commands, and the live smoke scenario.
+- [MCP server for personal AI agents](mcp.md) — agent tokens, client setup, tool permission matrix, security model and live updates.
 - [Coding conventions](conventions.md) — current implementation and testing patterns.
 - [Product roadmap](roadmap.md) — milestone index with status, summaries, and links to the detailed vertical-slice documents in [milestones/](milestones/).
 - [Reverse-engineering notes](reference-analysis.md) — bounded observations from the reference web app, with evidence limits.

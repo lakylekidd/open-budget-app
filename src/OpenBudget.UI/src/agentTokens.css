@@ -1,0 +1,47 @@
+/* Profile & security dialog in the app's dark theme, plus the Agent tokens section. */
+.profile-backdrop .profile-dialog{width:min(640px,100%);background:#15172d;color:#fff;border-color:#3c3e53;box-shadow:0 16px 70px #0008}
+.profile-backdrop .profile-heading button{background:#24263f;color:#fff}
+.profile-backdrop .profile-form{border-top-color:#2c2e43}
+.profile-backdrop .profile-form label{color:#c4c5cf}
+.profile-backdrop .profile-form input{background:#0c0d22;color:#fff;border-color:#3c3e53}
+.profile-backdrop .profile-form input:disabled{background:#1d1f36;color:#8d8ea3}
+.profile-backdrop .profile-form button{background:#24263f;border-color:#3c3e53;color:#fff}
+.profile-backdrop .profile-error{background:#3a1622;color:#ffb3c1!important}
+.profile-backdrop .profile-message{background:#123325;color:#9fe3bd!important}
+.profile-backdrop .profile-message a{color:#9fe3bd}
+
+.agent-tokens{display:grid;gap:12px;margin-top:22px;padding-top:16px;border-top:1px solid #2c2e43}
+.agent-tokens h3{margin:0;font-size:15px}
+.agent-tokens code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
+.agent-tokens-intro,.agent-token-hint{margin:0;color:#c4c5cf;font-size:12px;line-height:1.45}
+.agent-token-form{display:grid;gap:10px;padding:14px;border:1px solid #2c2e43;border-radius:8px;background:#101227}
+.agent-token-form label{display:grid;gap:6px;font-size:12px;color:#c4c5cf}
+.agent-token-form input:not([type=checkbox]),.agent-token-form select{min-height:38px;padding:7px 10px;border:1px solid #3c3e53;border-radius:6px;background:#0c0d22;color:#fff}
+.agent-token-budgets{display:grid;gap:6px;margin:0;padding:10px;border:1px solid #2c2e43;border-radius:6px}
+.agent-token-budgets legend{padding:0 4px;font-size:12px;color:#c4c5cf}
+.agent-token-form .agent-token-budget{display:flex;align-items:center;gap:8px;color:#fff;font-size:13px}
+.agent-tokens button{min-height:32px;padding:6px 12px;border:1px solid #3c3e53;border-radius:6px;background:#24263f;color:#fff;font-size:13px}
+.agent-tokens button:disabled{opacity:.55;cursor:wait}
+.agent-tokens .agent-token-primary{justify-self:start;background:#5c54ff;border-color:#5c54ff;font-weight:700}
+.agent-tokens .agent-token-danger{background:#3a1622;border-color:#7a2c40;color:#ffb3c1}
+.agent-token-error{margin:0;padding:8px 10px;border-radius:6px;background:#3a1622;color:#ffb3c1;font-size:12px}
+.agent-token-created{display:grid;gap:8px;padding:12px;border:1px solid #5c54ff;border-radius:8px;background:#1b1c45}
+.agent-token-created code{display:block;padding:8px;border-radius:6px;background:#0c0d22;word-break:break-all;user-select:all}
+.agent-token-list{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.agent-token-row{display:grid;gap:8px;padding:12px;border:1px solid #2c2e43;border-radius:8px;background:#101227}
+.agent-token-row.revoked,.agent-token-row.expired{opacity:.7}
+.agent-token-summary{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.agent-token-meta{display:flex;flex-wrap:wrap;gap:4px 14px;color:#c4c5cf;font-size:12px}
+.agent-token-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.agent-token-badge,.agent-token-status{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#24263f;color:#c4c5cf}
+.agent-token-badge.admin{background:#4a2132;color:#ffb3c1}.agent-token-badge.budget{background:#20205a;color:#a3acff}.agent-token-badge.reporting{background:#123325;color:#9fe3bd}
+.agent-token-status.active{color:#9fe3bd}.agent-token-status.revoked,.agent-token-status.expired{color:#ffb3c1}
+.agent-token-confirm{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px;border:1px solid #7a2c40;border-radius:6px;background:#22121b;font-size:12px}
+.agent-token-activity{width:100%;border-collapse:collapse;font-size:12px}
+.agent-token-activity th,.agent-token-activity td{padding:5px 6px;border-bottom:1px solid #2c2e43;text-align:left}
+.agent-token-activity th{color:#c4c5cf;font-weight:600}
+.agent-token-activity .ok{color:#9fe3bd}.agent-token-activity .failed{color:#ffb3c1}
+.live-update-notice{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:40;display:flex;align-items:center;gap:12px;padding:10px 14px;background:#2b2d43;border:1px solid #a3acff;border-radius:8px;box-shadow:0 8px 30px #0008;font-size:14px}
+.live-update-notice button{padding:6px 10px;border-radius:6px;background:#5c54ff;color:#fff;font-weight:700}
+.live-update-notice button.secondary{background:transparent;border:1px solid #555876}
+@media (max-width:560px){.profile-backdrop .profile-dialog{padding:16px}.agent-token-meta{flex-direction:column}}

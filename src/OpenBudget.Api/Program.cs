@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using OpenBudget.Api;
+using OpenBudget.Api.Mcp;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,6 +17,7 @@ if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
     dataProtection.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeyPath));
 builder.Services.AddScoped<BudgetRequestContext>();
 builder.Services.AddOpenBudgetIdentity(builder.Environment);
+builder.Services.AddOpenBudgetAgentAccess();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedProto;
@@ -170,6 +172,7 @@ CategoryTargetService.MapEndpoints(app);
 BudgetSharingService.MapEndpoints(app);
 WishlistService.MapEndpoints(app);
 app.MapTransactionImageEndpoints();
+app.MapOpenBudgetAgentAccess();
 
 app.MapGet("/api/budget/{month}", async (string month, BudgetService budgets, LedgerGate gate, CancellationToken cancellationToken) =>
 {

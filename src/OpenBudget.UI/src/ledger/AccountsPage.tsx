@@ -18,9 +18,11 @@ import './ledger.css';
 type Dialog = { kind: 'account'; account?: Account; accountType?: AccountType } | { kind: 'transaction'; entry?: Entry } | { kind: 'transfer'; entry?: Entry; from?: string; to?: string }
   | { kind: 'reconcile'; account: Account } | { kind: 'loanActivity'; account: Account; mode?: 'payment' | 'other' } | { kind: 'delete'; entry: Entry } | { kind: 'history' };
 
-export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMenu, onPendingChange, createAccountRequest, editAccountRequest, focusTransaction, onOpenCategory }: {
+export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMenu, onPendingChange, createAccountRequest, editAccountRequest, focusTransaction, onOpenCategory, liveRefresh }: {
   selectedAccount: string; onSelectAccount: (id: string) => void; onChanged: () => void; onMenu: () => void; onPendingChange?: (pending: boolean) => void; createAccountRequest?: number; editAccountRequest?: {id:string;token:number};
   onOpenCategory?: (categoryId: string, editTarget: boolean) => void;
+  /** Bumped when another session changes this budget's ledger; refreshes unless the user is mid-edit (the 30s poll retries). */
+  liveRefresh?: number;
   focusTransaction?: { id: string; accountId: string; date: string; scheduled: boolean; projected?: Entry; splitIndex?: number; source?: 'Plan' | 'Long-Term Planning' } | null;
 }) {
   const [managePayees,setManagePayees]=useState(false);
@@ -206,6 +208,7 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   useEffect(()=>{const controller=new AbortController();requestJson<{version:number;flags:Flag[]}>('/api/flags',{signal:controller.signal}).then(value=>{setFlags(value.flags);setFlagVersion(value.version);}).catch(err=>{if(!controller.signal.aborted)setError('Could not load flag names. Reload to retry. '+err.message);});return()=>controller.abort();},[refresh]);
   const changed=useRef(onChanged);changed.current=onChanged;
   useEffect(()=>{const timer=window.setInterval(()=>{if(inline||dialog||viewOpen||moreOpen||busy||uncertain||conflict||document.querySelector('.ledger-dialog,.flag-picker,.approval-picker,.transaction-calendar'))return;setRefresh(value=>value+1);changed.current();},30000);return()=>window.clearInterval(timer);},[inline,dialog,viewOpen,moreOpen,busy,uncertain,conflict]);
+  useEffect(()=>{if(!liveRefresh||inline||dialog||viewOpen||moreOpen||busy||uncertain||conflict||document.querySelector('.ledger-dialog,.flag-picker,.approval-picker,.transaction-calendar'))return;setRefresh(value=>value+1);},[liveRefresh]);
   const reload = useCallback(() => { setError(''); setConflict(false); setRefresh(value => value + 1); }, []);
   async function mutate(path: string, method: string, fields: object) {
     if (inFlight.current || conflict || loading || viewInFlight.current) return false;

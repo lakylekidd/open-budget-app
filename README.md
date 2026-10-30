@@ -29,6 +29,7 @@ OpenBudget is a budgeting app with a React UI, .NET API, and PostgreSQL database
 - Long-Term Planning with annual forecasts and monthly actuals
 - Wishlist (Plus/Pro): ranked wish-list buckets funded from Plan, with "ready to buy" progress for the most-wanted item
 - Identity sign-in, verified registration and branded recovery email, plus audited administrator account controls and SMTP settings
+- MCP server for your own AI agents with scoped, revocable agent tokens and audited tool calls; open sessions refresh live when anything changes ([MCP guide](docs/mcp.md))
 
 ## Quick start
 
@@ -49,6 +50,7 @@ The local Development administrator is `admin` / `admin`. Production deployments
 - [Architecture and current capabilities](docs/architecture.md)
 - [API reference](docs/api.md) and [data model](docs/data-model.md)
 - [Testing and acceptance coverage](docs/testing.md)
+- [MCP server and agent tokens](docs/mcp.md)
 - [Product roadmap](docs/roadmap.md)
 
 ## Project status

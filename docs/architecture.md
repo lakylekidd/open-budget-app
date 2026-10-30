@@ -10,6 +10,8 @@ flowchart LR
   Host[.NET Aspire AppHost] -. orchestrates .-> UI
   Host -. orchestrates .-> API
   Host -. health + connection string .-> PG
+  Agent[Owner's AI agent] -->|HTTPS POST /mcp + Bearer obk_ token| API
+  API -. SSE /api/budgets/id/events .-> UI
 ```
 
 The Aspire AppHost is the local system composition root. It starts PostgreSQL with a persistent named data volume, injects the database connection into the API, waits for PostgreSQL readiness, and starts the Vite UI after the API. The browser calls the UI at port 5173; Vite forwards `/api` and `/health` requests to port 5080.
@@ -23,7 +25,9 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Persistence | EF Core 10, Npgsql EF provider, PostgreSQL 17 |
 | Local orchestration | .NET Aspire 13.6.2 AppHost, PostgreSQL and JavaScript/Vite integrations |
 | API contract | Budget identity plus versioned monthly snapshot |
-| Authentication | ASP.NET Core Identity with cookie sessions, verified registration, branded SMTP email, password recovery and administrator role |
+| Authentication | ASP.NET Core Identity with cookie sessions, verified registration, branded SMTP email, password recovery and administrator role; hashed personal agent tokens (bearer) for the MCP endpoint only |
+| Agent integration | MCP server via `ModelContextProtocol.AspNetCore` 2.2.0 (Streamable HTTP, stateless) hosted in the API process |
+| Real-time updates | In-process change hub fed by an EF Core commit interceptor; server-sent events to the browser |
 
 ## Implemented user path
 
@@ -148,3 +152,9 @@ For Azure production, implement `ITransactionImageStore` over Azure Blob Storage
 4. Keep serving through the authenticated API endpoint (no SAS URLs to browsers) so ownership checks and security headers still apply.
 5. Write the blob before committing metadata and delete metadata before the blob; schedule a reconciliation job for orphaned blobs, because blob writes are outside the PostgreSQL transaction. Budget deletion must also delete the `{budgetId}/` prefix.
 6. Send storage diagnostic logs to Log Analytics (Azure Monitor) for access auditing, and enable Defender for Storage.
+
+## MCP server and live updates
+
+`src/OpenBudget.Api/Mcp` hosts the MCP server at `/mcp` in the same process and DI container as the REST API. `AgentTokenAuthenticationHandler` validates `obk_` bearer tokens (SHA-256 lookup, revocation, expiry, creator status and role re-checked per request). `McpToolHandlers` filters `tools/list` by permission, validates arguments against each tool's JSON schema, enforces the token's budget allow-list plus the creator's live access, requires `confirm: true` for destructive actions and writes one `AgentAuditLogs` row per call. Tools in `McpToolCatalog` never use `BudgetDbContext` directly: `ApiDispatcher` runs the existing minimal-API endpoint in-process in a fresh DI scope with the creator's principal (role claims removed for non-Admin tokens) and the target budget selected explicitly, after evaluating that endpoint's authorization metadata. Validation, `LedgerGate` locking, optimistic versions, command receipts, Plan action history and admin audit are therefore shared with the web app.
+
+`src/OpenBudget.Api/Realtime` adds a `BudgetChangeInterceptor` (registered with `ConfigureDbContext`, so test overrides keep it) that captures which budgets/areas each `SaveChanges` touched and publishes to the singleton `BudgetChangePublisher` only after the transaction commits. `GET /api/budgets/{id}/events` streams those notifications to authorised browser sessions; `useBudgetLiveUpdates` in the UI re-fetches the Plan month, register and budget list, or shows an "Updated elsewhere" notice when local Plan edits are unsaved. The hub and rate limiter are per process: multi-instance deployments need a backplane (Azure SignalR Service or Azure Cache for Redis) and a distributed limiter. See [MCP](mcp.md).

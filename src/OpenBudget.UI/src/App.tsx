@@ -29,6 +29,8 @@ import { AdminPanel } from './admin/AdminPanel';
 import { ProfileSettings } from './ProfileSettings';
 import { CategoryPicker } from './ledger/CategoryPicker';
 import { AutoAssignOptions } from './AutoAssignOptions';
+import { useBudgetLiveUpdates } from './liveUpdates';
+import './agentTokens.css';
 import { BudgetTogether } from './BudgetTogether';
 import { RecentMoves } from './RecentMoves';
 import { buildAutoAssignOptions, previousBudgetMonths, type AssignmentHistory, type AutoAssignOption } from './planAutoAssign';
@@ -439,6 +441,39 @@ function BudgetApplication() {
     }, 450);
     return () => window.clearTimeout(timer);
   }, [data, conflictBudget, selectedBudgetId]);
+
+  // Live updates: refresh what another session (browser, agent via MCP) committed, without clobbering local Plan edits.
+  const [liveLedgerRefresh, setLiveLedgerRefresh] = useState(0);
+  const liveUpdates = useBudgetLiveUpdates({
+    budgetId: budgetsLoaded ? selectedBudgetId : null,
+    month: data.month,
+    planVersion: data.version,
+    isSaving: saveState === 'saving',
+    hasUnsavedPlanEdits: () => Boolean(editingId) || conflictBudget !== null ||
+      (loadedMonth.current === data.month && lastSaved.current !== JSON.stringify(data)),
+    onPlanChanged: () => setBudgetRefresh(value => value + 1),
+    onLedgerChanged: () => { setLedgerRefresh(value => value + 1); setLiveLedgerRefresh(value => value + 1); },
+    onBudgetChanged: () => {
+      void requestJson<{ budgets: OwnedBudget[] }>('/api/budgets').then(result => {
+        const available = result.budgets.filter(budget => !budget.isArchived);
+        setOwnedBudgets(available);
+        const current = available.find(budget => budget.id === selectedBudgetId);
+        if (current) setPlan(current);
+      }).catch(() => undefined);
+    },
+  });
+
+  async function reviewRemotePlanChange() {
+    liveUpdates.dismissNotice();
+    try {
+      const latest = await requestJson<BudgetState>(`/api/budgets/${selectedBudgetId}/months/${data.month}`);
+      setEditingId(null);
+      setConflictBudget(latest);
+      setSaveState('conflict');
+    } catch {
+      setToast('Could not load the latest plan. Check the connection and try again.');
+    }
+  }
 
   const allCategories = useMemo(() => data.groups.flatMap(group => group.categories), [data.groups]);
   const assignableCategories = useMemo(() => data.groups.filter(group => !group.isArchived).flatMap(group => group.categories.filter(category => !category.isArchived)), [data.groups]);
@@ -1155,12 +1190,13 @@ function BudgetApplication() {
 
     <main className="main-area">
       <header className="topbar"><div className="breadcrumbs"><span>{plan.name}</span><Icon name="right" size={13} /><strong>{activePage}</strong></div><div className="topbar-right"><button className="share-button" onClick={() => setToast('Sharing is not connected in this local demo')}>Share</button><button className="top-avatar" aria-label="Profile" onClick={() => setProfileOpen(true)}>A</button></div></header>
-      {activePage==='Budget Together'&&selectedBudgetId?<BudgetTogether budgetId={selectedBudgetId} budgetName={plan.name} currentUserEmail={userEmail} onBack={()=>navigate('Plan')}/>:activePage === 'Accounts' ? <AccountsPage onOpenCategory={(categoryId, editTarget) => { if (navigate('Plan')) { setSelectedCategoryId(categoryId); setSelectedIds([]); setTargetEditRequest(editTarget ? categoryId : null); } }} createAccountRequest={accountCreateRequest} editAccountRequest={accountEditRequest} focusTransaction={focusTransaction} onPendingChange={setLedgerPending} selectedAccount={selectedAccount} onSelectAccount={setSelectedAccount} onChanged={() => setLedgerRefresh(value => value + 1)} onMenu={() => setMobileMenu(true)} /> : activePage === 'Plan' ? <div className="page-content"><div className="page-heading"><div><span className="eyebrow">YOUR MONEY, WITH A PLAN</span><h1>Plan</h1></div></div>{budgetsLoaded && ownedBudgets.length === 0 ? <section className="empty-state"><p>You do not have an active budget yet.</p><button type="button" onClick={createBudget}>Create your first budget</button></section> : budgetPage}<div className="ledger-plan-status" role="status">{saveState === 'saved' ? 'Plan saved' : saveState === 'saving' ? 'Saving plan…' : saveState === 'loading' ? 'Loading plan…' : saveState === 'conflict' ? 'Resolve the conflicting plan edits' : 'Plan changes could not be saved'} {saveState === 'offline' && <button onClick={() => setBudgetRefresh(value => value + 1)}>Reload saved plan</button>}</div></div> : activePage === 'Wishlist' && selectedBudgetId ? <div className="page-content"><WishlistPage budgetId={selectedBudgetId} currency={plan.currency} access={wishlistAccess} onAccessChange={setWishlistAccess} onRetry={() => setWishlistRefresh(value => value + 1)} onNavigate={page => navigate(page)} /></div> : activePage === 'Long-Term Planning' ? <div className="page-content"><LongTermPlanning accounts={accounts.accounts} onSelectTransaction={(entry, scheduled, splitIndex) => showTransactionInAccount(entry, scheduled, 'Long-Term Planning', splitIndex)} onPendingChange={setPlanningPending} /></div> : <div className="page-content other-page"><div className="page-heading"><div><span className="eyebrow">MY BUDGET</span><h1>{activePage}</h1></div></div><section className="coming-card"><div className="coming-icon"><Icon name={otherPages[activePage].icon} size={24} /></div><h2>{otherPages[activePage].title}</h2><p>{otherPages[activePage].subtitle}</p><div className="coming-preview"><span /><span /><span /></div><button className="button button-primary" onClick={() => setActivePage('Plan')}>Back to your plan <Icon name="right" size={15} /></button><small>This view is queued for the next build slice.</small></section></div>}
+      {activePage==='Budget Together'&&selectedBudgetId?<BudgetTogether budgetId={selectedBudgetId} budgetName={plan.name} currentUserEmail={userEmail} onBack={()=>navigate('Plan')}/>:activePage === 'Accounts' ? <AccountsPage liveRefresh={liveLedgerRefresh} onOpenCategory={(categoryId, editTarget) => { if (navigate('Plan')) { setSelectedCategoryId(categoryId); setSelectedIds([]); setTargetEditRequest(editTarget ? categoryId : null); } }} createAccountRequest={accountCreateRequest} editAccountRequest={accountEditRequest} focusTransaction={focusTransaction} onPendingChange={setLedgerPending} selectedAccount={selectedAccount} onSelectAccount={setSelectedAccount} onChanged={() => setLedgerRefresh(value => value + 1)} onMenu={() => setMobileMenu(true)} /> : activePage === 'Plan' ? <div className="page-content"><div className="page-heading"><div><span className="eyebrow">YOUR MONEY, WITH A PLAN</span><h1>Plan</h1></div></div>{budgetsLoaded && ownedBudgets.length === 0 ? <section className="empty-state"><p>You do not have an active budget yet.</p><button type="button" onClick={createBudget}>Create your first budget</button></section> : budgetPage}<div className="ledger-plan-status" role="status">{saveState === 'saved' ? 'Plan saved' : saveState === 'saving' ? 'Saving plan…' : saveState === 'loading' ? 'Loading plan…' : saveState === 'conflict' ? 'Resolve the conflicting plan edits' : 'Plan changes could not be saved'} {saveState === 'offline' && <button onClick={() => setBudgetRefresh(value => value + 1)}>Reload saved plan</button>}</div></div> : activePage === 'Wishlist' && selectedBudgetId ? <div className="page-content"><WishlistPage budgetId={selectedBudgetId} currency={plan.currency} access={wishlistAccess} onAccessChange={setWishlistAccess} onRetry={() => setWishlistRefresh(value => value + 1)} onNavigate={page => navigate(page)} /></div> : activePage === 'Long-Term Planning' ? <div className="page-content"><LongTermPlanning accounts={accounts.accounts} onSelectTransaction={(entry, scheduled, splitIndex) => showTransactionInAccount(entry, scheduled, 'Long-Term Planning', splitIndex)} onPendingChange={setPlanningPending} /></div> : <div className="page-content other-page"><div className="page-heading"><div><span className="eyebrow">MY BUDGET</span><h1>{activePage}</h1></div></div><section className="coming-card"><div className="coming-icon"><Icon name={otherPages[activePage].icon} size={24} /></div><h2>{otherPages[activePage].title}</h2><p>{otherPages[activePage].subtitle}</p><div className="coming-preview"><span /><span /><span /></div><button className="button button-primary" onClick={() => setActivePage('Plan')}>Back to your plan <Icon name="right" size={15} /></button><small>This view is queued for the next build slice.</small></section></div>}
       <footer className="footer-note"><span>{saveState === 'loading' ? 'Loading budget…' : saveState === 'saving' ? 'Saving changes…' : saveState === 'conflict' ? 'Budget changed elsewhere' : saveState === 'offline' ? 'Changes not saved' : 'Changes saved to PostgreSQL'}</span><span>OpenBudget <span className="footer-separator">·</span> Local workspace</span></footer>
     </main>
 
     <button className="help-bubble" aria-label="Help" onClick={() => setToast('Local demo help: edit Assigned values, move money with Fix This, or add a Category Group.')}>?</button>
     {profileOpen && <ProfileSettings onClose={() => setProfileOpen(false)} />}
+    {liveUpdates.notice && <div className="live-update-notice" aria-live="polite"><span>Updated elsewhere — reload to see the latest plan.</span><button type="button" onClick={() => void reviewRemotePlanChange()}>Reload</button><button type="button" className="secondary" onClick={liveUpdates.dismissNotice}>Dismiss</button></div>}
     {conflictBudget && <div className="modal-backdrop" role="presentation"><section className="move-modal conflict-modal" role="dialog" aria-modal="true" aria-labelledby="conflict-title"><span className="eyebrow">BUDGET UPDATED ELSEWHERE</span><h2 id="conflict-title">Choose which plan to keep</h2><p className="modal-copy">Another session saved this month while you were editing. Load that version or reapply your edits over it.</p><div className="conflict-actions"><button className="button" onClick={() => resolveConflict(false)}>Load latest</button><button className="button button-primary" onClick={() => resolveConflict(true)}>Reapply my changes</button></div></section></div>}
     {moveOpen && <div className="modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMoveOpen(false); }}><section className="move-modal move-available-modal" role="dialog" aria-modal="true" aria-labelledby="move-title"><h2 id="move-title">{moveCovering ? 'Cover overspending' : 'Move'}</h2><form onSubmit={applyMove}>{moveCovering && <CategoryPicker label="Move from" categories={moveCategoryOptions.filter(category => category.available > 0 && category.id !== moveTo)} value={moveFrom} onChange={setMoveFrom} includeInflow={false} /> }<label>Amount<MoneyInput autoFocus value={moveAmount} onChange={raw => setMoveAmount(raw)} aria-label="Amount to move" /></label><CategoryPicker label="Move to" categories={moveCategoryOptions.filter(category => category.id !== moveFrom)} value={moveTo} onChange={setMoveTo} includeInflow={false} disabled={moveCovering} /><div className="move-available-actions"><button type="button" onClick={() => setMoveOpen(false)}>Cancel</button><button className="button-primary" type="submit" disabled={!moveFrom || !moveTo || moveTo === moveFrom}>OK</button></div></form></section></div>}
     {categoryDialog && <PlanTransactionList title={categoryDialog.title} items={categoryDialog.items} accounts={accounts.accounts} loading={categoryDialog.loading} error={categoryDialog.error} onClose={closeCategoryDialog} onRetry={categoryDialog.kind === 'activity' ? () => { const category = visibleCategories.find(item => item.id === categoryDialog.categoryId); if (category) void openActivity(category); } : undefined} onSelect={(entry, scheduled, splitIndex) => showTransactionInAccount(entry, scheduled, 'Plan', splitIndex)} />}
