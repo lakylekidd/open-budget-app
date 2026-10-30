@@ -1,15 +1,23 @@
-/* Regular / Wishlist add-transaction mode (dark theme, compact segmented control). */
-.transaction-mode-toggle{display:inline-flex;gap:2px;padding:2px;border-radius:7px;background:#25273d;border:1px solid #3c3e53;width:max-content}
-.transaction-mode-toggle button{height:26px;padding:0 12px;border-radius:5px;color:#c4c5cf;font-size:13px;font-weight:600}
-.transaction-mode-toggle button[aria-checked=true]{background:#5b54ff;color:#fff}
-.transaction-mode-toggle button:disabled{opacity:.55}
-.wishlist-purchase-picker{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 10px;align-items:center;font-size:13px;max-width:560px}
-.wishlist-purchase-picker select{min-width:0;height:30px;padding:0 8px;color:#fff;background:#0c0d22;border:1px solid #55566e;border-radius:5px}
-.wishlist-purchase-picker select option:disabled{color:#77798c}
-.wishlist-purchase-buying,.wishlist-purchase-empty{grid-column:1/-1;margin:0;color:#e3e1ff}
-.wishlist-purchase-buying strong{color:#fff}
-.wishlist-locked-category{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:0 8px;border-radius:5px;background:#2c2c4d;color:#e3e1ff;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.wishlist-locked-category:before{content:'🔒';font-size:11px}
-.register-inline-footer .transaction-mode-row{display:flex;flex-wrap:wrap;align-items:flex-start;gap:10px;margin-bottom:8px}
-.ledger-form .transaction-mode-toggle{margin-bottom:4px}
-@media(max-width:480px){.wishlist-purchase-picker{grid-template-columns:1fr}}
+/* Wishlist link button beside Memo and its item popup (dark theme). */
+.memo-with-wishlist{display:flex;align-items:center;gap:3px;min-width:0}
+.memo-with-wishlist>input{flex:1;min-width:0}
+.wishlist-link-button{flex:none;display:inline-flex;align-items:center;justify-content:center;width:25px;height:25px;min-height:0;padding:0;border-radius:4px;border:1px solid transparent;background:transparent;color:#8880ff;cursor:pointer}
+.wishlist-link-button:hover{background:#2c2c4d}
+.wishlist-link-button.is-linked{background:#5b54ff;border-color:#8880ff;color:#fff}
+.wishlist-link-button:disabled{opacity:.45;cursor:default}
+.wishlist-link-button:focus-visible{outline:2px solid #9a94ff;outline-offset:1px}
+.ledger-form .memo-with-wishlist .wishlist-link-button{width:32px;height:32px}
+.wishlist-link-popup{position:fixed;z-index:75;width:min(320px,calc(100vw - 16px));overflow:auto;padding:6px 0;background:#23223c;color:#f4f3ff;border-radius:4px;box-shadow:0 10px 30px #0005;font:13px/1.45 Arial,sans-serif;text-align:left}
+.wishlist-link-popup:focus{outline:none}
+.wishlist-link-popup h4{font-size:12px;margin:6px 14px 2px;color:#fff}
+.wishlist-link-option{display:flex;align-items:center;gap:10px;min-height:28px;padding:4px 14px 4px 24px;cursor:pointer}
+.wishlist-link-option[data-active=true]{background:#323147}
+.wishlist-link-option[aria-selected=true]{color:#c9c5ff;font-weight:600}
+.wishlist-link-option[aria-selected=true]::before{content:'✓';margin-left:-14px;width:10px}
+.wishlist-link-name{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.wishlist-link-cost{font-variant-numeric:tabular-nums;color:#d1cee1;white-space:nowrap}
+.wishlist-unlink-option{padding-left:14px;color:#ff9aa5;border-bottom:1px solid #39364d;margin-bottom:4px}
+.wishlist-link-empty{margin:8px 14px}
+.memo-with-wishlist>label{flex:1;min-width:0}
+.ledger-form .memo-with-wishlist{align-items:flex-end;gap:6px}
+.inline-wishlist-link{color:#c9c5ff;margin-right:10px}

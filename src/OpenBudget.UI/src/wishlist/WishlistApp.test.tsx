@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import App from '../App';
+import { budgetKeyFor } from '../routing/routes';
 
 // App-level Wishlist wiring: sidebar placement/visibility by entitlement, ready badge, Plan row status and guards.
 type Access = 'forbidden' | 'disabled' | 'ready' | 'saving';
@@ -83,29 +84,79 @@ it('places Wishlist directly below Long-Term Planning with a ready-to-buy badge 
   expect(within(bucket).getByText('Ready to buy')).toBeInTheDocument();
 });
 
-it('Record purchase opens Accounts with the add-transaction dialog prefilled in Wishlist mode', async () => {
-  const checking = { id: 'checking', name: 'Checking', isClosed: false, balance: 500, clearedBalance: 500, unclearedBalance: 0, accountType: 'checking', isFavorite: false, connectionStatus: 'unlinked', lastReconciledAt: null, needsCategoryCount: 0 };
+const checking = { id: 'checking', name: 'Checking', isClosed: false, balance: 500, clearedBalance: 500, unclearedBalance: 0, accountType: 'checking', isFavorite: false, connectionStatus: 'unlinked', lastReconciledAt: null, needsCategoryCount: 0 };
+const purchaseEntry = { id: 'tx-racing', accountId: 'checking', date: '2026-10-19', amount: -54.5, payee: 'Game Shop', memo: 'Racing game', categoryId: 'wl-b1', status: 'uncleared', transferId: null, isOpening: false, splits: [], needsAttention: false, runningBalance: 445.5, transferAccountName: null, categoryName: 'Games', isLocked: false };
+// Adds account/register responses on top of the base mock; registerRequests records each register query string.
+function withAccounts(registerRequests: string[] = []) {
   const base = vi.mocked(fetch).getMockImplementation()!;
   vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input);
     if (path === '/api/accounts') return json({ version: 1, accounts: [checking] });
     if (path.startsWith('/api/register-views/')) return json({ version: 1, datePreset: 'all', fromMonth: null, toMonth: null, showReconciled: true, showRunningBalance: true, showFlags: true, showImages: false, showScheduledTransactions: true });
-    if (path.startsWith('/api/transactions')) return json({ version: 1, page: 1, pageSize: 25, total: 0, items: [], accounts: { version: 1, accounts: [checking] } });
+    if (path.startsWith('/api/transactions?')) { registerRequests.push(path); return json({ version: 1, page: 1, pageSize: 25, total: 1, items: [purchaseEntry], accounts: { version: 1, accounts: [checking] } }); }
     if (path === '/api/flags') return json({ version: 1, flags: [] });
     if (path === '/api/payees') return json([]);
+    if (path === '/api/payees/manage') return json({ version: 1, payees: [] });
     if (path.startsWith('/api/budget/')) return json(month(path.slice(-7)));
     return base(input, init);
   });
+}
+
+it('Record purchase opens Accounts with the add-transaction dialog and the item linked', async () => {
+  withAccounts();
   render(<App />);
   await screen.findByText('Plan saved');
   await userEvent.click(await sideNav().findByRole('button', { name: 'Wishlist, 1 ready to buy' }));
   await userEvent.click(await screen.findByRole('button', { name: 'Mark Racing game purchased' }));
   await userEvent.click(within(screen.getByRole('dialog', { name: 'Mark as purchased?' })).getByRole('button', { name: 'Record purchase' }));
   const dialog = await screen.findByRole('dialog', { name: 'Add transaction' });
-  expect(within(dialog).getByRole('radio', { name: 'Wishlist' })).toHaveAttribute('aria-checked', 'true');
-  expect(within(dialog).getByLabelText('Wishlist bucket')).toHaveValue('b1');
-  expect(within(dialog).getByLabelText('Payee')).toHaveValue('Racing game');
+  expect(within(dialog).getByRole('button', { name: 'Link wishlist item (linked: Racing game)' })).toHaveClass('is-linked');
+  expect(within(dialog).getByLabelText('Memo')).toHaveValue('Racing game');
+  expect(within(dialog).getByLabelText('Payee')).toHaveValue('');
   expect(within(dialog).getByLabelText('Amount')).toHaveValue('-59.99');
+});
+
+it.each([['forbidden', 'not entitled'], ['disabled', 'turned off for the budget']] as const)('hides the Link wishlist item button when Wishlist is %s (%s)', async (state, _reason) => {
+  access = state;
+  withAccounts();
+  render(<App />);
+  await screen.findByText('Plan saved');
+  await userEvent.click(sideNav().getByRole('button', { name: /^All Accounts/ }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Add Transaction' }));
+  expect(await screen.findByRole('textbox', { name: 'Memo' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /^Link wishlist item/ })).not.toBeInTheDocument();
+});
+
+it('shows the Link wishlist item button in the register when Wishlist is entitled and enabled', async () => {
+  withAccounts();
+  render(<App />);
+  await screen.findByText('Plan saved');
+  await sideNav().findByRole('button', { name: 'Wishlist, 1 ready to buy' });
+  await userEvent.click(sideNav().getByRole('button', { name: /^All Accounts/ }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Add Transaction' }));
+  expect(await screen.findByRole('button', { name: 'Link wishlist item' })).toBeInTheDocument();
+});
+
+it('View transaction in the Purchased history opens the account register at that transaction and highlights it', async () => {
+  const purchasedOverview = wishlistOverview();
+  purchasedOverview.buckets[0].purchased = [{ id: 'i0', bucketId: 'b1', name: 'Old console', url: null, cost: 60, description: '', sortOrder: 0, status: 'purchased', createdAt: '2026-09-01T00:00:00Z', purchasedAt: '2026-10-19T12:00:00Z', removedAt: null,
+    purchase: { transactionId: 'tx-racing', accountId: 'checking', date: '2026-10-19', amount: 54.5 } }] as never;
+  const registerRequests: string[] = [];
+  withAccounts(registerRequests);
+  const withHistory = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) =>
+    String(input) === '/api/budgets/budget-1/wishlist' ? json(purchasedOverview) : withHistory(input, init));
+  render(<App />);
+  await screen.findByText('Plan saved');
+  await userEvent.click(await sideNav().findByRole('button', { name: 'Wishlist, 1 ready to buy' }));
+  await userEvent.click(await screen.findByText('Purchased (1)'));
+  await userEvent.click(screen.getByRole('button', { name: 'View transaction for Old console' }));
+
+  await waitFor(() => expect(window.location.pathname).toBe(`/${budgetKeyFor('budget-1')}/account/checking`));
+  expect(await screen.findByText(/Showing the transaction selected from the Wishlist screen/)).toBeInTheDocument();
+  await waitFor(() => expect(document.querySelector('[data-transaction-id="tx-racing"]')).toHaveAttribute('aria-selected', 'true'));
+  // The register is narrowed to the transaction's date so the row is on the first page.
+  expect(registerRequests.some(path => path.includes('accountId=checking') && path.includes('from=2026-10-19') && path.includes('to=2026-10-19'))).toBe(true);
 });
 
 it('shows the enable call-to-action when entitled but disabled', async () => {
