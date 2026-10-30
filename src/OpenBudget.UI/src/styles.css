@@ -198,3 +198,9 @@
 .target-track .target-segment>span{display:block;height:100%;background:#ffdc00}
 .target-track.funded .target-segment>span{background:#75bd22}
 .available-cell .target-ring-icon{display:inline-block;vertical-align:-2px;margin-right:4px}
+/* Long-Term Planning amount: a muted second line under Assigned so the fixed grid columns never change width. */
+.assigned-cell.has-planned,.group-assigned.has-planned{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:0}
+.assigned-cell.has-planned .amount-button{height:22px;padding-block:1px}
+.group-assigned.has-planned>span:first-child{line-height:18px}
+.planned-amount{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:5px;font-size:11px;line-height:12px;font-weight:400;color:#8f90a6}
+.group-assigned .planned-amount{padding-right:0}

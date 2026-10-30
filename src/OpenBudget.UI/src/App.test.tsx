@@ -137,6 +137,51 @@ it('uses compact category rows when progress bars are hidden',async()=>{
   expect(table).not.toHaveClass('compact');
 });
 
+it('shows the Long-Term Planning amount as muted text beside Assigned only when a plan exists',async()=>{
+  months['2026-10'].groups[0].categories.push({id:'food',name:'Food',assigned:0,activity:0,available:0,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false});
+  Object.assign(months['2026-10'].groups[0].categories[0],{planned:120});
+  render(<App/>);await saved();
+  const electricity=screen.getByRole('button',{name:'Edit assigned for Electricity'}).closest('.category-row') as HTMLElement;
+  const food=screen.getByRole('button',{name:'Edit assigned for Food'}).closest('.category-row') as HTMLElement;
+  const planned=within(electricity).getByTitle('Planned €120.00 in Long-Term Planning');
+  expect(planned).toHaveClass('planned-amount');
+  expect(planned).toHaveTextContent('€120.00');
+  expect(within(electricity).getByText('Planned €120.00 in Long-Term Planning')).toBeInTheDocument();
+  expect(electricity.querySelector('.assigned-cell')).toHaveClass('has-planned');
+  expect(food.querySelector('.planned-amount')).toBeNull();
+  expect(food.querySelector('.assigned-cell')).not.toHaveClass('has-planned');
+  expect(within(document.querySelector('.group-row') as HTMLElement).getByTitle('Planned €120.00 in Long-Term Planning')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button',{name:'Progress Bars Off'}));
+  expect(document.querySelector('.budget-table')).toHaveClass('compact');
+  expect(within(electricity).getByTitle('Planned €120.00 in Long-Term Planning')).toHaveTextContent('€120.00');
+  expect(food.querySelector('.planned-amount')).toBeNull();
+});
+
+it('auto-assigns Long-Term Planning amounts with the Planned option, capped by Ready to Assign',async()=>{
+  months['2026-10'].groups[0].categories.push(
+    {id:'food',name:'Food',assigned:0,activity:0,available:0,target:0,icon:'',snoozed:false,sortOrder:1,isArchived:false},
+    {id:'fun',name:'Fun',assigned:0,activity:0,available:0,target:0,icon:'',snoozed:false,sortOrder:2,isArchived:false},
+  );
+  Object.assign(months['2026-10'].groups[0].categories[0],{planned:400});
+  Object.assign(months['2026-10'].groups[0].categories[1],{planned:250});
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Assign'}));
+  const planned=await screen.findByRole('button',{name:'Planned €650.00'});
+  await waitFor(()=>expect(planned).toBeEnabled());
+  await userEvent.click(planned);
+  await waitFor(()=>expect(writes).toHaveLength(1));
+  const categories=(writes[0].groups as {categories:{id:string;assigned:number}[]}[]).flatMap(group=>group.categories);
+  expect(categories.find(category=>category.id==='utilities')?.assigned).toBe(400);
+  expect(categories.find(category=>category.id==='food')?.assigned).toBe(100);
+  expect(categories.find(category=>category.id==='fun')?.assigned).toBe(0);
+});
+
+it('disables the Planned Auto-Assign option when no category has a plan this month',async()=>{
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:/Auto-Assign/}));
+  expect(await screen.findByRole('button',{name:'Planned €0.00'})).toBeDisabled();
+});
+
 it('switches between owned budgets and remembers the selected budget',async()=>{
   ownedBudgets.push({id:'second',name:'Travel',currency:'EUR',version:1,isArchived:false,createdAt:'2026-02-01T00:00:00Z'});
   render(<App/>);await saved();

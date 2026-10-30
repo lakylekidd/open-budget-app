@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAutoAssignOptions, previousBudgetMonths, type AssignmentHistory } from './planAutoAssign';
+import { buildAutoAssignOptions, capAdjustmentsToReady, previousBudgetMonths, type AssignmentHistory } from './planAutoAssign';
 
 describe('previousBudgetMonths', () => {
   it('returns the prior twelve complete months across a year boundary', () => {
@@ -55,5 +55,49 @@ describe('buildAutoAssignOptions', () => {
 
     expect(options.find(item => item.id === 'reset-available')?.adjustments).toEqual([{ categoryId: 'rent', deltaCents: -30000 }]);
     expect(options.find(item => item.id === 'reset-assigned')?.amountCents).toBe(50000);
+  });
+  it('tops categories up to their Long-Term Planning amount and skips missing plans and snoozed categories', () => {
+    const options = buildAutoAssignOptions([
+      { ...category, id: 'rent', assigned: 100, planned: 450.5 },
+      { ...category, id: 'groceries', assigned: 300, planned: 200 },
+      { ...category, id: 'phone', assigned: 0, planned: null },
+      { ...category, id: 'gym', assigned: 0 },
+      { ...category, id: 'holiday', assigned: 0, planned: 80, snoozed: true },
+      { ...category, id: 'gifts', assigned: 0, planned: 0 },
+      { ...category, id: 'fun', assigned: -20, planned: 30 },
+    ], {}, months);
+    const planned = options.find(item => item.id === 'planned');
+
+    expect(planned).toMatchObject({ label: 'Planned', requiresHistory: false, requiresUpcoming: false, amountCents: 38050 });
+    expect(planned?.adjustments).toEqual([
+      { categoryId: 'rent', deltaCents: 35050 },
+      { categoryId: 'fun', deltaCents: 3000 },
+    ]);
+    expect(options.map(item => item.id).indexOf('planned')).toBe(1);
+  });
+
+  it('has nothing to assign when no category has a plan value', () => {
+    const planned = buildAutoAssignOptions([{ ...category, planned: 5 }], {}, months).find(item => item.id === 'planned');
+    expect(planned).toMatchObject({ amountCents: 0, adjustments: [] });
+  });
+});
+
+describe('capAdjustmentsToReady', () => {
+  it('funds positive adjustments in order until Ready to Assign runs out and keeps reductions', () => {
+    expect(capAdjustmentsToReady([
+      { categoryId: 'rent', deltaCents: 35050 },
+      { categoryId: 'fun', deltaCents: 3000 },
+      { categoryId: 'old', deltaCents: -500 },
+      { categoryId: 'late', deltaCents: 100 },
+    ], 360)).toEqual({
+      recommendedCents: 38150,
+      adjustments: [
+        { categoryId: 'rent', deltaCents: 35050 },
+        { categoryId: 'fun', deltaCents: 950 },
+        { categoryId: 'old', deltaCents: -500 },
+        { categoryId: 'late', deltaCents: 0 },
+      ],
+    });
+    expect(capAdjustmentsToReady([{ categoryId: 'rent', deltaCents: 100 }], -5).adjustments).toEqual([{ categoryId: 'rent', deltaCents: 0 }]);
   });
 });
