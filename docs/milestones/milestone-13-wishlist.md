@@ -69,4 +69,15 @@ For each bucket, with `A` = the bucket category's Available in the evaluated mon
 
 - A single per-budget Wishlist version (not per-bucket versions) guards all Wishlist writes. It is simpler and still rejects every stale write; concurrent edits of different buckets require a retry.
 - Bucket deletion is blocked while money remains (rather than archiving a funded category), because funded archived Wishlist categories could not be emptied.
-- Recording the purchase is a guided step (notice + link to Accounts) rather than a pre-filled transaction form.
+- ~~Recording the purchase is a guided step (notice + link to Accounts) rather than a pre-filled transaction form.~~ Superseded by Wishlist purchase transactions below.
+
+## Wishlist purchase transactions (2026-10-30)
+
+- **Mode switch.** When adding a transaction (register inline row and the Add transaction dialog), a compact Regular / Wishlist segmented control (radio group; arrow keys switch) appears only when the budget's Wishlist is entitled and enabled. It is hidden when editing, for scheduled rows, transfers and splits.
+- **Bucket selector.** Lists every bucket as "Bucket — next item (cost)"; buckets without active items are disabled. An item selector lists the bucket's active items in desire order (default: the top one) and the form shows "Buying: <item> · <cost> · added 3 months ago".
+- **Autofill.** Payee = item name (names are ≤ 120 characters, so they always fit the payee; an item link's domain is often a marketplace rather than the seller). Memo = `Wishlist: <item>` (links can exceed the 1000-character memo and are already on the item). Category = the bucket's `wl-{bucketId}`, shown locked. Outflow = item cost, editable because the actual price may differ; inflow is disabled.
+- **Saving.** `POST /api/budgets/{id}/wishlist/items/{itemId}/purchase-transaction` creates the transaction and marks the item purchased atomically in one ledger command (replay-safe with the command ID). The server enforces an active item in this budget, an outflow, the bucket's category, no splits/repeat, Wishlist enabled and the `wishlist` entitlement, plus every normal transaction rule. Bucket Available and the next item update from the existing server calculations.
+- **History.** A purchase recorded this way shows "Purchased <date> · <amount spent>" with a View transaction link that opens the account register at that transaction. Plain Mark purchased items show the cost and date as before.
+- **Undo/consistency.** Deleting the linked transaction (delete, bulk delete or rejecting it in review) returns the item to the wishlist at its previous desire position (or the end of the bucket if fewer items remain), clears the link and advances the Wishlist version. Editing the transaction, including its amount, keeps the item purchased. Restoring the item manually from history keeps the transaction (the money stays spent) and only clears the link.
+- **Wishlist page.** The Purchased button's dialog offers **Record purchase** (opens Accounts with the Add transaction dialog prefilled in Wishlist mode for that item; the item is marked purchased only when the transaction is saved) alongside **Mark purchased only**.
+- **MCP.** `transactions_create` accepts optional `wishlistItemId` and then calls the purchase-transaction endpoint.

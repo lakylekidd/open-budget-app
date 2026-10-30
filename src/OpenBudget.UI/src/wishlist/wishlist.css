@@ -88,3 +88,4 @@
   .wishlist-item{grid-template-columns:22px minmax(0,1fr) auto;grid-template-areas:"rank main cost" "tools tools tools"}
   .wishlist-handle{display:none}
 }
+.wishlist-history li button.wishlist-history-link{padding:0;color:#a3acff;text-decoration:underline;font-size:12px}

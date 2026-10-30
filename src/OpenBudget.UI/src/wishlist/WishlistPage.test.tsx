@@ -173,3 +173,33 @@ it('formats item age and validates web links', () => {
   expect(isWebLink('ftp://shop.example')).toBe(false);
   expect(isWebLink('javascript:alert(1)')).toBe(false);
 });
+
+it('offers Record purchase next to Mark purchased and hands the item to the account flow', async () => {
+  const record = vi.fn();
+  render(<WishlistPage budgetId="budget-1" currency="EUR" access={{ status: 'ready', overview: overview() }} onAccessChange={() => undefined} onRetry={() => undefined} onNavigate={() => undefined} onRecordPurchase={record} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Mark Racing game purchased' }));
+  const dialog = screen.getByRole('dialog', { name: 'Mark as purchased?' });
+  expect(dialog).toHaveTextContent('Record purchase opens an account');
+  expect(within(dialog).getByRole('button', { name: 'Mark purchased only' })).toBeEnabled();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Record purchase' }));
+  expect(record).toHaveBeenCalledWith(expect.objectContaining({ id: 'i1', name: 'Racing game' }));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  // Opening the account flow does not mark the item purchased; saving the transaction does.
+  expect(requests).toHaveLength(0);
+});
+
+it('shows a recorded purchase with its date and amount and links to the transaction', async () => {
+  items[0] = { ...items[0], status: 'purchased', purchasedAt: '2026-10-20T12:00:00Z', purchase: { transactionId: 't-9', accountId: 'checking', date: '2026-10-19', amount: 54.5 } };
+  items.push(item('i3', 'b1', 'Old controller', 25, 2, { status: 'purchased', purchasedAt: '2026-09-01T12:00:00Z' }));
+  const open = vi.fn();
+  render(<WishlistPage budgetId="budget-1" currency="EUR" access={{ status: 'ready', overview: overview() }} onAccessChange={() => undefined} onRetry={() => undefined} onNavigate={() => undefined} onOpenTransaction={open} />);
+  const summary = screen.getByText('Purchased (2)');
+  const history = summary.closest('details')!;
+  await userEvent.click(summary);
+  expect(history).toHaveTextContent('Purchased 19/10/2026 · €54.50');
+  // A plain Mark purchased item has no linked transaction.
+  expect(history).toHaveTextContent('€25.00 · 01/09/2026');
+  expect(within(history).getAllByRole('button', { name: /View transaction/ })).toHaveLength(1);
+  await userEvent.click(within(history).getByRole('button', { name: 'View transaction for Racing game' }));
+  expect(open).toHaveBeenCalledWith({ transactionId: 't-9', accountId: 'checking', date: '2026-10-19', amount: 54.5 });
+});

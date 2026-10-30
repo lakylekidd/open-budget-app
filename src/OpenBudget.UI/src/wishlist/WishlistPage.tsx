@@ -5,7 +5,7 @@ import { parseMoney } from '../ledger/api';
 import { WishlistIcon, WishlistProgressBar } from './WishlistPlanParts';
 import {
   addedAgo, isWebLink, reorder, sendWishlistCommand, WishlistConflictError,
-  type WishlistAccess, type WishlistBucket, type WishlistItem, type WishlistOverview,
+  type WishlistAccess, type WishlistBucket, type WishlistItem, type WishlistOverview, type WishlistPurchase,
 } from './wishlistApi';
 import './wishlist.css';
 
@@ -16,12 +16,16 @@ type Props = {
   onAccessChange: (access: WishlistAccess) => void;
   onRetry: () => void;
   onNavigate: (page: string) => void;
+  /** Opens Accounts with the add-transaction dialog prefilled in Wishlist mode for the item. */
+  onRecordPurchase?: (item: WishlistItem) => void;
+  /** Shows a purchase's linked transaction in its account register. */
+  onOpenTransaction?: (purchase: WishlistPurchase) => void;
 };
 type ItemDraft = { name: string; url: string; cost: string; description: string; bucketId: string };
 type Confirm = { kind: 'disable' } | { kind: 'deleteBucket'; bucket: WishlistBucket } | { kind: 'purchase'; bucket: WishlistBucket; item: WishlistItem };
 type Notice = { text: string; action?: { label: string; page: string } };
 
-export function WishlistPage({ budgetId, currency, access, onAccessChange, onRetry, onNavigate }: Props) {
+export function WishlistPage({ budgetId, currency, access, onAccessChange, onRetry, onNavigate, onRecordPurchase, onOpenTransaction }: Props) {
   const money = useMemo(() => { const format = new Intl.NumberFormat('en-IE', { style: 'currency', currency: currency || 'EUR' }); return (value: number) => format.format(value); }, [currency]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -185,7 +189,7 @@ export function WishlistPage({ budgetId, currency, access, onAccessChange, onRet
               </li>)}
             </ol>}
           <button type="button" className="wishlist-add-item" disabled={busy} onClick={() => openItemDialog(bucket.id)}>+ Add item to {bucket.name}</button>
-          <History title="Purchased" items={bucket.purchased} money={money} busy={busy} onRestore={item => void run(`/items/${item.id}/restore`, 'POST')} />
+          <History title="Purchased" items={bucket.purchased} money={money} busy={busy} onRestore={item => void run(`/items/${item.id}/restore`, 'POST')} onOpenTransaction={onOpenTransaction} />
           <History title="Removed" items={bucket.removed} money={money} busy={busy} onRestore={item => void run(`/items/${item.id}/restore`, 'POST')} />
         </section>;
       })}</div>}
@@ -214,20 +218,29 @@ export function WishlistPage({ budgetId, currency, access, onAccessChange, onRet
       <div className="wishlist-form">
         <p>{confirm.kind === 'disable' ? 'The Wishlist screen is hidden and the Wishlist group in Plan is archived. Buckets, items and any money in their categories are kept and come back when you turn Wishlist on again.'
           : confirm.kind === 'deleteBucket' ? `The bucket and its Plan category are archived. A bucket that still holds money cannot be deleted; move its money to another category in Plan first.`
+          : onRecordPurchase ? `Record purchase opens an account's add-transaction form prefilled with ${confirm.item.name} (${money(confirm.item.cost)}) in the category “${confirm.bucket.name}”; saving it marks the item purchased. Mark purchased only moves it to the Purchased history without recording spending.`
           : `${confirm.item.name} (${money(confirm.item.cost)}) moves to the Purchased history of ${confirm.bucket.name}. Afterwards, record the spending in an account with the category “${confirm.bucket.name}”.`}</p>
         {error && <p className="wishlist-error" role="alert">{error}</p>}
-        <footer><button type="button" onClick={() => setConfirm(null)}>Cancel</button><button type="button" className="button-primary" disabled={busy} onClick={() => void confirmAction()}>{confirm.kind === 'disable' ? 'Turn off' : confirm.kind === 'deleteBucket' ? 'Delete bucket' : 'Mark purchased'}</button></footer>
+        <footer><button type="button" onClick={() => setConfirm(null)}>Cancel</button>
+          {confirm.kind === 'purchase' && onRecordPurchase ? <>
+            <button type="button" disabled={busy} onClick={() => void confirmAction()}>Mark purchased only</button>
+            <button type="button" className="button-primary" disabled={busy} onClick={() => { const { item } = confirm; setConfirm(null); onRecordPurchase(item); }}>Record purchase</button>
+          </> : <button type="button" className="button-primary" disabled={busy} onClick={() => void confirmAction()}>{confirm.kind === 'disable' ? 'Turn off' : confirm.kind === 'deleteBucket' ? 'Delete bucket' : 'Mark purchased'}</button>}</footer>
       </div>
     </LedgerDialog>}
   </div>;
 }
 
 // Collapsed purchase/removal history; restoring puts the item back at the bottom of its bucket.
-function History({ title, items, money, busy, onRestore }: { title: string; items: WishlistItem[]; money: (value: number) => string; busy: boolean; onRestore: (item: WishlistItem) => void }) {
+// A purchase recorded as a transaction shows "Purchased <date> · <amount spent>" and links to that transaction.
+function History({ title, items, money, busy, onRestore, onOpenTransaction }: { title: string; items: WishlistItem[]; money: (value: number) => string; busy: boolean; onRestore: (item: WishlistItem) => void; onOpenTransaction?: (purchase: WishlistPurchase) => void }) {
   if (items.length === 0) return null;
+  const date = (value: string) => new Date(value).toLocaleDateString('en-GB');
   return <details className="wishlist-history">
     <summary>{title} ({items.length})</summary>
-    <ul>{items.map(item => <li key={item.id}><span>{item.name}</span><small>{money(item.cost)} · {new Date(item.purchasedAt ?? item.removedAt ?? item.createdAt).toLocaleDateString('en-GB')}</small>
+    <ul>{items.map(item => <li key={item.id}><span>{item.name}</span>
+      {item.purchase ? <small>Purchased {date(`${item.purchase.date}T12:00:00`)} · {money(item.purchase.amount)}{onOpenTransaction && <> · <button type="button" className="wishlist-history-link" aria-label={`View transaction for ${item.name}`} onClick={() => onOpenTransaction(item.purchase!)}>View transaction</button></>}</small>
+        : <small>{money(item.cost)} · {date(item.purchasedAt ?? item.removedAt ?? item.createdAt)}</small>}
       <button type="button" aria-label={`Restore ${item.name}`} disabled={busy} onClick={() => onRestore(item)}>Restore</button></li>)}</ul>
   </details>;
 }

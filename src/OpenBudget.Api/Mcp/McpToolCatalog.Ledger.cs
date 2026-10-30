@@ -112,9 +112,12 @@ public static partial class McpToolCatalog
                 return Done(response, $"{Count(response.Body, "items")} of {Number(response.Body, "total")} transaction(s); ledger version {Number(response.Body, "version")}.");
             });
 
-        yield return Tool("transactions_create", "Create transaction", "Records a categorized, split or uncategorized transaction in an account.",
-            McpPermissions.AdminOnly, Effect.Write, Obj([.. TransactionFields(), LedgerVersionArg, CommandIdArg]),
-            c => LedgerWriteAsync(c, version => c.Send("POST", "/api/transactions", TransactionBody(c, version)), "Transaction created."));
+        yield return Tool("transactions_create", "Create transaction", "Records a categorized, split or uncategorized transaction in an account. " +
+            "With wishlistItemId it records a Wishlist purchase: an outflow in that item's bucket category (wl-{bucketId}) that also marks the active item purchased (requires the wishlist entitlement).",
+            McpPermissions.AdminOnly, Effect.Write, Obj([.. TransactionFields(), O("wishlistItemId", Uuid("Active Wishlist item bought by this outflow (optional).")), LedgerVersionArg, CommandIdArg]),
+            c => LedgerWriteAsync(c, version => c.OptStr("wishlistItemId") is { } itemId
+                ? c.Send("POST", "/api/budgets/{id}/wishlist/items/{itemId}/purchase-transaction", TransactionBody(c, version), Route.Of(("id", c.BudgetId!), ("itemId", itemId)))
+                : c.Send("POST", "/api/transactions", TransactionBody(c, version)), "Transaction created."));
 
         yield return Tool("transactions_import", "Import transaction",
             "Records an imported transaction (marked for approval and subject to payee renaming rules), as file import does.",

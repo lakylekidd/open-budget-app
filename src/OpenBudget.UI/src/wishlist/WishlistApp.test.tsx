@@ -73,6 +73,31 @@ it('places Wishlist directly below Long-Term Planning with a ready-to-buy badge 
   expect(within(bucket).getByText('Ready to buy')).toBeInTheDocument();
 });
 
+it('Record purchase opens Accounts with the add-transaction dialog prefilled in Wishlist mode', async () => {
+  const checking = { id: 'checking', name: 'Checking', isClosed: false, balance: 500, clearedBalance: 500, unclearedBalance: 0, accountType: 'checking', isFavorite: false, connectionStatus: 'unlinked', lastReconciledAt: null, needsCategoryCount: 0 };
+  const base = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = String(input);
+    if (path === '/api/accounts') return json({ version: 1, accounts: [checking] });
+    if (path.startsWith('/api/register-views/')) return json({ version: 1, datePreset: 'all', fromMonth: null, toMonth: null, showReconciled: true, showRunningBalance: true, showFlags: true, showImages: false, showScheduledTransactions: true });
+    if (path.startsWith('/api/transactions')) return json({ version: 1, page: 1, pageSize: 25, total: 0, items: [], accounts: { version: 1, accounts: [checking] } });
+    if (path === '/api/flags') return json({ version: 1, flags: [] });
+    if (path === '/api/payees') return json([]);
+    if (path.startsWith('/api/budget/')) return json(month(path.slice(-7)));
+    return base(input, init);
+  });
+  render(<App />);
+  await screen.findByText('Plan saved');
+  await userEvent.click(await sideNav().findByRole('button', { name: 'Wishlist, 1 ready to buy' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Mark Racing game purchased' }));
+  await userEvent.click(within(screen.getByRole('dialog', { name: 'Mark as purchased?' })).getByRole('button', { name: 'Record purchase' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Add transaction' });
+  expect(within(dialog).getByRole('radio', { name: 'Wishlist' })).toHaveAttribute('aria-checked', 'true');
+  expect(within(dialog).getByLabelText('Wishlist bucket')).toHaveValue('b1');
+  expect(within(dialog).getByLabelText('Payee')).toHaveValue('Racing game');
+  expect(within(dialog).getByLabelText('Amount')).toHaveValue('-59.99');
+});
+
 it('shows the enable call-to-action when entitled but disabled', async () => {
   access = 'disabled';
   render(<App />);

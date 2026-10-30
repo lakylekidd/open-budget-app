@@ -185,10 +185,12 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             return new Change(id, before, adjustment is null?account:new{account,adjustment=ToDto(adjustment)});
         }, ct);
 
-    public Task<MutationDto> SaveTransactionAsync(Guid? id, TransactionRequest request, CancellationToken ct, bool imported = false) =>
-        ExecuteAsync(request.CommandId, request.Version, imported ? "transaction.import" : id is null ? "transaction.create" : $"transaction.update/{id}", request, async () =>
+    // wishlistItemId (Record purchase, WishlistPurchases.cs) also marks that Wishlist item purchased in the same command.
+    public Task<MutationDto> SaveTransactionAsync(Guid? id, TransactionRequest request, CancellationToken ct, bool imported = false, Guid? wishlistItemId = null) =>
+        ExecuteAsync(request.CommandId, request.Version, wishlistItemId is not null ? $"wishlist.purchase/{wishlistItemId}" : imported ? "transaction.import" : id is null ? "transaction.create" : $"transaction.update/{id}", request, async () =>
         {
             if (imported && (id is not null || request.Repeat != "never")) throw new LedgerException("Imported rows cannot edit entries or create schedules.");
+            var wishlistItem = wishlistItemId is null ? null : await LoadWishlistPurchaseAsync(wishlistItemId.Value, request, ct);
             var openingZero = id is not null && request.Amount == 0 && await db.Transactions.AnyAsync(t => t.Id == id && t.IsOpening && !t.IsDeleted, ct);
             var error = LedgerRules.Validate(openingZero ? request with { Amount = 0.01m } : request);
             if (error is not null) throw new LedgerException(error);
@@ -245,6 +247,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
                 split.Memo = splits[position].Memo?.Trim() ?? "";
             }
             if (id is null) db.Transactions.Add(entry);
+            if (wishlistItem is not null) await MarkWishlistPurchasedAsync(wishlistItem, entry, ct);
             if (request.Repeat != "never" && !entry.IsOpening)
                 await CreateNextScheduleAsync(entry, request.Repeat, ct);
             if (imported) return new Change(entry.Id, null, new { sourcePayee = request.Payee, transaction = ToDto(entry) });
@@ -357,6 +360,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             var state = await db.LedgerStates.SingleAsync(ct);
             if (state.Version != version) throw new LedgerException("The ledger changed in another session. Reload, review the latest entries, and retry.", 409);
             var change = await action();
+            await RestoreWishlistPurchasesForDeletedAsync(ct);
             await db.SaveChangesAsync(ct);
             await RecalculateMonthsAsync(ct);
             state.Version++;

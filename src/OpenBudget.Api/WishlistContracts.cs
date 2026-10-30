@@ -12,8 +12,11 @@ public sealed record WishlistItemOrderRequest(long Version, IReadOnlyList<Guid> 
 public sealed record WishlistProgressDto(Guid NextItemId, string NextItemName, decimal Cost, decimal Available, decimal Remaining,
     bool CanPurchase, decimal FundedFraction);
 
+// The ledger transaction linked by "Record purchase": Amount is the spending as a positive number.
+public sealed record WishlistPurchaseDto(Guid TransactionId, Guid AccountId, DateOnly Date, decimal Amount);
+
 public sealed record WishlistItemDto(Guid Id, Guid BucketId, string Name, string? Url, decimal Cost, string Description, int SortOrder,
-    string Status, DateTimeOffset CreatedAt, DateTimeOffset? PurchasedAt, DateTimeOffset? RemovedAt);
+    string Status, DateTimeOffset CreatedAt, DateTimeOffset? PurchasedAt, DateTimeOffset? RemovedAt, WishlistPurchaseDto? Purchase = null);
 
 public sealed record WishlistBucketDto(Guid Id, string Name, int SortOrder, string CategoryId, decimal Available,
     decimal? MinCost, decimal? MaxCost, WishlistProgressDto? Progress,
