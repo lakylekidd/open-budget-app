@@ -22,7 +22,10 @@ public sealed class AgentTokenEntity
     public string TokenHash { get; set; } = "";
     public AgentPermission Permission { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
-    public DateTimeOffset ExpiresAt { get; set; }
+    /// <summary>Null only when the owner explicitly chose "no expiration" at creation or renewal.</summary>
+    public DateTimeOffset? ExpiresAt { get; set; }
+    /// <summary>When the secret was last rotated; null until the first renewal.</summary>
+    public DateTimeOffset? RenewedAt { get; set; }
     public DateTimeOffset? LastUsedAt { get; set; }
     public DateTimeOffset? RevokedAt { get; set; }
     public List<AgentTokenBudgetEntity> Budgets { get; set; } = [];

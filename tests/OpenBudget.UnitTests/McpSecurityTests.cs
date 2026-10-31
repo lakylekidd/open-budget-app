@@ -63,6 +63,62 @@ public class AgentTokenSecretsTests
     public void Oversized_authorization_headers_are_ignored() => Assert.Null(AgentTokenSecrets.ReadBearer("Bearer " + new string('a', 600)));
 }
 
+public class AgentTokenLifetimeTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 10, 31, 12, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void Omitted_lifetime_defaults_to_a_dated_expiry_and_never_infers_no_expiration()
+    {
+        Assert.True(AgentTokenLifetime.TryResolve(null, null, currentlyNeverExpires: false, Now, out var expiresAt, out _));
+        Assert.Equal(Now.AddDays(AgentTokenService.DefaultExpiryDays), expiresAt);
+        Assert.True(AgentTokenLifetime.TryResolve(null, false, currentlyNeverExpires: true, Now, out expiresAt, out _));
+        Assert.Equal(Now.AddDays(AgentTokenService.DefaultExpiryDays), expiresAt);
+    }
+
+    [Fact]
+    public void Only_explicit_never_expires_produces_no_expiration_and_renewal_keeps_the_mode()
+    {
+        Assert.True(AgentTokenLifetime.TryResolve(null, true, currentlyNeverExpires: false, Now, out var expiresAt, out _));
+        Assert.Null(expiresAt);
+        Assert.True(AgentTokenLifetime.TryResolve(null, null, currentlyNeverExpires: true, Now, out expiresAt, out _));
+        Assert.Null(expiresAt);
+        Assert.True(AgentTokenLifetime.TryResolve(30, null, currentlyNeverExpires: true, Now, out expiresAt, out _));
+        Assert.Equal(Now.AddDays(30), expiresAt);
+    }
+
+    [Theory]
+    [InlineData(0, null)]
+    [InlineData(366, null)]
+    [InlineData(-1, false)]
+    [InlineData(30, true)]
+    public void Invalid_or_contradictory_lifetimes_are_rejected(int days, bool? neverExpires)
+    {
+        Assert.False(AgentTokenLifetime.TryResolve(days, neverExpires, currentlyNeverExpires: false, Now, out _, out var error));
+        Assert.NotEmpty(error);
+    }
+
+    [Fact]
+    public void Null_expiry_stays_active_but_revoked_and_expired_tokens_do_not()
+    {
+        Assert.True(AgentTokenLifetime.IsActive(new AgentTokenEntity { ExpiresAt = null }, Now.AddYears(50)));
+        Assert.False(AgentTokenLifetime.IsActive(new AgentTokenEntity { ExpiresAt = null, RevokedAt = Now }, Now));
+        Assert.False(AgentTokenLifetime.IsActive(new AgentTokenEntity { ExpiresAt = Now }, Now));
+        Assert.True(AgentTokenLifetime.IsActive(new AgentTokenEntity { ExpiresAt = Now.AddTicks(1) }, Now));
+        Assert.Equal("expired", AgentTokenLifetime.Status(new AgentTokenEntity { ExpiresAt = Now }, Now));
+        Assert.Equal("revoked", AgentTokenLifetime.Status(new AgentTokenEntity { ExpiresAt = null, RevokedAt = Now }, Now));
+        Assert.Equal("active", AgentTokenLifetime.Status(new AgentTokenEntity { ExpiresAt = null }, Now));
+    }
+
+    [Fact]
+    public void Audit_actions_record_the_expiry_mode()
+    {
+        Assert.Equal("agent-token.create.budget", AgentTokenLifetime.AuditAction("agent-token.create.budget", Now));
+        Assert.Equal("agent-token.create.budget.no-expiry", AgentTokenLifetime.AuditAction("agent-token.create.budget", null));
+        Assert.Equal("agent-token.renew.no-expiry", AgentTokenLifetime.AuditAction("agent-token.renew", null));
+    }
+}
+
 public class McpPermissionMatrixTests
 {
     [Fact]

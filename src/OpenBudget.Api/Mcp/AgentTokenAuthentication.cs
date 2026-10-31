@@ -49,7 +49,7 @@ public sealed class AgentTokenAuthenticationHandler(
         var hash = AgentTokenSecrets.Hash(presented);
         var token = await db.Set<AgentTokenEntity>().Include(x => x.Budgets).SingleOrDefaultAsync(x => x.TokenHash == hash, Context.RequestAborted);
         var now = clock.GetUtcNow();
-        if (token is null || !AgentTokenSecrets.Verify(presented, token.TokenHash) || token.RevokedAt is not null || token.ExpiresAt <= now)
+        if (token is null || !AgentTokenSecrets.Verify(presented, token.TokenHash) || !AgentTokenLifetime.IsActive(token, now))
             return AuthenticateResult.Fail("Invalid agent token.");
 
         var user = await users.FindByIdAsync(token.UserId);
