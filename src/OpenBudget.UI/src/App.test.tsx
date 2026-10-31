@@ -383,13 +383,14 @@ function stubAccountOrder(fail?:{status:number;error:string}){
   return orderWrites;
 }
 
-it('reorders accounts within a sidebar section with move buttons and keeps the persisted order after reload',async()=>{
+const dragOnto=(sourceId:string,targetId:string)=>{const store:Record<string,string>={};const dataTransfer={effectAllowed:'',dropEffect:'',setData:(k:string,v:string)=>{store[k]=v;},getData:(k:string)=>store[k]};const source=screen.getByTestId('sortable-account-'+sourceId),target=screen.getByTestId('sortable-account-'+targetId);fireEvent.dragStart(source,{dataTransfer});fireEvent.dragOver(target,{dataTransfer});fireEvent.drop(target,{dataTransfer});fireEvent.dragEnd(source,{dataTransfer});};
+it('reorders accounts within a sidebar section by dragging and keeps the persisted order after reload',async()=>{
   focusAccounts=[orderAccount('cash-1','Salary','checking'),orderAccount('card-1','Visa','creditCard'),orderAccount('cash-2','Savings','savings'),orderAccount('cash-3','Wallet','cash')];
   const orderWrites=stubAccountOrder();
   const view=render(<App/>);await saved();
   expect(sectionNames('cash-account-list')).toEqual(['Salary','Savings','Wallet']);
-  expect(screen.getByRole('button',{name:'Move Visa up'})).toBeDisabled();
-  await userEvent.click(screen.getByRole('button',{name:'Move Wallet up'}));
+  for(const name of ['Salary','Savings','Wallet','Visa'])expect(screen.queryByRole('button',{name:'Move '+name+' up'})).not.toBeInTheDocument();
+  dragOnto('cash-3','cash-2');
   expect(sectionNames('cash-account-list')).toEqual(['Salary','Wallet','Savings']);
   await waitFor(()=>expect(orderWrites).toHaveLength(1));
   expect(orderWrites[0]).toMatchObject({version:1,accountIds:['cash-1','card-1','cash-3','cash-2']});
@@ -420,7 +421,7 @@ it.each([[400,'Account order must list every account in this budget exactly once
   focusAccounts=[orderAccount('cash-1','Salary','checking'),orderAccount('cash-2','Savings','savings')];
   const orderWrites=stubAccountOrder({status,error});
   render(<App/>);await saved();
-  await userEvent.click(screen.getByRole('button',{name:'Move Savings up'}));
+  dragOnto('cash-2','cash-1');
   expect(await screen.findByRole('alert')).toHaveTextContent(message);
   expect(orderWrites).toHaveLength(1);
   expect(sectionNames('cash-account-list')).toEqual(['Salary','Savings']);
