@@ -84,5 +84,19 @@ public sealed class LedgerRulesTests
         Assert.Equal(0m, category.Available);
     }
 
+    [Theory]
+    [InlineData(0, 0, false, null)]
+    [InlineData(1, 0, false, "transactions")]
+    [InlineData(1, 1, true, "transactions")]
+    [InlineData(0, 1, false, "scheduled transactions")]
+    [InlineData(0, 1, true, "scheduled transactions")]
+    [InlineData(0, 0, true, "payment category")]
+    public void Account_deletion_requires_no_transactions_active_schedules_or_payment_money(int transactions, int activeSchedules, bool paymentMoney, string? expected)
+    {
+        var error = LedgerRules.AccountDeletionError(transactions, activeSchedules, paymentMoney);
+        if (expected is null) Assert.Null(error);
+        else Assert.Contains(expected, error);
+    }
+
     private static TransactionRequest Request() => new(Guid.NewGuid(), 1, Guid.NewGuid(), new(2026, 10, 21), -1, "Shop", "", null, "uncleared", []);
 }

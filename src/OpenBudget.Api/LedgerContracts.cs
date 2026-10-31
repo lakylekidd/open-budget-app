@@ -1,7 +1,7 @@
 namespace OpenBudget.Api;
 
 public sealed record AccountDto(Guid Id, string Name, bool IsClosed, decimal Balance, decimal ClearedBalance, decimal UnclearedBalance,
-    string AccountType, bool IsFavorite, string ConnectionStatus, DateTimeOffset? LastReconciledAt, int NeedsCategoryCount, string Notes = "", int UnapprovedCount = 0, int AttentionCount = 0);
+    string AccountType, bool IsFavorite, string ConnectionStatus, DateTimeOffset? LastReconciledAt, int NeedsCategoryCount, string Notes = "", int UnapprovedCount = 0, int AttentionCount = 0, bool HasTransactions = false);
 public sealed record AccountsDto(long Version, List<AccountDto> Accounts);
 public sealed record SplitDto(string CategoryId, decimal Amount, string? Payee = null, string? Memo = null);
 public sealed record TransactionDto(Guid Id, Guid AccountId, DateOnly Date, decimal Amount, string Payee, string Memo,
@@ -15,6 +15,7 @@ public sealed record TransactionRequest(Guid CommandId, long Version, Guid Accou
 public sealed record TransferRequest(Guid CommandId, long Version, Guid FromAccountId, Guid ToAccountId, DateOnly Date,
     decimal Amount, string? Memo, string Repeat = "never", bool ConfirmReconciledEdit = false);
 public sealed record DeleteTransactionRequest(Guid CommandId, long Version);
+public sealed record DeleteAccountRequest(Guid CommandId, long Version);
 public sealed record StatusRequest(Guid CommandId, long Version, string Status);
 public sealed record ReconcileRequest(Guid CommandId, long Version, decimal StatementBalance);
 public sealed record MutationDto(Guid Id, long Version);

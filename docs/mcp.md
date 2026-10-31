@@ -130,6 +130,7 @@ Every tool:
 | `accounts_create` | Create account | — | — | ✓ | write |
 | `accounts_update` | Update account | — | — | ✓ | write |
 | `accounts_reorder` | Reorder accounts (every account ID exactly once) | — | — | ✓ | write |
+| `accounts_delete` | Delete account (refused while it has transactions, active schedules or payment-category money) | — | — | ✓ | destructive (confirm) |
 | `accounts_credit_summary` | Credit account monthly summary | ✓ | — | ✓ | read-only |
 | `reconcile_account` | Reconcile account | — | — | ✓ | write |
 | `transactions_list` | List transactions | ✓ | — | ✓ | read-only |

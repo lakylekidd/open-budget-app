@@ -226,7 +226,7 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     setInline(null); setDialog({ kind: 'transaction', wishlistItemId: wishlistPurchaseRequest.itemId });
   }, [wishlistPurchaseRequest, loading, wishlist]);
   const reload = useCallback(() => { setError(''); setConflict(false); setRefresh(value => value + 1); }, []);
-  async function mutate(path: string, method: string, fields: object) {
+  async function mutate(path: string, method: string, fields: object, onSaved?: () => void) {
     if (inFlight.current || conflict || loading || viewInFlight.current) return false;
     const signature = path + JSON.stringify(fields);
     if (uncertain && pending.current?.signature !== signature) { setError('Retry the previous save first to resolve its outcome.'); return false; }
@@ -236,7 +236,7 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     try {
       await requestJson(path, { method, headers: { 'Content-Type': 'application/json' }, body: pending.current.body });
       pending.current = null; setUncertain(false); setDialog(null); if(path!=='/api/flags'&&!path.endsWith('/flag'))setInline(null); setSelectedIds([]); setNotice(path==='/api/flags'?'Flag names saved.':path.endsWith('/flag')?'Flag saved.':path.startsWith('/api/schedules')&&!path.endsWith('/actions')?'Scheduled transaction saved. Actual balances change when you choose Enter Now.':'Ledger saved. Balances and budget activity updated.');
-      setRefresh(value => value + 1); onChanged(); return true;
+      onSaved?.(); setRefresh(value => value + 1); onChanged(); return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save. Retry the same action safely.');
       if (err instanceof ApiError && err.status < 500) { pending.current = null; setUncertain(false); if (err.status === 409) setConflict(true); }
@@ -246,6 +246,10 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   }
   function open(next: Dialog) { setError(''); setNotice(''); setViewOpen(false); setMoreOpen(false); setDialog(next); }
   function close() { if (!inFlight.current) setDialog(null); }
+  // Deleting leaves the account's register: show All Accounts and refresh the sidebar list.
+  async function deleteAccount(account: Account) {
+    await mutate(`/api/accounts/${account.id}/delete`, 'POST', {}, () => { onSelectAccount(''); setNotice(`Account “${account.name}” deleted.`); });
+  }
   async function edit(entry: Entry) {
     setSelectedIds([entry.id]);
     setViewOpen(false);setMoreOpen(false);
@@ -360,8 +364,8 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     {dialog && <LedgerDialog onBack={dialog.kind === 'account' && pairingStep ? () => { if (!inFlight.current) setPairingStep(false); } : dialog.kind === 'account' && !dialog.account && dialog.accountType ? () => setDialog({ kind: 'account' }) : undefined} title={dialog.kind === 'loanActivity' ? 'Add Activity' : dialog.kind === 'account' && pairingStep ? 'Optional: Pair a Category' : dialog.kind === 'account' ? dialog.account ? 'Edit Account' : dialog.accountType ? isLoanAccount({ accountType: dialog.accountType }) ? 'Add Unlinked Account' : `Add ${accountTypeLabel(dialog.accountType)} account` : 'Select Account Type' : dialog.kind === 'transaction' ? dialog.entry ? 'Edit transaction' : 'Add transaction' : dialog.kind === 'transfer' ? dialog.entry ? 'Edit transfer' : 'Transfer money' : dialog.kind === 'reconcile' ? 'Reconcile account' : dialog.kind === 'history' ? 'Audit history' : 'Delete transaction'} onClose={close}>
       {feedback}
       {dialog.kind === 'transaction' && <TransactionForm accounts={accounts.accounts} selectedAccount={selectedAccount} entry={dialog.entry} busy={disabled} wishlist={wishlist} initialWishlistItemId={dialog.wishlistItemId} onSubmit={async ({ wishlistItemId, ...fields }) => { await mutate(wishlistItemId && wishlist && !dialog.entry ? wishlistPurchasePath(wishlist.budgetId, wishlistItemId) : `/api/transactions${dialog.entry ? `/${dialog.entry.id}` : ''}`, dialog.entry ? 'PUT' : 'POST', fields); }} />}
-      {dialog.kind === 'account' && (dialog.account ? isLoanAccount(dialog.account) ? <EditLoanAccountForm account={dialog.account} busy={disabled} onCancel={close} pairing={pairingStep} onPairingChange={setPairingStep} onOpenCategory={id => { setDialog(null); onOpenCategory?.(id, false); }} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account!.id}`, 'PUT', fields); }}/>
-        : <EditAccountForm account={dialog.account} busy={disabled} onCancel={close} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account!.id}`, 'PUT', fields); }}/>
+      {dialog.kind === 'account' && (dialog.account ? isLoanAccount(dialog.account) ? <EditLoanAccountForm account={dialog.account} busy={disabled} onCancel={close} pairing={pairingStep} onPairingChange={setPairingStep} onOpenCategory={id => { setDialog(null); onOpenCategory?.(id, false); }} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account!.id}`, 'PUT', fields); }} onDelete={() => deleteAccount(dialog.account!)}/>
+        : <EditAccountForm account={dialog.account} busy={disabled} onCancel={close} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account!.id}`, 'PUT', fields); }} onDelete={() => deleteAccount(dialog.account!)}/>
         : dialog.accountType && isLoanAccount({ accountType: dialog.accountType }) ? <LoanAccountForm key={dialog.accountType} accountType={dialog.accountType as LoanAccountType} busy={disabled} pairing={pairingStep} onPairingChange={setPairingStep} onSubmit={async fields => { await mutate('/api/accounts', 'POST', fields); }}/>
         : dialog.accountType ? <AccountForm key={dialog.accountType} accountType={dialog.accountType} busy={disabled} onSubmit={async fields => { await mutate('/api/accounts', 'POST', fields); }}/> : <AccountTypeList onSelect={accountType => setDialog({ kind: 'account', accountType })}/>) }
       {dialog.kind === 'loanActivity' && <div className="loan-activity-dialog">

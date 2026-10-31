@@ -88,6 +88,11 @@ public static partial class McpToolCatalog
             McpPermissions.AdminOnly, Effect.Write,
             Obj(R("accountIds", Array("Every account ID in the new order.", Uuid("Account ID."), 1000, 1)), LedgerVersionArg, CommandIdArg),
             c => LedgerWriteAsync(c, version => c.Send("PUT", "/api/accounts/order", new { commandId = c.CommandId(), version, accountIds = c.Element("accountIds") }), "Accounts reordered."));
+        yield return Tool("accounts_delete", "Delete account",
+            "Permanently deletes an account created by mistake. Refused while it has any transactions (including an opening balance), active scheduled transactions or money in its payment category.",
+            McpPermissions.AdminOnly, Effect.Destructive, Obj(R("accountId", Uuid("Account ID.")), LedgerVersionArg, CommandIdArg),
+            c => LedgerWriteAsync(c, version => c.Send("POST", "/api/accounts/{id}/delete", new { commandId = c.CommandId(), version },
+                Route.Of(("id", c.Str("accountId")))), "Account deleted."));
 
         yield return Tool("accounts_credit_summary", "Credit account monthly summary",
             "Reads a credit account's monthly summary: prior balance, spending, interest, payments and current balance.",
