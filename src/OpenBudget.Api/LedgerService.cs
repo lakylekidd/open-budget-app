@@ -23,7 +23,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
         {
             balances.TryGetValue(a.Id, out var b);
             return new AccountDto(a.Id, a.Name, a.IsClosed, b?.Balance ?? 0, b?.Cleared ?? 0, (b?.Balance ?? 0) - (b?.Cleared ?? 0),
-                a.AccountType, a.IsFavorite, "unlinked", reconciledAt.TryGetValue(a.Id, out var at) ? at : null, b?.NeedsCategory ?? 0, a.Notes, b?.Unapproved ?? 0, b?.Attention ?? 0);
+                a.AccountType, a.IsFavorite, "unlinked", reconciledAt.TryGetValue(a.Id, out var at) ? at : null, b?.NeedsCategory ?? 0, a.Notes, b?.Unapproved ?? 0, b?.Attention ?? 0, b is not null);
         }).ToList());
     }
 

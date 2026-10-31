@@ -34,4 +34,13 @@ public static class LedgerRules
 
     public static decimal Balance(IEnumerable<TransactionEntity> entries, bool clearedOnly = false) =>
         entries.Where(t => !t.IsDeleted && (!clearedOnly || t.Status != "uncleared")).Sum(t => t.Amount);
+
+    // Only an account without ledger history or planned activity can be deleted. Any nondeleted entry (opening balance,
+    // transfer leg, loan activity, posted schedule, imported or reconciled row) blocks, as does an active schedule from or
+    // to the account and money still held in its server-owned payment category. Returns null when deletion is allowed.
+    public static string? AccountDeletionError(int transactions, int activeSchedules, bool paymentCategoryHasMoney) =>
+        transactions > 0 ? "This account has transactions. Delete them first or close the account instead."
+        : activeSchedules > 0 ? "This account has scheduled transactions. End them first or close the account instead."
+        : paymentCategoryHasMoney ? "This account's payment category still has money assigned. Move it to another category first."
+        : null;
 }

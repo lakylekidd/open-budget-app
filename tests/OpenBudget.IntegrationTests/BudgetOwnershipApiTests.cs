@@ -220,6 +220,37 @@ public sealed class BudgetOwnershipApiTests(PostgresFixture fixture) : IClassFix
     }
 
     [Fact]
+    public async Task Account_delete_is_scoped_to_the_selected_owned_budget()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        await CreateUserAsync(app, "deletealice", "deletealice@example.test");
+        await CreateUserAsync(app, "deletebob", "deletebob@example.test");
+        using var alice = await LoginAsync(app, "deletealice");
+        using var bob = await LoginAsync(app, "deletebob");
+        var aliceBudget = await CreateBudgetAsync(alice, "Alice accounts");
+        var bobBudget = await CreateBudgetAsync(bob, "Bob accounts");
+        alice.DefaultRequestHeaders.Add("Cookie", $"openbudget.activeBudgetId={aliceBudget.Id}");
+        bob.DefaultRequestHeaders.Add("Cookie", $"openbudget.activeBudgetId={bobBudget.Id}");
+        var aliceState = (await alice.GetFromJsonAsync<AccountsDto>("/api/accounts"))!;
+        var created = await alice.PostAsJsonAsync("/api/accounts", new CreateAccountRequest(Guid.NewGuid(), aliceState.Version, "Alice empty", new DateOnly(2026, 10, 21), 0m));
+        var aliceAccount = (await created.Content.ReadFromJsonAsync<MutationDto>())!;
+
+        // Bob's own budget does not contain Alice's account; selecting Alice's budget is forbidden. Neither writes anything.
+        var bobState = (await bob.GetFromJsonAsync<AccountsDto>("/api/accounts"))!;
+        Assert.Equal(HttpStatusCode.NotFound, (await bob.PostAsJsonAsync($"/api/accounts/{aliceAccount.Id}/delete", new DeleteAccountRequest(Guid.NewGuid(), bobState.Version))).StatusCode);
+        bob.DefaultRequestHeaders.Remove("Cookie");
+        bob.DefaultRequestHeaders.Add("Cookie", $"openbudget.activeBudgetId={aliceBudget.Id}");
+        Assert.Equal(HttpStatusCode.Forbidden, (await bob.PostAsJsonAsync($"/api/accounts/{aliceAccount.Id}/delete", new DeleteAccountRequest(Guid.NewGuid(), aliceAccount.Version))).StatusCode);
+        var aliceAccounts = (await alice.GetFromJsonAsync<AccountsDto>("/api/accounts"))!;
+        Assert.Equal(aliceAccount.Version, aliceAccounts.Version);
+        Assert.Equal("Alice empty", Assert.Single(aliceAccounts.Accounts).Name);
+
+        var deleted = await alice.PostAsJsonAsync($"/api/accounts/{aliceAccount.Id}/delete", new DeleteAccountRequest(Guid.NewGuid(), aliceAccounts.Version));
+        Assert.Equal(HttpStatusCode.OK, deleted.StatusCode);
+        Assert.Empty((await alice.GetFromJsonAsync<AccountsDto>("/api/accounts"))!.Accounts);
+    }
+
+    [Fact]
     public async Task Owner_can_permanently_delete_a_budget_and_its_plan_only_with_current_version()
     {
         await using var app = await fixture.CreateAppAsync();

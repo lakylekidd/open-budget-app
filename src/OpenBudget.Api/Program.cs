@@ -240,6 +240,7 @@ app.MapPut("/api/register-views/{scope}", (string scope, RegisterViewDto request
     gate.RunAsync(() => views.SaveAsync(scope, request, ct), ct));
 app.MapPost("/api/accounts", (CreateAccountRequest request, LedgerService ledger, CancellationToken ct) => ledger.CreateAccountAsync(request, ct));
 app.MapPut("/api/accounts/{id:guid}", (Guid id, UpdateAccountRequest request, LedgerService ledger, CancellationToken ct) => ledger.UpdateAccountAsync(id, request, ct));
+app.MapPost("/api/accounts/{id:guid}/delete", (Guid id, DeleteAccountRequest request, LedgerService ledger, CancellationToken ct) => ledger.DeleteAccountAsync(id, request, ct));
 app.MapGet("/api/accounts/{id:guid}/credit-summary/{month}", (Guid id, string month, LedgerService ledger, LedgerGate gate, CancellationToken ct) =>
     gate.RunAsync(() => ledger.GetCreditSummaryAsync(id, month, ct), ct));
 app.MapGet("/api/accounts/{id:guid}/credit-activity/{month}", (Guid id, string month, LedgerService ledger, LedgerGate gate, CancellationToken ct) =>
