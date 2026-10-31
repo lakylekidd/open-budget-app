@@ -1,0 +1,11 @@
+.git
+.github
+.hermes
+**/bin
+**/obj
+**/node_modules
+**/TestResults
+graphify-out
+coverage
+dist
+*.md

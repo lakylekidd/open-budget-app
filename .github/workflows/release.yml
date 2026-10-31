@@ -12,6 +12,11 @@ on:
 
 permissions:
   contents: read
+  packages: write
+
+concurrency:
+  group: open-budget-release-builder
+  cancel-in-progress: false
 
 jobs:
   verify:
@@ -35,15 +40,73 @@ jobs:
       - run: npm --prefix src/OpenBudget.UI test
       - run: npm --prefix src/OpenBudget.UI run build
 
-  deploy:
+  build-and-deploy:
     needs: verify
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.version }}
+
+      - name: Set immutable image tag
+        id: image
+        shell: bash
+        run: echo "tag=sha-$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ghcr.io/lakylekidd/open-budget-api:${{ steps.image.outputs.tag }}
+          labels: org.opencontainers.image.source=https://github.com/lakylekidd/open-budget-app
+          cache-from: type=gha,scope=open-budget-api
+          cache-to: type=gha,mode=max,scope=open-budget-api
+
+      - name: Build and push UI image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.ui
+          push: true
+          tags: ghcr.io/lakylekidd/open-budget-ui:${{ steps.image.outputs.tag }}
+          labels: org.opencontainers.image.source=https://github.com/lakylekidd/open-budget-app
+          cache-from: type=gha,scope=open-budget-ui
+          cache-to: type=gha,mode=max,scope=open-budget-ui
+
+      - name: Select immutable images in Coolify
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$COOLIFY_TOKEN"
+          test -n "$IMAGE_TAG"
+          payload=$(printf '{"data":[{"key":"OPEN_BUDGET_IMAGE_TAG","value":"%s","is_preview":false,"is_literal":true,"is_runtime":true,"is_buildtime":false}]}' "$IMAGE_TAG")
+          curl --request PATCH --fail-with-body --show-error --silent \
+            --header "Authorization: Bearer $COOLIFY_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data "$payload" \
+            "https://coolify.vlachos.nl/api/v1/applications/8cxzz1mjvqmdzwz0ki8yncxy/envs/bulk" >/dev/null
+
       - name: Trigger Coolify deployment
         env:
           COOLIFY_WEBHOOK_URL: ${{ secrets.COOLIFY_WEBHOOK_URL }}
           COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        shell: bash
         run: |
+          set -euo pipefail
           if [[ -z "$COOLIFY_WEBHOOK_URL" || -z "$COOLIFY_TOKEN" ]]; then
             echo "Configure COOLIFY_WEBHOOK_URL and COOLIFY_TOKEN repository secrets before publishing a release." >&2
             exit 1

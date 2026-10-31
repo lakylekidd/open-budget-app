@@ -16,9 +16,7 @@ services:
       start_period: 10s
 
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/lakylekidd/open-budget-api:${OPEN_BUDGET_IMAGE_TAG:?Set OPEN_BUDGET_IMAGE_TAG in Coolify}
     restart: unless-stopped
     environment:
       ASPNETCORE_ENVIRONMENT: Production
@@ -40,9 +38,7 @@ services:
       start_period: 30s
 
   ui:
-    build:
-      context: .
-      dockerfile: Dockerfile.ui
+    image: ghcr.io/lakylekidd/open-budget-ui:${OPEN_BUDGET_IMAGE_TAG:?Set OPEN_BUDGET_IMAGE_TAG in Coolify}
     restart: unless-stopped
     depends_on:
       api:
