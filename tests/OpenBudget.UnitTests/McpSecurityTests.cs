@@ -130,7 +130,7 @@ public class McpPermissionMatrixTests
             var empty = JsonSerializer.SerializeToElement(new Dictionary<string, object>());
             if (tool.Destructive && tool.NeedsConfirmation is null) Assert.True(tool.RequiresConfirm(empty), tool.Name);
         }
-        foreach (var name in new[] { "transactions_delete", "budgets_delete", "budgets_archive", "users_suspend", "sharing_remove_member", "sharing_cancel_invitation", "category_targets_delete" })
+        foreach (var name in new[] { "transactions_delete", "budgets_delete", "budgets_archive", "users_suspend", "sharing_remove_member", "sharing_cancel_invitation", "category_targets_delete", "accounts_delete" })
             Assert.True(McpToolCatalog.Find(name)!.RequiresConfirm(JsonSerializer.SerializeToElement(new { })), name);
         var review = McpToolCatalog.Find("transactions_review")!;
         Assert.False(review.RequiresConfirm(JsonSerializer.SerializeToElement(new { action = "approve" })));
