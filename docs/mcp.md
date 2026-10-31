@@ -15,9 +15,9 @@ OpenBudget hosts a [Model Context Protocol](https://modelcontextprotocol.io) ser
 
 1. Sign in to OpenBudget and open **Profile** (avatar, top right) → **Agent tokens**.
 2. Enter a name (for example "Laptop assistant"), choose a permission level and — for Budget or Reporting tokens — tick the budgets the agent may use. Only budgets you own or edit are offered. Admin is only offered to administrators.
-3. Choose an expiry (default 90 days, maximum 365) and select **Create token**.
+3. Choose an expiry (default 90 days, maximum 365) and select **Create token**. Ticking **No expiration** is an explicit opt-in (never the default) and shows a warning; see [Non-expiring tokens and renewal](#non-expiring-tokens-and-renewal).
 4. Copy the token immediately. It is shown once; OpenBudget stores only its SHA-256 hash and a short display prefix (`obk_` + 8 characters).
-5. Use **Recent activity** to see each tool call the token made (tool, budget, outcome, time) and **Revoke** (with confirmation) to cut access immediately.
+5. Use **Recent activity** to see each tool call the token made (tool, budget, outcome, time), **Renew** (with confirmation) to replace the secret, and **Revoke** (with confirmation) to cut access immediately.
 
 Treat a token like a password: store it in your client's secret store or an environment variable, never in source control, shared config or chat transcripts. For server-side automation in Azure, keep it in **Azure Key Vault** and read it with a Managed Identity at run time.
 
@@ -25,12 +25,23 @@ The REST API behind the screen (cookie session only — an agent token cannot ma
 
 | Method/path | Behavior |
 |---|---|
-| `GET /api/auth/agent-tokens` | The signed-in user's tokens (never the secret or hash): id, name, prefix, permission, budgets, created/expires/last-used/revoked timestamps and status (`active`, `expired`, `revoked`). |
-| `POST /api/auth/agent-tokens` | `{ "name", "permission": "Admin"|"Budget"|"Reporting", "budgetIds": [...], "expiresInDays": 1-365 }` → `201 { "token": "obk_…", "details": {…} }` with `Cache-Control: no-store`. `403` when a non-administrator requests Admin; `400` for invalid names, expiry, or any budget the user cannot access (one generic message, so other users' budgets are not disclosed); `409` beyond 25 active tokens. |
+| `GET /api/auth/agent-tokens` | The signed-in user's tokens (never the secret or hash): id, name, prefix, permission, budgets, created/expires/last-used/revoked/renewed timestamps and status (`active`, `expired`, `revoked`). `expiresAt` is `null` for a token created or renewed with `neverExpires: true`. |
+| `POST /api/auth/agent-tokens` | `{ "name", "permission": "Admin"|"Budget"|"Reporting", "budgetIds": [...], "expiresInDays": 1-365, "neverExpires": true|false }` → `201 { "token": "obk_…", "details": {…} }` with `Cache-Control: no-store`. Omitting both lifetime fields gives the 90-day default; only an explicit `"neverExpires": true` creates a non-expiring token, and sending it together with `expiresInDays` is `400`. `403` when a non-administrator requests Admin; `400` for invalid names, expiry, or any budget the user cannot access (one generic message, so other users' budgets are not disclosed); `409` beyond 25 active tokens. |
+| `POST /api/auth/agent-tokens/{id}/renew` | Optional body `{ "expiresInDays": 1-365 }` or `{ "neverExpires": true|false }`. Rotates the secret of the caller's own unrevoked (active or expired) token: `200 { "token": "obk_…", "details": {…} }` with `no-store`; the previous secret stops working immediately. Permission and budgets are kept. Without a body the expiry mode is kept (a dated token gets a fresh 90-day expiry; a non-expiring token stays non-expiring). `404` for another user's or an unknown token; `409` for a revoked token, a concurrent renew/revoke, or reactivating an expired token beyond 25 active tokens; `400` for an invalid lifetime. |
 | `POST /api/auth/agent-tokens/{id}/revoke` | Revokes immediately (`204`); `404` for another user's token. |
 | `GET /api/auth/agent-tokens/{id}/activity?limit=50` | Recent MCP audit rows for the token (owner only). |
 
-Token creation and revocation are also written to the administrator security audit (`agent-token.create.<level>`, `agent-token.revoke`).
+Token creation, renewal and revocation are also written to the administrator security audit without any secret: `agent-token.create.<level>`, `agent-token.renew` and `agent-token.revoke`, with a `.no-expiry` suffix on create/renew when the resulting token does not expire (for example `agent-token.create.budget.no-expiry`).
+
+### Non-expiring tokens and renewal
+
+A non-expiring token is a long-lived credential: if it leaks (shell history, a synced config file, a chat transcript) it keeps working until you notice and act, instead of lapsing on its own. Prefer a dated expiry, especially for Admin tokens. If you opt in to **No expiration**:
+
+- Keep the token in a secret store (OS keychain, the client's secret store, or Azure Key Vault read through a Managed Identity for server-side automation), never in source control.
+- **Renew it regularly**, for example every 90 days, and immediately after any suspected exposure or when a device or person that held it changes. Renewal generates a new secret for the same token (same name, permission and budgets) and the old secret stops working at once, so update the agent's configuration with the new value straight away.
+- Review **Recent activity** and the last-used time for unexpected use, and **Revoke** tokens you no longer need. A revoked token cannot be renewed; create a new one.
+
+Renewal is deliberately not replay-safe: OpenBudget stores only the hash, so a lost renew response cannot be replayed to recover the secret; renew again. Concurrent renewals, or a renewal racing a revocation, are resolved by a conditional update, so at most one returned secret is ever valid (the others get `409`).
 
 ## 2. Connect a client
 
@@ -182,7 +193,7 @@ Not exposed (by design): signing in, registration, profile/username and password
 | Control | Implementation |
 |---|---|
 | Access control, least privilege (A.5.15, A.8.3) | Three fixed levels; per-token budget allow-list; tool list and every call filtered server-side by the permission matrix (`McpPermissions`, `McpToolCatalog`). Non-Admin calls run with the creator's principal **stripped of role claims**, so an administrator's Budget/Reporting token cannot reach administrator endpoints even indirectly. |
-| Identity and authentication (A.5.16, A.5.17, A.8.5) | 256-bit CSPRNG secrets, `obk_` prefix, SHA-256 hash with a unique index, constant-time comparison, shape check before lookup, generic `401` with `WWW-Authenticate: Bearer`. Each request re-validates the token and its creator: revoked, expired (server clock), suspended, unapproved, unverified, locked-out, deleted (cascade) or — for Admin — no-longer-administrator creators are denied immediately. |
+| Identity and authentication (A.5.16, A.5.17, A.8.5) | 256-bit CSPRNG secrets, `obk_` prefix, SHA-256 hash with a unique index, constant-time comparison, shape check before lookup, generic `401` with `WWW-Authenticate: Bearer`. Dated expiry is the default; no expiration requires an explicit opt-in, and renewal rotates the secret by replacing the stored hash atomically. Each request re-validates the token and its creator: revoked, expired (server clock; a `null` expiry exists only for explicitly non-expiring tokens), suspended, unapproved, unverified, locked-out, deleted (cascade) or — for Admin — no-longer-administrator creators are denied immediately. |
 | Same application paths (A.8.25, A.8.28) | Tools never touch the database. `ApiDispatcher` invokes the existing minimal-API endpoint in-process with the creator's principal and an explicitly selected budget, so validation, ownership checks, `LedgerGate` locking, optimistic versions, command receipts, Plan action history and admin audit are identical to the web app. Endpoint authorization metadata is evaluated before each handler. |
 | CSRF / session separation | `/mcp` only accepts the bearer scheme; the session cookie is ignored. Agent tokens are not accepted on any `/api` route (they use the default cookie scheme). |
 | Input validation (A.8.28) | Strict JSON-schema validation of every argument (types, required, `additionalProperties: false`, lengths, patterns, enums, UUID/date formats, money precision and bounds) before any service runs; services validate again. Validation messages name the argument, never echo values. |
@@ -192,7 +203,7 @@ Not exposed (by design): signing in, registration, profile/username and password
 
 ### Residual risks
 
-- A leaked token grants its level of access until it is revoked or expires; there is no IP or client binding. Keep expiries short for Admin tokens.
+- A leaked token grants its level of access until it is revoked, renewed or expires; there is no IP or client binding. Keep expiries short for Admin tokens. A token created with **No expiration** never lapses on its own, so its exposure window is bounded only by the owner renewing or revoking it; renew such tokens on a fixed schedule.
 - Requests with invalid tokens are rejected before the per-token limiter, so they are not rate limited by token; each costs one indexed hash lookup. Front the deployment with a WAF/edge rate limit (for example Azure Front Door) if exposed publicly.
 - Prompt injection: data in payees, memos or notes is returned to the agent verbatim. Destructive tools need `confirm: true`, but an agent that ignores instructions could still perform non-destructive writes within its level. Prefer Reporting or Budget tokens.
 - Changing a password does not revoke agent tokens (they are separate credentials); suspension, role loss or revocation does.
