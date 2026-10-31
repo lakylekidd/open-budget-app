@@ -51,6 +51,7 @@ In general:
 - Validate filesystem paths and prevent path traversal.
 - Never log secrets.
 - Do not bypass application services from API, MCP, or Worker code.
+- MCP parity: every new or changed user-facing feature or API capability must also be exposed through the MCP server in the same change (tool + tests + a row in the UI parity table in `docs/mcp.md`). The only exception is a capability that is security-sensitive (authentication, agent-token management, privilege changes); list it there as excluded with the reason and flag it to the user.
 
 ## Testing
 
