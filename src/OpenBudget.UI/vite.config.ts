@@ -1,10 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { themeColors } from './themeColors';
 
 const apiTarget = 'http://127.0.0.1:5080';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [themeColors(), react()],
   server: {
     proxy: {
       // Preserve the browser-facing host for the API's same-origin write checks.

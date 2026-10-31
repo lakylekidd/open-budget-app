@@ -1703,6 +1703,25 @@ namespace OpenBudget.Api.Migrations
                     b.ToTable("UserMemberships");
                 });
 
+            modelBuilder.Entity("OpenBudget.Api.UserPreferenceEntity", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("Theme")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("UserPreferences");
+                });
+
             modelBuilder.Entity("OpenBudget.Api.WishlistBucketEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2103,6 +2122,15 @@ namespace OpenBudget.Api.Migrations
                     b.HasOne("OpenBudget.Api.OpenBudgetUser", null)
                         .WithOne()
                         .HasForeignKey("OpenBudget.Api.UserMembershipEntity", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.UserPreferenceEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.OpenBudgetUser", null)
+                        .WithOne()
+                        .HasForeignKey("OpenBudget.Api.UserPreferenceEntity", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

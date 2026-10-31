@@ -38,6 +38,7 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
     public DbSet<UserMembershipEntity> UserMemberships => Set<UserMembershipEntity>();
     public DbSet<MembershipPlanEntitlementEntity> MembershipPlanEntitlements => Set<MembershipPlanEntitlementEntity>();
     public DbSet<UserEntitlementOverrideEntity> UserEntitlementOverrides => Set<UserEntitlementOverrideEntity>();
+    public DbSet<UserPreferenceEntity> UserPreferences => Set<UserPreferenceEntity>();
     public DbSet<WishlistSettingsEntity> WishlistSettings => Set<WishlistSettingsEntity>();
     public DbSet<WishlistBucketEntity> WishlistBuckets => Set<WishlistBucketEntity>();
     public DbSet<WishlistItemEntity> WishlistItems => Set<WishlistItemEntity>();
@@ -57,6 +58,7 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
         modelBuilder.Entity<MembershipPlanEntity>(e => { e.HasKey(x => x.Id); e.Property(x => x.Id).HasMaxLength(40); e.Property(x => x.Name).HasMaxLength(80); e.Property(x => x.MaxActiveBudgets).IsRequired(false); e.HasData(new MembershipPlanEntity { Id = "free", Name = "Free", MaxActiveBudgets = 1 }, new MembershipPlanEntity { Id = "plus", Name = "Plus", MaxActiveBudgets = 3 }, new MembershipPlanEntity { Id = "pro", Name = "Pro", MaxActiveBudgets = null }); });
         modelBuilder.Entity<UserMembershipEntity>(e => { e.HasKey(x => x.UserId); e.Property(x => x.UserId).HasMaxLength(450); e.Property(x => x.MembershipPlanId).HasMaxLength(40); e.Property(x => x.BillingProvider).HasMaxLength(80); e.Property(x => x.ExternalSubscriptionId).HasMaxLength(160); e.Property(x => x.Version).IsConcurrencyToken(); e.HasOne<OpenBudgetUser>().WithOne().HasForeignKey<UserMembershipEntity>(x => x.UserId).OnDelete(DeleteBehavior.Cascade); e.HasOne<MembershipPlanEntity>().WithMany().HasForeignKey(x => x.MembershipPlanId).OnDelete(DeleteBehavior.Restrict); });
         modelBuilder.Entity<MembershipPlanEntitlementEntity>(e => { e.HasKey(x => new { x.MembershipPlanId, x.EntitlementKey }); e.Property(x => x.MembershipPlanId).HasMaxLength(40); e.Property(x => x.EntitlementKey).HasMaxLength(80); e.HasOne<MembershipPlanEntity>().WithMany().HasForeignKey(x => x.MembershipPlanId).OnDelete(DeleteBehavior.Cascade); });
+        modelBuilder.Entity<UserPreferenceEntity>(e => { e.HasKey(x => x.UserId); e.Property(x => x.UserId).HasMaxLength(450); e.Property(x => x.Theme).HasMaxLength(40).IsRequired(); e.HasOne<OpenBudgetUser>().WithOne().HasForeignKey<UserPreferenceEntity>(x => x.UserId).OnDelete(DeleteBehavior.Cascade); });
         modelBuilder.Entity<UserEntitlementOverrideEntity>(e => { e.HasKey(x => new { x.UserId, x.EntitlementKey }); e.Property(x => x.UserId).HasMaxLength(450); e.Property(x => x.EntitlementKey).HasMaxLength(80); e.HasOne<OpenBudgetUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade); });
         modelBuilder.Entity<FlagDefinitionEntity>(e => {
             e.HasKey(x=>new { x.BudgetId, x.Color }); e.Property(x=>x.BudgetId).HasMaxLength(100); e.Property(x=>x.Color).HasMaxLength(10); e.Property(x=>x.Name).HasMaxLength(40);

@@ -111,6 +111,10 @@ The `CategoryTargets` migration adds one optional structured target per budget a
 
 Progress is never stored. `BudgetService` recalculates it for each month DTO from the target, that month's `Assigned`/`Available`, and (for "set aside" yearly/custom targets) earlier months' `Assigned` from `StartMonth` onward, using `CategoryTargetRules` with decimal arithmetic and round-up-to-cent spreading. Writes run under `LedgerGate`, validate the category in the requested month, check `Version`, and append a `LedgerCommands` receipt (`categoryTarget.save/{categoryId}` / `categoryTarget.delete/{categoryId}`) with before/after JSON in the same transaction without advancing the ledger revision. See [API](api.md#category-targets) for formulas and worked examples.
 
+### User preferences
+
+The `UserPreferences` migration adds one table: `UserPreferences` has primary key `UserId` (FK to `AspNetUsers`, cascade delete, max 450), `Theme` (max 40, required) and `UpdatedAt`. A row is created by the first save, so a missing row means the defaults; the migration changes no existing rows. Valid theme keys are the `UserThemes` allowlist enforced by `UserPreferenceService`, not a database constraint, so retiring a theme never needs a migration (an unknown stored key reads back as the default).
+
 ### Wishlist
 
 The `Wishlist` migration adds three budget-scoped tables and seeds `MembershipPlanEntitlements` rows for key `wishlist` (Free disabled, Plus/Pro enabled). No existing rows change.

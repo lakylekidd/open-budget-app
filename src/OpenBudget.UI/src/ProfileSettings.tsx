@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AgentTokens } from './AgentTokens';
+import { ThemePicker } from './theme/ThemePicker';
+import { applyTheme, currentTheme, saveThemePreference, type ThemeKey } from './theme/themes';
 
 type UserProfile = { id: string; userName: string; email: string | null; isAdministrator: boolean };
 
@@ -12,6 +14,9 @@ export function ProfileSettings({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [theme, setTheme] = useState<ThemeKey>(currentTheme);
+  const [themeError, setThemeError] = useState('');
+  const themeRequest = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -22,6 +27,19 @@ export function ProfileSettings({ onClose }: { onClose: () => void }) {
     }).catch(() => { if (active) setError('Profile could not be loaded. Retry by closing and reopening this panel.'); });
     return () => { active = false; };
   }, []);
+
+  // The theme switches immediately and is then saved to the account; if saving fails the previous theme is restored.
+  async function chooseTheme(next: ThemeKey) {
+    const previous = theme;
+    const request = ++themeRequest.current;
+    setThemeError(''); setTheme(next); applyTheme(next);
+    try { await saveThemePreference(next); }
+    catch {
+      if (request !== themeRequest.current) return;
+      setTheme(previous); applyTheme(previous);
+      setThemeError('Your theme could not be saved, so the previous theme was restored. Try again.');
+    }
+  }
 
   async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy('profile'); setError(''); setMessage('');
@@ -51,6 +69,7 @@ export function ProfileSettings({ onClose }: { onClose: () => void }) {
     <section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title">
       <div className="profile-heading"><h2 id="profile-title">Profile and security</h2><button type="button" aria-label="Close profile settings" onClick={onClose}>×</button></div>
       {error && <p className="profile-error" role="alert">{error}</p>}{message && <p className="profile-message" role="status">{message}{message.startsWith('Password changed') && <> <a href="/login">Sign in</a></>}</p>}
+      <section className="profile-form" aria-labelledby="appearance-title"><h3 id="appearance-title">Appearance</h3><ThemePicker value={theme} onChange={next => void chooseTheme(next)} />{themeError && <p className="profile-error" role="alert">{themeError}</p>}</section>
       {!profile && !error ? <p aria-busy="true">Loading profile…</p> : <>
         <form className="profile-form" onSubmit={saveProfile}><h3>Profile</h3><label>Username<input aria-label="Username" required maxLength={64} value={userName} onChange={event => setUserName(event.target.value)} /></label><label>Email<input aria-label="Email" value={profile?.email ?? ''} disabled /></label><button type="submit" disabled={!profile || busy !== ''}>Save profile</button></form>
         <form className="profile-form" onSubmit={changePassword}><h3>Change password</h3><label>Current password<input aria-label="Current password" type="password" autoComplete="current-password" required value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} /></label><label>New password<input aria-label="New password" type="password" autoComplete="new-password" required value={newPassword} onChange={event => setNewPassword(event.target.value)} /></label><label>Confirm new password<input aria-label="Confirm new password" type="password" autoComplete="new-password" required value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} /></label><button type="submit" disabled={busy !== ''}>Change password</button></form>
