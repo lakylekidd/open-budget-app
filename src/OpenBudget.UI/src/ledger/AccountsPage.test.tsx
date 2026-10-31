@@ -10,7 +10,7 @@ import { type Account, type Register } from './api';
 const checking: Account = { id: 'checking', name: 'Checking', isClosed: false, balance: 90, clearedBalance: 100, unclearedBalance: -10, accountType:'checking', isFavorite:false, connectionStatus:'unlinked', lastReconciledAt:null, needsCategoryCount:1 };
 const savings: Account = { id: 'savings', name: 'Savings', isClosed: false, balance: 0, clearedBalance: 0, unclearedBalance: 0, accountType:'savings', isFavorite:false, connectionStatus:'unlinked', lastReconciledAt:null, needsCategoryCount:0 };
 let register: Register;
-let failMutation: 'network' | 'conflict' | null;
+let failMutation: 'network' | 'conflict' | 'refused' | null;
 let mutations: { path: string; body: Record<string, unknown> }[];
 let scheduledItems: import("./api").ScheduledItem[];
 let failRead: boolean;
@@ -39,6 +39,7 @@ beforeEach(() => {
       mutations.push({ path, body: JSON.parse(String(init.body)) });
       if (failMutation === 'network') { failMutation = null; throw new Error('Connection lost. Retry the same action.'); }
       if (failMutation === 'conflict') { failMutation = null; return response({ error: 'The ledger changed in another session.' }, 409); }
+      if (failMutation === 'refused') { failMutation = null; return response({ error: 'This account has transactions. Delete them first or close the account instead.' }, 400); }
       return response({ id: 'saved', version: 4 });
     }
     if (path.startsWith('/api/schedules')) {const accountId=new URL(path,'http://localhost').searchParams.get('accountId');const items=scheduledItems.filter(item=>!accountId||item.transaction.accountId===accountId);return response({version:3,page:1,pageSize:25,total:items.length,items});}
@@ -478,4 +479,28 @@ it('trades width only with the right neighbour and keeps both columns at least 2
   expect(resizeColumnPair(widths, order, 'outflow', 500)).toEqual({ ...widths, outflow: 216, inflow: 24 });
   expect(resizeColumnPair(widths, order, 'date', -500)).toEqual({ ...widths, date: 24, payee: 306 });
   expect(resizeColumnPair(widths, order, 'status', 30)).toBe(widths);
+});
+
+it('deletes an account after confirmation, then shows All Accounts with a refreshed list',async()=>{
+ const onSelectAccount=vi.fn(),onChanged=vi.fn();
+ render(<AccountsPage selectedAccount="savings" onSelectAccount={onSelectAccount} onChanged={onChanged} onMenu={vi.fn()} />);await ready();
+ await userEvent.click(screen.getByRole('button',{name:'Edit account'}));
+ const dialog=screen.getByRole('dialog',{name:'Edit Account'});
+ await userEvent.click(within(dialog).getByRole('button',{name:'Delete Account'}));
+ expect(within(dialog).getByText(/Permanently delete “Savings”/)).toBeInTheDocument();expect(mutations).toHaveLength(0);
+ await userEvent.click(within(dialog).getByRole('button',{name:'Delete Permanently'}));
+ await waitFor(()=>expect(onSelectAccount).toHaveBeenCalledWith(''));
+ expect(mutations).toEqual([{path:'/api/accounts/savings/delete',body:{commandId:expect.any(String),version:3}}]);
+ expect(screen.queryByRole('dialog')).not.toBeInTheDocument();expect(onChanged).toHaveBeenCalled();
+ expect(screen.getByText('Account “Savings” deleted.')).toBeInTheDocument();
+});
+
+it('keeps the edit dialog open with the server reason when deletion is refused',async()=>{
+ const onSelectAccount=vi.fn();failMutation='refused';
+ render(<AccountsPage selectedAccount="savings" onSelectAccount={onSelectAccount} onChanged={vi.fn()} onMenu={vi.fn()} />);await ready();
+ await userEvent.click(screen.getByRole('button',{name:'Edit account'}));
+ const dialog=screen.getByRole('dialog',{name:'Edit Account'});
+ await userEvent.click(within(dialog).getByRole('button',{name:'Delete Account'}));await userEvent.click(within(dialog).getByRole('button',{name:'Delete Permanently'}));
+ expect(await within(dialog).findByRole('alert')).toHaveTextContent('This account has transactions.');
+ expect(onSelectAccount).not.toHaveBeenCalled();expect(within(dialog).getByRole('button',{name:'Delete Permanently'})).toBeEnabled();
 });

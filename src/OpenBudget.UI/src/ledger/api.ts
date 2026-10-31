@@ -1,5 +1,5 @@
 import { evaluateMoneyExpression } from '../moneyExpression';
-export type Account = { unapprovedCount?:number; attentionCount?:number; notes?:string; id: string; name: string; isClosed: boolean; balance: number; clearedBalance: number; unclearedBalance: number;
+export type Account = { unapprovedCount?:number; attentionCount?:number; notes?:string; hasTransactions?:boolean; id: string; name: string; isClosed: boolean; balance: number; clearedBalance: number; unclearedBalance: number;
   accountType: AccountType; isFavorite: boolean; connectionStatus: 'unlinked' | 'connected'; lastReconciledAt: string | null; needsCategoryCount: number };
 export type LoanAccountType = 'mortgage' | 'autoLoan' | 'studentLoan' | 'personalLoan' | 'medicalDebt' | 'otherDebt' | 'contract';
 export type AccountType = 'checking' | 'savings' | 'cash' | 'creditCard' | 'lineOfCredit' | LoanAccountType;
