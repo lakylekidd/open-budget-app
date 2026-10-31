@@ -46,6 +46,17 @@ The Identity cookie is HttpOnly, SameSite=Strict and Secure in shared environmen
 
 The `/admin` UI also supports email invitations, membership assignment and per-user account history. Invitees verify their email, then use Forgot password to choose their initial password.
 
+## User preferences
+
+Per-account display preferences for the signed-in user. Both routes require authentication, are not budget-scoped and are exempt from the default-budget gate that protects the legacy financial routes.
+
+| Method | Route | Behaviour |
+| --- | --- | --- |
+| `GET` | `/api/me/preferences` | `{ theme }`. A user who never saved a preference, or whose stored key is no longer offered, gets the default `midnight`. |
+| `PUT` | `/api/me/preferences` | `{ theme }` saves the account's theme and returns it. The key must be one of `midnight`, `ocean`, `forest`, `rosewood` or `graphite` (case-sensitive); anything else, including a missing value, is `400` and changes nothing. Saving again replaces the value. |
+
+The server stores and validates the key only; the palettes live in the UI.
+
 ## Owned budgets and memberships
 
 `GET /api/budgets?includeArchived=false` lists the authenticated user's budgets and effective membership limit. New registrations receive a membership but no budget; users explicitly create a budget or choose a template when that flow is available. `POST /api/budgets` creates a budget with `{ "name": "Household", "currency": "EUR" }`. `PUT /api/budgets/{id}` renames an owned budget with `{ "name": "New name", "version": 1 }`. `POST /api/budgets/{id}/archive` and `/restore` retain data while changing active-budget count; the legacy `default` budget cannot be archived during the transition. `DELETE /api/budgets/{id}` permanently removes an owned budget and its Plan and financial data when sent `{ "version": 1 }`; the UI requires confirmation, stale versions return 409, and `default` cannot be deleted. Unknown or foreign budget IDs return 404. New budgets are owner-scoped; creation and restore serialize by user before checking the membership limit. The seeded Free, Plus and Pro tiers allow 1, 3 and unlimited active budgets. Registration assigns Free, while the configured bootstrap administrator receives Pro. An individual limit override is stored on the membership row.

@@ -1,0 +1,15 @@
+/* Theme shift defaults (the original Midnight look). applyTheme() overrides these two variables on <html>; the build step in
+   themeColors.ts makes every blue-violet colour in the stylesheets read them. */
+:root{--theme-hue:0;--theme-sat:1}
+
+.theme-picker{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.theme-option{position:relative;display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid #2c2e43;border-radius:10px;background:#15172d;cursor:pointer}
+.theme-option:hover{border-color:#55576f}
+.theme-option.is-selected{border-color:#8b85ff;box-shadow:0 0 0 1px #8b85ff}
+.theme-option:has(input:focus-visible){outline:2px solid #aaa6ff;outline-offset:2px}
+.theme-option input{position:absolute;opacity:0;pointer-events:none}
+.theme-swatch{flex:none;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;width:44px;height:44px;border-radius:8px;overflow:hidden;border:1px solid #ffffff22}
+.theme-swatch>span:first-child{grid-column:1 / -1}
+.theme-label{display:grid;gap:2px;min-width:0}
+.theme-label strong{font-size:14px}
+.theme-label small{font-size:12px;color:#c4c5cf}

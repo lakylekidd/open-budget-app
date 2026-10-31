@@ -29,6 +29,7 @@ import { LongTermPlanning } from './longTermPlanning/LongTermPlanning';
 import { AuthGate } from './AuthGate';
 import { AdminPanel } from './admin/AdminPanel';
 import { ProfileSettings } from './ProfileSettings';
+import { useSavedTheme } from './theme/useSavedTheme';
 import { CategoryPicker } from './ledger/CategoryPicker';
 import { AutoAssignOptions } from './AutoAssignOptions';
 import { useBudgetLiveUpdates } from './liveUpdates';
@@ -117,6 +118,7 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
 }
 
 function BudgetApplication() {
+  useSavedTheme();
   const [userEmail, setUserEmail] = useState('');
   const [isAdministrator, setIsAdministrator] = useState(false);
   useEffect(() => {

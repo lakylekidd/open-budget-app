@@ -87,7 +87,7 @@ app.Use(async (context, next) =>
     var path = context.Request.Path;
     var isFinancialApi = path.StartsWithSegments("/api") &&
         !path.StartsWithSegments("/api/auth") && !path.StartsWithSegments("/api/admin") &&
-        !path.StartsWithSegments("/api/budgets");
+        !path.StartsWithSegments("/api/budgets") && !path.StartsWithSegments("/api/me");
     var isLegacyDefaultBudgetApi = path.StartsWithSegments("/api/budget") && !path.StartsWithSegments("/api/budgets");
     if (context.User.Identity?.IsAuthenticated == true &&
         ((isFinancialApi && context.RequestServices.GetRequiredService<BudgetRequestContext>().BudgetId == BudgetRequestContext.DefaultBudgetId &&
@@ -171,6 +171,7 @@ BudgetOwnershipService.MapEndpoints(app);
 CategoryTargetService.MapEndpoints(app);
 BudgetSharingService.MapEndpoints(app);
 WishlistService.MapEndpoints(app);
+UserPreferenceService.MapEndpoints(app);
 app.MapTransactionImageEndpoints();
 app.MapOpenBudgetAgentAccess();
 
