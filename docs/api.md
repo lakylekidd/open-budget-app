@@ -134,9 +134,10 @@ Stale writes return 409 `{ "error": "..." }`; reload and review before sending a
 
 | Method/path | Additional body fields / result |
 |---|---|
-| `GET /api/accounts` | `{ version, accounts: [{ id, name, isClosed, balance, clearedBalance, unclearedBalance }] }`, including closed accounts |
+| `GET /api/accounts` | `{ version, accounts: [{ id, name, isClosed, balance, clearedBalance, unclearedBalance }] }`, including closed accounts, in the budget's persisted account order |
 | `POST /api/accounts` | Required `name` (max 120), `date`, `openingBalance`. A nonzero opening balance creates one cleared opening entry; a zero opening balance creates no transaction. |
 | `PUT /api/accounts/{id}` | `name`, `isClosed`. Close only at zero balance with no uncleared entries or uncategorized spending; an error explains how to resolve it. Reopen through the same endpoint. |
+| `PUT /api/accounts/order` | `{ commandId, version, accountIds }` sets the account order. `accountIds` must list every account in the active budget (open and closed) exactly once; missing, duplicate or another budget's IDs return `400` and change nothing. Ledger command rules apply (replay, reused command ID `409`, stale version `409`); audited as `account.order`. New accounts are appended last. |
 | `POST /api/accounts/{id}/reconcile` | `statementBalance`, equal to the cleared-plus-reconciled balance. Saves a snapshot and marks currently cleared entries reconciled. |
 
 Closed accounts retain history and must be reopened before writes. Reconciliation compares the current cleared ledger balance rather than a date cutoff. There is no automatic adjustment: clear/correct entries until the difference is zero, then explicitly confirm. Reconciled entries cannot be deleted or have their status toggled directly. Transaction/transfer edits require explicit `confirmReconciledEdit=true` when either affected leg is reconciled. Confirmed edits retain the reconciliation row with `isInvalidated=true`, mark reconciled legs cleared, and store before/after audit (including invalidated snapshot IDs). The account reports its latest non-invalidated reconciliation, or null until reconciled again. Closed accounts still require reopening.

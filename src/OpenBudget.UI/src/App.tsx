@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { MoneyInput } from './MoneyInput';
 import { AccountSidebarRow } from './ledger/AccountSidebarRow';
+import { SortableAccountList } from './ledger/SortableAccountList';
+import { useAccountReorder } from './ledger/accountOrder';
 import { AccountsPage } from './ledger/AccountsPage';
 import { type Account, type Accounts, type Entry, type Register, type ScheduledItem, type Schedules, accountFamily, creditPaymentCategoryId, creditPaymentGroupId, isCreditAccount, requestJson } from './ledger/api';
 import { CreditPaymentDetails } from './CreditPaymentDetails';
@@ -487,6 +489,7 @@ function BudgetApplication() {
 
   // Live updates: refresh what another session (browser, agent via MCP) committed, without clobbering local Plan edits.
   const [liveLedgerRefresh, setLiveLedgerRefresh] = useState(0);
+  const accountOrder = useAccountReorder(accounts, setAccounts, () => { setLedgerRefresh(value => value + 1); setLiveLedgerRefresh(value => value + 1); });
   const liveUpdates = useBudgetLiveUpdates({
     budgetId: budgetsLoaded ? selectedBudgetId : null,
     month: data.month,
@@ -1230,9 +1233,10 @@ function BudgetApplication() {
         {accountSections.map(section => { const sectionAccounts = accounts.accounts.filter(account => accountSectionId(account) === section.id); if (section.id !== 'cash' && sectionAccounts.length === 0) return null; const total = sectionAccounts.reduce((sum, account) => sum + account.balance, 0); const expanded = !collapsedAccountSections.includes(section.id); return <Fragment key={section.id}>
         <button type="button" className="account-type" aria-expanded={expanded} aria-controls={`${section.id}-account-list`} onClick={() => setCollapsedAccountSections(current => expanded ? [...current, section.id] : current.filter(id => id !== section.id))}><svg className="cash-chevron" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="m5 3 5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg><span>{section.title}</span><strong className={section.id === 'credit' || total < 0 && section.id !== 'loan' ? 'negative-account-balance' : ''}>{money(total)}</strong></button>
         <div id={`${section.id}-account-list`} hidden={!expanded}>
-          {sectionAccounts.map(account => <AccountSidebarRow key={account.id} account={account} selected={activePage==='Accounts'&&selectedAccount===account.id} disabled={ledgerPending} onSelect={()=>{setAccountEditRequest(undefined);navigate('Accounts',account.id);}} onEdit={()=>{if(!ledgerPending){navigate('Accounts',account.id);setAccountEditRequest({id:account.id,token:Date.now()});}}}/>)}
+          <SortableAccountList accounts={sectionAccounts} disabled={ledgerPending || accountOrder.saving} onMove={(accountId, toIndex) => void accountOrder.move(sectionAccounts, accountId, toIndex)} renderRow={(account, orderControls) => <AccountSidebarRow account={account} orderControls={orderControls} selected={activePage==='Accounts'&&selectedAccount===account.id} disabled={ledgerPending} onSelect={()=>{setAccountEditRequest(undefined);navigate('Accounts',account.id);}} onEdit={()=>{if(!ledgerPending){navigate('Accounts',account.id);setAccountEditRequest({id:account.id,token:Date.now()});}}}/>} />
         </div></Fragment>; })}
         </>}
+        {accountOrder.error && <div className="account-order-error" role="alert">{accountOrder.error}<button type="button" aria-label="Dismiss account order error" onClick={accountOrder.clearError}>×</button></div>}
         {accountError && <button className="account-row" onClick={() => setLedgerRefresh(value => value + 1)}>Retry loading accounts</button>}
         {accountsLoaded && !accountError && <button type="button" className="add-cash-account" onClick={() => { if (navigate('Accounts')) setAccountCreateRequest(value => value + 1); }}><span aria-hidden="true">✚</span> Add Account</button>}
       </div>

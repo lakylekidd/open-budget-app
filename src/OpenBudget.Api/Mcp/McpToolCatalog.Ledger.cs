@@ -83,6 +83,12 @@ public static partial class McpToolCatalog
                 return Done(response, $"Account updated. Ledger version is now {Number(response.Body, "version")}.");
             });
 
+        yield return Tool("accounts_reorder", "Reorder accounts",
+            "Sets the budget's account order. accountIds must list every account from accounts_list (open and closed) exactly once, first to last.",
+            McpPermissions.AdminOnly, Effect.Write,
+            Obj(R("accountIds", Array("Every account ID in the new order.", Uuid("Account ID."), 1000, 1)), LedgerVersionArg, CommandIdArg),
+            c => LedgerWriteAsync(c, version => c.Send("PUT", "/api/accounts/order", new { commandId = c.CommandId(), version, accountIds = c.Element("accountIds") }), "Accounts reordered."));
+
         yield return Tool("accounts_credit_summary", "Credit account monthly summary",
             "Reads a credit account's monthly summary: prior balance, spending, interest, payments and current balance.",
             McpPermissions.Read, Effect.Read, Obj(R("accountId", Uuid("Credit account ID.")), R("month", Month())),

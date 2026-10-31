@@ -187,7 +187,12 @@ namespace OpenBudget.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("BudgetId", "SortOrder");
 
                     b.ToTable("Accounts");
                 });

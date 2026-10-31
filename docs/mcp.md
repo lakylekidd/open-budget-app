@@ -129,6 +129,7 @@ Every tool:
 | `accounts_list` | List accounts | ✓ | — | ✓ | read-only |
 | `accounts_create` | Create account | — | — | ✓ | write |
 | `accounts_update` | Update account | — | — | ✓ | write |
+| `accounts_reorder` | Reorder accounts (every account ID exactly once) | — | — | ✓ | write |
 | `accounts_credit_summary` | Credit account monthly summary | ✓ | — | ✓ | read-only |
 | `reconcile_account` | Reconcile account | — | — | ✓ | write |
 | `transactions_list` | List transactions | ✓ | — | ✓ | read-only |
@@ -231,6 +232,6 @@ The web app subscribes with `EventSource` (`useBudgetLiveUpdates`), reconnects w
 ## 7. Limitations
 
 - **Single instance:** the event hub and the rate limiter are in-process. A scaled-out deployment needs a backplane for events (for example Azure SignalR Service or Azure Cache for Redis pub/sub) and a distributed rate limiter; until then sessions only see changes committed by the same instance.
-- Stateless Streamable HTTP only: no server-initiated MCP notifications, resources or prompts; `tools/list` is not paginated (77 tools).
+- Stateless Streamable HTTP only: no server-initiated MCP notifications, resources or prompts; `tools/list` is not paginated (78 tools).
 - `transactions_update`, `transfers_update` and `schedules_update` replace the whole record (read it first); `accounts_update` merges omitted fields from the current account.
 - Long-Term Planning pages do not live-refresh yet (`planning` events are emitted); they reload on navigation.
