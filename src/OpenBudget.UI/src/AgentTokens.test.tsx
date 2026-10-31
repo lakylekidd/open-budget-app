@@ -130,3 +130,73 @@ it('shows a recoverable error when tokens cannot load and an empty state', async
   await user.click(screen.getByRole('button', { name: 'Retry' }));
   expect(await screen.findByText('No agent tokens yet.')).toBeInTheDocument();
 });
+
+it('creates a non-expiring token only after the explicit opt-in and shows a warning', async () => {
+  const fetchMock = stubApi();
+  const user = userEvent.setup();
+  render(<AgentTokens isAdministrator={false} />);
+  await screen.findByText('Laptop agent');
+  expect(screen.getByRole('checkbox', { name: 'No expiration' })).not.toBeChecked();
+  expect(screen.queryByRole('note')).not.toBeInTheDocument();
+
+  await user.type(screen.getByLabelText('Token name'), 'Home server');
+  await user.click(screen.getByRole('checkbox', { name: 'Household' }));
+  await user.click(screen.getByRole('checkbox', { name: 'No expiration' }));
+  expect(screen.getByRole('note')).toHaveTextContent('This token will not expire');
+  expect(screen.getByLabelText('Expires in (days)')).toBeDisabled();
+  await user.click(screen.getByRole('button', { name: 'Create token' }));
+
+  await screen.findByLabelText('New agent token');
+  expect(fetchMock).toHaveBeenCalledWith('/api/auth/agent-tokens', expect.objectContaining({
+    body: JSON.stringify({ name: 'Home server', permission: 'Reporting', budgetIds: ['b1'], neverExpires: true }),
+  }));
+  // The form resets to the dated default.
+  expect(screen.getByRole('checkbox', { name: 'No expiration' })).not.toBeChecked();
+  expect(screen.getByLabelText('Expires in (days)')).toHaveValue(90);
+});
+
+it('lists non-expiring tokens and renews only after confirmation, showing the new secret once', async () => {
+  const renewed = 'obk_' + 'y'.repeat(43);
+  const forever: AgentToken = { ...existing, expiresAt: null };
+  const expired: AgentToken = { ...existing, id: 't3', name: 'Old agent', status: 'expired', expiresAt: '2026-10-02T10:00:00Z' };
+  const revoked: AgentToken = { ...existing, id: 't4', name: 'Gone agent', status: 'revoked', revokedAt: '2026-10-03T10:00:00Z' };
+  const fetchMock = stubApi({
+    'GET /api/auth/agent-tokens': () => Response.json([forever, expired, revoked]),
+    'POST /api/auth/agent-tokens/t1/renew': () => Response.json({ token: renewed, details: { ...forever, prefix: renewed.slice(0, 12), renewedAt: '2026-10-31T09:00:00Z' } }),
+  });
+  const user = userEvent.setup();
+  render(<AgentTokens isAdministrator={false} />);
+  const row = (await screen.findByText('Laptop agent')).closest('li')!;
+  expect(within(row).getByText('No expiration')).toBeInTheDocument();
+  // Expired tokens can be renewed; revoked tokens cannot.
+  expect(within(screen.getByText('Old agent').closest('li')!).getByRole('button', { name: 'Renew' })).toBeInTheDocument();
+  expect(within(screen.getByText('Gone agent').closest('li')!).queryByRole('button', { name: 'Renew' })).not.toBeInTheDocument();
+
+  await user.click(within(row).getByRole('button', { name: 'Renew' }));
+  const confirm = screen.getByRole('group', { name: 'Confirm renewing Laptop agent' });
+  expect(confirm).toHaveTextContent('stops working immediately');
+  await user.click(within(confirm).getByRole('button', { name: 'Cancel' }));
+  expect(fetchMock).not.toHaveBeenCalledWith('/api/auth/agent-tokens/t1/renew', expect.anything());
+
+  await user.click(within(row).getByRole('button', { name: 'Renew' }));
+  await user.click(screen.getByRole('button', { name: 'Confirm renew' }));
+  expect(await screen.findByLabelText('New agent token')).toHaveTextContent(renewed);
+  expect(fetchMock).toHaveBeenCalledWith('/api/auth/agent-tokens/t1/renew', expect.objectContaining({ method: 'POST' }));
+  expect(within(row).getByText(`${renewed.slice(0, 12)}…`)).toBeInTheDocument();
+  expect(within(row).getByText(/^Renewed /)).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Done' }));
+  expect(screen.queryByText(renewed)).not.toBeInTheDocument();
+});
+
+it('shows a renewal error and keeps the token unchanged', async () => {
+  stubApi({ 'POST /api/auth/agent-tokens/t1/renew': () => Response.json({ error: 'The token was changed or revoked while renewing. Reload and try again.' }, { status: 409 }) });
+  const user = userEvent.setup();
+  render(<AgentTokens isAdministrator={false} />);
+  await screen.findByText('Laptop agent');
+  await user.click(screen.getByRole('button', { name: 'Renew' }));
+  await user.click(screen.getByRole('button', { name: 'Confirm renew' }));
+  expect(await screen.findByText('The token was changed or revoked while renewing. Reload and try again.')).toBeInTheDocument();
+  expect(screen.queryByLabelText('New agent token')).not.toBeInTheDocument();
+  expect(screen.getByText('obk_AbCdEfGh…')).toBeInTheDocument();
+  expect(screen.getByRole('group', { name: 'Confirm renewing Laptop agent' })).toBeInTheDocument();
+});
