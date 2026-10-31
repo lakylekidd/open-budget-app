@@ -15,7 +15,7 @@ public static partial class McpToolCatalog
 
     private static readonly Lazy<IReadOnlyList<McpToolDefinition>> tools = new(() =>
     {
-        var all = BudgetTools().Concat(PlanTools()).Concat(LedgerTools()).Concat(ScheduleTools()).Concat(PlanningTools())
+        var all = BudgetTools().Concat(PlanTools()).Concat(LedgerTools()).Concat(LoanTools()).Concat(ScheduleTools()).Concat(PlanningTools())
             .Concat(SharingTools()).Concat(AdminTools()).ToList();
         var duplicate = all.GroupBy(x => x.Name).FirstOrDefault(x => x.Count() > 1);
         if (duplicate is not null) throw new InvalidOperationException($"Duplicate MCP tool {duplicate.Key}.");

@@ -182,6 +182,26 @@ public class McpArgumentValidatorTests
     }
 
     [Fact]
+    public void Missing_required_enum_arguments_list_the_valid_values() =>
+        Assert.Equal("arguments.kind is required; use one of: a, b.",
+            McpArgumentValidator.Validate(Obj(R("kind", Enum("Kind.", "a", "b"))), JsonDocument.Parse("{}").RootElement));
+
+    [Fact]
+    public void Account_tools_expose_every_account_type_the_web_app_offers()
+    {
+        string[] webAppTypes = ["checking", "savings", "cash", "creditCard", "lineOfCredit", "mortgage", "autoLoan", "studentLoan", "personalLoan", "medicalDebt", "otherDebt", "contract"];
+        foreach (var name in new[] { "accounts_create", "accounts_update" })
+        {
+            var properties = McpToolCatalog.Find(name)!.InputSchema["properties"]!.AsObject();
+            Assert.Equal(webAppTypes, properties["accountType"]!["enum"]!.AsArray().Select(x => x!.GetValue<string>()).ToArray());
+            Assert.True(properties.ContainsKey("loan"), name);
+        }
+        var create = McpToolCatalog.Find("accounts_create")!;
+        Assert.Contains("accountType", create.InputSchema["required"]!.AsArray().Select(x => x!.GetValue<string>()));
+        Assert.Contains("mortgage", create.Description);
+    }
+
+    [Fact]
     public void Every_catalog_schema_rejects_unknown_properties()
     {
         foreach (var tool in McpToolCatalog.All)
