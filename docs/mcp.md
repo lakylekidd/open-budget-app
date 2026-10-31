@@ -89,7 +89,8 @@ Any other client: send JSON-RPC 2.0 `POST /mcp` with `Accept: application/json, 
 - Start with `budgets_list`; every budget-scoped tool takes that `budgetId`.
 - Money is a decimal in the budget currency with at most two decimal places; outflows are negative.
 - Writes use optimistic concurrency. Pass the `version` you last read (Plan month version for Plan tools, ledger version for ledger tools, target or planning versions where described) to make stale writes fail with a `conflict` error that includes `current` data when the service provides it — or omit `version` and the tool reads the current one itself.
-- Ledger writes accept an optional `commandId` (UUID). Retrying with the same `commandId` and identical arguments replays the original receipt instead of writing twice; reusing it for different arguments is a conflict.
+- Ledger writes accept an optional `commandId` (UUID). Retrying with the same `commandId` and identical arguments — including the same explicit `version` — replays the original receipt instead of writing twice; reusing it for different arguments is a conflict. (The receipt fingerprint covers the expected version, so a retry that omits `version` after the ledger moved on is reported as a conflict, not replayed.)
+- Account types (`accounts_create`/`accounts_update` `accountType`, required on create, never defaulted) are the web app's list: cash `checking`, `savings`, `cash`; credit `creditCard`, `lineOfCredit`; mortgages and loans `mortgage`, `autoLoan`, `studentLoan`, `personalLoan`, `medicalDebt`, `otherDebt`, `contract`. Cash and credit accounts take a signed `openingBalance`. Loan types take `loan` instead, as the "Add Unlinked Account" loan form does: `balanceOwed` (positive), `interestRate` (annual %, up to three decimals), `minimumPayment` (> 0, includes escrow) and optional `escrowAmount`; `contract` takes `loan.contract` (months, start date, device and service costs, optional discount) and no rate or payment. Either kind may pair an existing category (`pairedCategoryId`) or create one (`newPairedCategory`). There is no term field: the payoff month is projected from the payment (`loans_get`, `loans_simulate`). A missing, unknown or inconsistent type/terms combination returns `invalid_arguments`/`invalid_request` naming the valid values, and nothing is written.
 - Destructive tools (and destructive options such as `transactions_bulk_update` with `action: "delete"`, `transactions_review` with `reject`, `payees_save` with `delete`, `schedules_action` with `end`/`skip`) require `"confirm": true`. Without it they return `confirmation_required` and change nothing. Agents must ask the user first.
 - Results carry `structuredContent` (JSON) plus a short text summary and the same JSON as text. Errors set `isError: true` with `{ "error": { "code", "status", "message", "current"? } }`; codes are `invalid_arguments`, `invalid_request`, `confirmation_required`, `not_found`, `forbidden`, `conflict`, `unavailable`, `internal_error`.
 - `tools/list` only returns tools the token may call. Each tool advertises `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint: false`, and `_meta["openbudget/permissions"]` lists the levels that may call it. Calling a tool outside the token's level is answered exactly like an unknown tool (JSON-RPC `-32602`).
@@ -98,7 +99,7 @@ Any other client: send JSON-RPC 2.0 `POST /mcp` with `Accept: application/json, 
 
 | Level | Scope |
 |---|---|
-| **Reporting** | Read-only, listed budgets only: budgets, Plan months, categories/targets, accounts and balances, transactions (filters/pagination), payees, flags, scheduled transactions, long-term planning, credit summaries and payoff targets, ledger audit receipts, Recent Moves. No writes at all. |
+| **Reporting** | Read-only, listed budgets only: budgets, Plan months, categories/targets, accounts and balances, loan details and payoff simulations, transactions (filters/pagination), payees, flags, scheduled transactions, long-term planning, Wishlist, receipt image metadata, credit summaries and payoff targets, ledger audit receipts, Recent Moves. No writes at all. |
 | **Budget** | Listed budgets only: read Plan months, targets and Recent Moves, set a category's assigned amount and move money between categories. No ledger, structure, target, sharing or user changes. |
 | **Admin** | Everything the creator can do in the app: all Reporting and Budget tools plus ledger, Plan structure, targets, long-term planning, budget lifecycle, sharing, user administration and application settings, across every budget the creator can access. Only administrators can create Admin tokens. |
 
@@ -123,6 +124,8 @@ Every tool:
 | `category_groups_update` | Update category group | — | — | ✓ | write |
 | `categories_create` | Create category | — | — | ✓ | write |
 | `categories_update` | Update category | — | — | ✓ | write |
+| `category_groups_move` | Reorder category group | — | — | ✓ | write |
+| `categories_move` | Reorder category / move to another group | — | — | ✓ | write |
 | `category_targets_get` | Get category target | ✓ | ✓ | ✓ | read-only |
 | `category_targets_save` | Create or update category target | — | — | ✓ | write |
 | `category_targets_delete` | Delete category target | — | — | ✓ | destructive (confirm) |
@@ -142,6 +145,8 @@ Every tool:
 | `transactions_review` | Approve or reject transaction | — | — | ✓ | write; destructive options need confirm |
 | `transactions_bulk_update` | Bulk update transactions | — | — | ✓ | write; destructive options need confirm |
 | `transactions_set_flag` | Flag transaction | — | — | ✓ | write |
+| `transaction_images_list` | List a transaction's receipt images (metadata only) | ✓ | — | ✓ | read-only |
+| `transaction_images_delete` | Delete a receipt image | — | — | ✓ | destructive (confirm) |
 | `transfers_create` | Create transfer | — | — | ✓ | write |
 | `transfers_update` | Update transfer | — | — | ✓ | write |
 | `ledger_audit_list` | Ledger audit history | ✓ | — | ✓ | read-only |
@@ -161,6 +166,16 @@ Every tool:
 | `long_term_planning_get_year` | Get long-term plan | ✓ | — | ✓ | read-only |
 | `long_term_planning_get_activity` | Get planned activity | ✓ | — | ✓ | read-only |
 | `long_term_planning_set_override` | Set planned budget override | — | — | ✓ | write |
+| `wishlist_get` | Get Wishlist (buckets, items, progress) | ✓ | — | ✓ | read-only |
+| `wishlist_set_enabled` | Enable or disable Wishlist | — | — | ✓ | write; disabling needs confirm |
+| `wishlist_buckets_create` | Create Wishlist bucket | — | — | ✓ | write |
+| `wishlist_buckets_rename` | Rename Wishlist bucket | — | — | ✓ | write |
+| `wishlist_buckets_delete` | Delete Wishlist bucket | — | — | ✓ | destructive (confirm) |
+| `wishlist_buckets_reorder` | Reorder Wishlist buckets | — | — | ✓ | write |
+| `wishlist_items_create` | Add Wishlist item | — | — | ✓ | write |
+| `wishlist_items_update` | Update/move Wishlist item | — | — | ✓ | write |
+| `wishlist_items_reorder` | Reorder Wishlist items | — | — | ✓ | write |
+| `wishlist_items_set_status` | Mark item purchased/removed/active | — | — | ✓ | write; removing needs confirm |
 | `sharing_get` | Get budget sharing | — | — | ✓ | read-only |
 | `sharing_invite` | Invite budget member | — | — | ✓ | write |
 | `sharing_remove_member` | Remove budget member | — | — | ✓ | destructive (confirm) |
@@ -190,6 +205,61 @@ Every tool:
 
 Not exposed (by design): signing in, registration, profile/username and password changes, agent token management, role grants (the app has no role-management endpoint; the Administrator role is assigned by bootstrap configuration), register column preferences, and Auto-Assign (a browser-side calculation over Plan data — agents can compute amounts from `plan_get_month` target progress and call `plan_set_assigned`).
 
+### UI parity
+
+Every user-facing capability of the web app and every API endpoint must be reachable through MCP, or be listed here as excluded with the reason (see `AGENTS.md`). `MISSING` rows are gaps still to close; `pending` rows wait for the named in-flight change.
+
+| Capability (UI area → API) | MCP tool(s) |
+|---|---|
+| Budget list, create, rename, archive, restore, delete (budget switcher, Budgets dialog → `/api/budgets`) | `budgets_list`, `budgets_create`, `budgets_rename`, `budgets_archive`, `budgets_restore`, `budgets_delete` |
+| Plan month read, assign, move money, note (Plan → `/api/budgets/{id}/months/{month}`) | `plan_get_month`, `plan_set_assigned`, `plan_move_money`, `plan_set_note` |
+| Recent Moves (→ `/plan-actions`) | `plan_recent_actions` |
+| Category groups and categories: create, rename, icon, snooze, hide/unhide | `category_groups_create`, `category_groups_update`, `categories_create`, `categories_update` |
+| Drag-and-drop ordering of groups and categories, move category to another group | `category_groups_move`, `categories_move` |
+| Category targets (→ `/categories/{categoryId}/target`) | `category_targets_get`, `category_targets_save`, `category_targets_delete` |
+| Auto-Assign | Not exposed (browser-side calculation; see above) |
+| Accounts list and balances (sidebar → `GET /api/accounts`) | `accounts_list` |
+| Add account — Checking, Savings, Cash, Credit Card, Line of Credit (→ `POST /api/accounts`) | `accounts_create` |
+| Add account — Mortgage, Auto Loan, Student Loan, Personal Loan, Medical Debt, Other Debt, Contract with loan terms and category pairing | `accounts_create` (`loan`) |
+| Edit account: rename, notes, favorite, close/reopen, working balance, type within family, loan terms | `accounts_update`, `loans_save_terms` |
+| Delete account | `accounts_delete` |
+| Account ordering | `accounts_reorder` |
+| Loan page: details, projection, activity, contract schedule (→ `/loan`) | `loans_get` |
+| Loan payoff simulator (→ `/loan/simulation`) | `loans_simulate` |
+| Loan "Update Balance" (→ `/loan/balance`) | `loans_confirm_balance` |
+| Loan category pairing picker (→ `/api/loan-pairings`) | `loans_pairings_list` |
+| Credit card payment details (→ `/credit-summary`, `/credit-activity`) | `accounts_credit_summary`, `accounts_credit_activity` |
+| Credit payoff target (→ `/payoff-target`) | `credit_payoff_target_get`, `credit_payoff_target_save`, `credit_payoff_target_delete` |
+| Reconcile (→ `/reconcile`) | `reconcile_account` |
+| Register: list/filter/search transactions (→ `GET /api/transactions`) | `transactions_list` |
+| Add/edit/delete transaction, splits, repeat | `transactions_create`, `transactions_update`, `transactions_delete` |
+| Imported-transaction entry (→ `/api/transactions/import`) | `transactions_import` |
+| Cleared status, approve/reject, flag, bulk selection actions | `transactions_set_status`, `transactions_review`, `transactions_set_flag`, `transactions_bulk_update` |
+| Transfers | `transfers_create`, `transfers_update` |
+| Receipt images: list, delete | `transaction_images_list`, `transaction_images_delete` |
+| Receipt images: upload file | Not exposed: binary multipart upload does not fit the 1 MiB JSON-RPC body; use the web app |
+| Receipt images: import from URL | Not exposed — **security decision needed**: makes the server fetch an agent-supplied URL (outbound request/SSRF surface, already rate limited for users); agents could be steered to it by prompt injection |
+| Receipt image download (→ `/api/transaction-images/{id}`) | Not exposed: binary content; metadata is in `transaction_images_list` |
+| Ledger audit history (→ `/api/ledger/audit`) | `ledger_audit_list` |
+| Payees management (→ `/api/payees/manage`) | `payees_list`, `payees_save` |
+| Flags palette (→ `/api/flags`) | `flags_list`, `flags_rename` |
+| Scheduled transactions: list, create, edit, pause/resume/end/snooze/skip/post, flag, post due | `schedules_list`, `schedules_create`, `schedules_update`, `schedules_action`, `schedules_set_flag`, `schedules_process_due` |
+| Long-Term Planning: year, planned activity, budget overrides | `long_term_planning_get_year`, `long_term_planning_get_activity`, `long_term_planning_set_override` |
+| Wishlist: overview, enable/disable, buckets, items, ordering, status | `wishlist_get`, `wishlist_set_enabled`, `wishlist_buckets_*`, `wishlist_items_*` |
+| Wishlist "Record purchase" with a ledger transaction (→ `/purchase-transaction`) | `transactions_create` (`wishlistItemId`) |
+| Budget Together: members, invitations (→ `/sharing`, `/invitations`, `/members`) | `sharing_get`, `sharing_invite`, `sharing_remove_member`, `sharing_cancel_invitation` |
+| Live updates (→ `/api/budgets/{id}/events`) | Not exposed: cookie-only SSE for browsers; MCP is stateless |
+| Register view options and column widths (→ `/api/register-views`) | Not exposed: per-user display preferences |
+| Theme (→ `/api/me/preferences`) | Not exposed: per-user display preference |
+| Sign in/out, register, confirm email, forgot/reset password, session (→ `/api/auth/*`) | Not exposed: authentication flows |
+| Profile, username and password change (→ `/api/auth/profile`, `/change-password`) | Not exposed: account credential changes |
+| Agent tokens: create, list, revoke, activity (→ `/api/auth/agent-tokens`) | Not exposed: an agent must not mint, extend or revoke credentials (renewal and non-expiring tokens (issue #15) are likewise not exposed to MCP) |
+| Admin: dashboard, audit, users (invite/approve/reject/suspend/reactivate/unlock/password reset/history/membership), entitlement overrides, tier entitlements, registration mode, email settings | `admin_*`, `users_*`, `membership_plan*` tools (Admin tokens of administrators only) — **security decision needed**, see below |
+| Admin: entitlement key list, a user's entitlement overrides (→ `/api/admin/entitlement-keys`, `/api/admin/users/{id}/entitlements`) | Not exposed (read-only admin views; intentionally not added while the admin tool set is under review) |
+| Legacy single-budget Plan routes (`/api/budget`, `/api/budget/{month}`) | Not exposed: superseded by the budget-scoped routes above |
+
+**Needs the owner's decision (not changed here):** the catalog already lets Admin tokens perform administrator user and entitlement management (`users_set_membership`, `users_set_entitlement`, `membership_plan_entitlements_save`, `users_send_password_reset`, `admin_settings_email_update`, `admin_settings_registration_mode_set`). These are privilege-relevant: an Admin agent token can change other users' memberships/entitlements, open registration or redirect outgoing email. Consider removing them from MCP or putting them behind a separate, explicitly granted level. Also decide whether receipt URL import should ever be agent-accessible.
+
 ## 5. Security model (ISO 27001 mapping)
 
 | Control | Implementation |
@@ -210,6 +280,7 @@ Not exposed (by design): signing in, registration, profile/username and password
 - Prompt injection: data in payees, memos or notes is returned to the agent verbatim. Destructive tools need `confirm: true`, but an agent that ignores instructions could still perform non-destructive writes within its level. Prefer Reporting or Budget tokens.
 - Changing a password does not revoke agent tokens (they are separate credentials); suspension, role loss or revocation does.
 - Admin tokens inherit future capabilities of the creator's role.
+- Accepted risk (owner decision, 2026-10-31): Admin-level agent tokens keep the user-administration tools (`users_set_membership`, `users_set_entitlement`, `membership_plan_entitlements_save`, password-reset email, registration and email settings). A prompt-injected agent holding an Admin token could change other users' access or redirect outgoing email. Mitigate with short Admin token expiries and by not giving Admin tokens to agents that read untrusted text. Receipt import from a URL (`/images/from-url`) is deliberately not exposed (server-side request forgery and prompt-injection risk).
 - The rate limiter and event hub are per process (see limitations).
 - HTTPS enforcement trusts `X-Forwarded-Proto` from the reverse proxy (as the rest of the API does). The TLS-terminating edge in front of nginx must set it and must not accept plain HTTP for `/mcp`.
 
@@ -233,6 +304,6 @@ The web app subscribes with `EventSource` (`useBudgetLiveUpdates`), reconnects w
 ## 7. Limitations
 
 - **Single instance:** the event hub and the rate limiter are in-process. A scaled-out deployment needs a backplane for events (for example Azure SignalR Service or Azure Cache for Redis pub/sub) and a distributed rate limiter; until then sessions only see changes committed by the same instance.
-- Stateless Streamable HTTP only: no server-initiated MCP notifications, resources or prompts; `tools/list` is not paginated (78 tools).
+- Stateless Streamable HTTP only: no server-initiated MCP notifications, resources or prompts; `tools/list` is not paginated (99 tools).
 - `transactions_update`, `transfers_update` and `schedules_update` replace the whole record (read it first); `accounts_update` merges omitted fields from the current account.
 - Long-Term Planning pages do not live-refresh yet (`planning` events are emitted); they reload on navigation.

@@ -8,4 +8,6 @@ The frontend uses React function components and strict TypeScript. Extend existi
 
 Native checkbox inputs share `src/OpenBudget.UI/src/checkboxes.css`, imported by the global stylesheet: 13px rounded squares, grey outline when unchecked, purple fill and white tick when checked. Avoid screen-specific appearance/size overrides. Preserve native labels, keyboard interaction, focus indication and disabled state; forced-colors mode uses platform checkbox rendering.
 
+Every user-facing feature or API capability is also an MCP tool in the same change, following the patterns in `src/OpenBudget.Api/Mcp/` (dispatch to the existing endpoint, strict schema, ledger/target versions, `commandId`, `confirm` for destructive actions, least-privilege permission level), with a row in the [MCP UI parity table](mcp.md#ui-parity); security-sensitive exclusions are documented there.
+
 Every feature includes domain unit tests, HTTP/persistence integration tests and UI workflow coverage appropriate to its behavior. Use xUnit, disposable real PostgreSQL, and Vitest/Testing Library. Use isolated synthetic data and verify failure atomicity/recovery. See [testing](testing.md).
