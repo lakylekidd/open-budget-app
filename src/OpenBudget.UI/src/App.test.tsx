@@ -334,7 +334,7 @@ it('groups loan accounts under a collapsible LOANS section after CREDIT',async()
   expect(headings.map(text=>text?.replace(/[-€\d.,]/g,''))).toEqual(['CASH','CREDIT','LOANS']);
   const loans=screen.getByRole('button',{name:/LOANS/});
   expect(loans).toHaveTextContent('-€390,326.76');
-  expect(loans.querySelector('strong')).toHaveClass('negative-account-balance');
+  expect(loans.querySelector('strong')).not.toHaveClass('negative-account-balance');expect(screen.getByRole('button',{name:/Mortgage -€389,651.68/}).querySelector('strong')).not.toHaveClass('negative-account-balance');expect(screen.getByRole('button',{name:/^Mastercard/}).querySelector('strong')).toHaveClass('negative-account-balance');
   const list=document.getElementById('loan-account-list')!;
   expect(list).toContainElement(screen.getByRole('button',{name:/Mortgage -€389,651.68/}));
   expect(list).toContainElement(screen.getByRole('button',{name:/Phone -€675.08/}));
@@ -419,6 +419,20 @@ it('opens Edit Account only once, not again when the account is revisited',async
   await screen.findByRole('button',{name:/Salary €100.00/});
   await new Promise(resolve=>setTimeout(resolve,50));
   expect(screen.queryByRole('dialog',{name:/Edit Account/i})).not.toBeInTheDocument();
+});
+
+it('does not reopen an account dialog when an account is selected from Plan after Add Account was used',async()=>{
+  const account={isClosed:false,unclearedBalance:0,isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0};
+  focusAccounts=[{...account,id:'cash-1',name:'Salary',balance:100,clearedBalance:100,accountType:'checking'}];
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Add Account'}));
+  const picker=await screen.findByRole('dialog',{name:'Select Account Type'});
+  await userEvent.click(within(picker).getByRole('button',{name:/Cancel|Close|Back/}));
+  await userEvent.click(screen.getByRole('button',{name:'Plan'}));
+  await userEvent.click(screen.getByRole('button',{name:/Salary €100.00/}));
+  await screen.findByRole('button',{name:/Salary €100.00/});
+  await new Promise(resolve=>setTimeout(resolve,50));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 
 it('creates a budget and selects it as the active plan',async()=>{

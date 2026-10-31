@@ -157,7 +157,7 @@
 .sidebar-account-row{display:flex;align-items:center;width:calc(100% + 8px);margin-left:-4px;min-height:36px;border-radius:5px;gap:5px;padding:0 6px;font-size:14px}
 .sidebar-account-row:hover,.sidebar-account-row:focus-within{background:#202044}.sidebar-account-row.is-selected{background:#24205c}
 .sidebar-account-edit{width:18px;height:28px;display:grid;place-items:center;padding:0;color:#b7b6d2;flex-shrink:0}.sidebar-account-edit svg{display:none}.sidebar-account-row:hover .sidebar-account-edit .account-dot,.sidebar-account-row:focus-within .sidebar-account-edit .account-dot{display:none}.sidebar-account-row:hover .sidebar-account-edit svg,.sidebar-account-row:focus-within .sidebar-account-edit svg{display:block}
-.sidebar-account-select{display:flex;align-items:center;gap:8px;min-width:0;flex:1;padding:0;text-align:left;height:36px}.sidebar-account-select>span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebar-account-select strong{font-size:12px;font-weight:600;white-space:nowrap}.sidebar-account-select .negative-account-balance{color:#ff4057}
+.sidebar-account-select{display:flex;align-items:center;gap:8px;min-width:0;flex:1;padding:0;text-align:left;height:36px}.sidebar-account-select>span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebar-account-select strong{font-size:12px;font-weight:600;white-space:nowrap}.sidebar-account-select .negative-account-balance,.account-type .negative-account-balance{color:#ff4057}
 .col-flag{width:92px}.transaction-flag{display:inline-flex;align-items:center;justify-content:center;gap:4px;max-width:87px;min-height:24px;padding:1px 7px;border-radius:20px;color:#85879c;background:none;font-size:12px;line-height:18px}
 .transaction-flag.has-flag{background:color-mix(in srgb,currentColor 20%,transparent)}.transaction-flag span{max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#eeeefa}.has-flag svg,.flag-chip svg,.edit-flag-name svg{fill:currentColor;stroke:none}
 .flag-red{color:#ff4545}.flag-orange{color:#ff9f00}.flag-yellow{color:#ffe12b}.flag-green{color:#31ce49}.flag-blue{color:#59ccf9}.flag-purple{color:#b653ee}
@@ -206,3 +206,8 @@
 .ledger-dialog .account-type-list button{text-align:left;background:transparent;border:1px solid #3d3f5c;border-radius:8px;padding:14px 16px;font-size:14px}
 .ledger-dialog .account-type-list button:hover{background:#25274a;border-color:#5b54ff}
 
+
+/* Align section totals with the account balances below them: rows extend 4px past the container and pad 6px. */
+.sidebar .account-section .account-type{padding-right:2px}
+/* Keep 10px between the amounts and the vertical scrollbar: amounts sit 2px inside the content edge, so pad 8px. */
+.sidebar .account-section{padding-right:8px}

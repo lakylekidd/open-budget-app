@@ -20,8 +20,8 @@ import './ledger.css';
 type Dialog = { kind: 'account'; account?: Account; accountType?: AccountType } | { kind: 'transaction'; entry?: Entry; wishlistItemId?: string } | { kind: 'transfer'; entry?: Entry; from?: string; to?: string }
   | { kind: 'reconcile'; account: Account } | { kind: 'loanActivity'; account: Account; mode?: 'payment' | 'other' } | { kind: 'delete'; entry: Entry } | { kind: 'history' };
 
-export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMenu, onPendingChange, createAccountRequest, editAccountRequest, onEditAccountRequestHandled, focusTransaction, onOpenCategory, liveRefresh, wishlist, wishlistPurchaseRequest }: {
-  selectedAccount: string; onSelectAccount: (id: string) => void; onChanged: () => void; onMenu: () => void; onPendingChange?: (pending: boolean) => void; createAccountRequest?: number; editAccountRequest?: {id:string;token:number}; onEditAccountRequestHandled?: () => void;
+export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMenu, onPendingChange, createAccountRequest, onCreateAccountRequestHandled, editAccountRequest, onEditAccountRequestHandled, focusTransaction, onOpenCategory, liveRefresh, wishlist, wishlistPurchaseRequest }: {
+  selectedAccount: string; onSelectAccount: (id: string) => void; onChanged: () => void; onMenu: () => void; onPendingChange?: (pending: boolean) => void; createAccountRequest?: number; onCreateAccountRequestHandled?: () => void; editAccountRequest?: {id:string;token:number}; onEditAccountRequestHandled?: () => void;
   onOpenCategory?: (categoryId: string, editTarget: boolean) => void;
   /** Bumped when another session changes this budget's ledger; refreshes unless the user is mid-edit (the 30s poll retries). */
   liveRefresh?: number;
@@ -41,11 +41,12 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   const handledPurchase = useRef<number | null>(null);
   const handledCreate = useRef(0);
   useEffect(() => {
-    if (createAccountRequest && createAccountRequest !== handledCreate.current) {
+    if (!createAccountRequest) handledCreate.current = 0;
+    else if (createAccountRequest !== handledCreate.current) {
       handledCreate.current = createAccountRequest;
-      setDialog({ kind: 'account' });
+      setDialog({ kind: 'account' }); onCreateAccountRequestHandled?.();
     }
-  }, [createAccountRequest]);
+  }, [createAccountRequest, onCreateAccountRequestHandled]);
   const [accounts, setAccounts] = useState<Accounts>({ version: 1, accounts: [] });
   const [register, setRegister] = useState<Register | null>(null);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
