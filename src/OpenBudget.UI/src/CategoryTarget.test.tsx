@@ -41,6 +41,9 @@ async function openEditor() {
 async function typeAmount(editor: HTMLElement, label: string, value: string) {
   const input = within(editor).getByLabelText(label);
   await userEvent.click(input);
+  // MoneyField selects its text in a requestAnimationFrame after focus; let that frame run first, otherwise on a
+  // slow runner it fires mid-typing and the next keystroke replaces the digits already typed.
+  await new Promise(resolve => requestAnimationFrame(() => resolve(undefined)));
   await userEvent.clear(input);
   await userEvent.type(input, value);
 }
