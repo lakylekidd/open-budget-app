@@ -79,8 +79,9 @@ it('places Wishlist directly below Long-Term Planning with a ready-to-buy badge 
   expect(screen.queryByRole('button', { name: 'Add category to Wishlist' })).not.toBeInTheDocument();
 
   await userEvent.click(nav);
-  const bucket = await screen.findByRole('tabpanel', { name: 'Games' });
-  expect(within(bucket).getByText('Ready to buy')).toBeInTheDocument();
+  const bucket = await screen.findByRole('rowgroup', { name: 'Games' });
+  expect(within(bucket).getByText(/You can buy/)).toHaveTextContent('You can buy Racing game');
+  expect(bucket.querySelector('.available-cell')).toHaveClass('positive');
 });
 
 const checking = { id: 'checking', name: 'Checking', isClosed: false, balance: 500, clearedBalance: 500, unclearedBalance: 0, accountType: 'checking', isFavorite: false, connectionStatus: 'unlinked', lastReconciledAt: null, needsCategoryCount: 0 };

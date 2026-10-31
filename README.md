@@ -26,8 +26,8 @@ OpenBudget is a budgeting app with a React UI, .NET API, and PostgreSQL database
 - Category targets (weekly, monthly, yearly or custom with repeat) with server-calculated "more needed this month" progress in Plan
 - Scheduled transactions, payee management, and audit history
 - Receipt images on transactions: drag and drop, paste, upload or import from a link, with a full-screen viewer; files are type-checked by content and stripped of location metadata
-- Long-Term Planning with annual forecasts and monthly actuals
-- Wishlist (Plus/Pro): ranked wish-list buckets funded from Plan, with "ready to buy" progress for the most-wanted item
+- Long-Term view with annual forecasts, monthly actuals and planned amounts shown in Plan
+- Wishlist (Plus/Pro): a Plan-style table where buckets are collapsible groups and ranked items sit beneath them, funded from Plan with "ready to buy" progress and purchase recording
 - Identity sign-in, verified registration and branded recovery email, plus audited administrator account controls and SMTP settings
 - MCP server for your own AI agents with scoped, revocable agent tokens and audited tool calls; open sessions refresh live when anything changes ([MCP guide](docs/mcp.md))
 
