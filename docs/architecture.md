@@ -106,6 +106,8 @@ The Scheduled Transactions disclosure appears only when the current account's sc
 
 Account balances are queried from the active budget's ledger. Projection recalculates initialized months and propagates ledger balance deltas into later opening values, preserving explicit assignments. The budget-specific database gate favors explicit correctness; incremental projection is an optimization if measured scale requires it. Reconciled entries require explicit edit confirmation; snapshots are retained/inactivated and changes audited. Forecasts stay outside actual totals until their due day or explicit Enter Now; due-day entries require approval. A scoped background worker/read catch-up shares the normal application-service transaction path. Account view preferences, notes, adjustments and named flags persist on the server within each budget.
 
+Both Edit Account dialogs (cash/credit and loan) end with the shared `DeleteAccountSection`: **Delete Account** asks for an inline confirmation (**Keep Account** is focused, **Delete Permanently** sends `POST /api/accounts/{id}/delete`). When the account list reports `hasTransactions`, the button is disabled with an explanation; a server refusal (for example a schedule or payment-category money) stays in the dialog as the alert. After a delete the page switches to All Accounts, shows a notice and refreshes the sidebar.
+
 Domain unit tests, disposable-PostgreSQL HTTP integration tests and React workflow tests cover this slice. See [testing](testing.md).
 
 
