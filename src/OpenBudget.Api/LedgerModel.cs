@@ -11,6 +11,8 @@ public sealed class AccountEntity
     public bool IsClosed { get; set; }
     public string AccountType { get; set; } = "checking";
     public bool IsFavorite { get; set; }
+    /// <summary>Position in the budget's persisted account order (lower first).</summary>
+    public int SortOrder { get; set; }
 }
 
 public sealed class PayeeEntity
@@ -96,6 +98,7 @@ public static class LedgerModel
         {
             e.HasKey(x => x.Id); e.Property(x => x.BudgetId).HasMaxLength(100); e.Property(x => x.Name).HasMaxLength(120);
             e.Property(x => x.AccountType).HasMaxLength(20).HasDefaultValue("checking");
+            e.HasIndex(x => new { x.BudgetId, x.SortOrder });
         });
         model.Entity<PayeeEntity>(e =>
         {

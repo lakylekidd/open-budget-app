@@ -12,7 +12,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
     public async Task<AccountsDto> GetAccountsAsync(CancellationToken ct)
     {
         var version = await db.LedgerStates.Select(x => x.Version).SingleAsync(ct);
-        var accounts = await db.Accounts.OrderBy(x => x.IsClosed).ThenBy(x => x.Name).ThenBy(x => x.Id).ToListAsync(ct);
+        var accounts = await db.Accounts.OrderBy(x => x.SortOrder).ThenBy(x => x.Name).ThenBy(x => x.Id).ToListAsync(ct);
         var balances = await db.Transactions.Where(t => !t.IsDeleted).GroupBy(t => t.AccountId)
             .Select(g => new { Id = g.Key, Balance = g.Sum(t => t.Amount), Cleared = g.Sum(t => t.Status != "uncleared" ? t.Amount : 0),
                 Unapproved = g.Count(t => !t.IsApproved), Attention = g.Count(t => !t.IsApproved || (t.TransferId == null && !t.IsOpening && t.Amount < 0 && t.CategoryId == null && !t.Splits.Any() && !LoanRules.LoanTypes.Contains(t.Account.AccountType))),
@@ -116,7 +116,8 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
                 else if (openingBalance > 0) throw new LedgerException("Enter the loan balance you owe as a positive amount; it is recorded as debt.");
             }
             await budgets.GetMonthAsync(db.ActiveBudgetId, Month(request.Date), ct);
-            var account = new AccountEntity { Id = Guid.NewGuid(), Name = request.Name.Trim(), AccountType = request.AccountType };
+            var sortOrder = AccountOrderRules.NextSortOrder(await db.Accounts.Select(a => a.SortOrder).ToListAsync(ct));
+            var account = new AccountEntity { Id = Guid.NewGuid(), Name = request.Name.Trim(), AccountType = request.AccountType, SortOrder = sortOrder };
             db.Accounts.Add(account);
             TransactionEntity? opening = null;
             if (openingBalance != 0)
