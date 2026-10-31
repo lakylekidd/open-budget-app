@@ -1033,7 +1033,7 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
         await Put<RegisterViewDto>(client, $"/api/register-views/{mistake}", new RegisterViewDto(0, "allDates", null, null, false, true, true, true, [], true));
         var state = await Accounts(client);
         Assert.False(state.Accounts.Single(a => a.Id == mistake).HasTransactions);
-        Assert.True(state.Accounts.Single(a => a.Id == keep).HasTransactions);
+        Assert.False(state.Accounts.Single(a => a.Id == keep).HasTransactions); // an opening balance alone does not make an account "used"
 
         // A stale ledger version and an unknown account change nothing.
         Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync($"/api/accounts/{mistake}/delete", new DeleteAccountRequest(Guid.NewGuid(), state.Version - 1))).StatusCode);
@@ -1071,7 +1071,7 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
         {
             var before = (await Accounts(client)).Version;
             var commands = await db.LedgerCommands.CountAsync();
-            foreach (var (id, message) in new[] { (opening, "has transactions"), (savings, "has transactions"), (planned, "scheduled transactions") })
+            foreach (var (id, message) in new[] { (savings, "has transactions"), (planned, "scheduled transactions") })
             {
                 var refused = await client.PostAsJsonAsync($"/api/accounts/{id}/delete", new DeleteAccountRequest(Guid.NewGuid(), before));
                 Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
@@ -1082,6 +1082,8 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
             Assert.Equal(commands, await db.LedgerCommands.CountAsync());
             Assert.Equal(4, await db.Transactions.CountAsync());
             Assert.Single(await db.Schedules.ToListAsync());
+            Assert.False((await Accounts(client)).Accounts.Single(a => a.Id == opening).HasTransactions);
+            Assert.True((await Accounts(client)).Accounts.Single(a => a.Id == savings).HasTransactions);
         }
 
         // Once its transfer is deleted and its schedule ended, each account can be deleted; the other transfer leg stays (deleted) in its own account.
@@ -1089,11 +1091,14 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
         await Post<MutationDto>(client, $"/api/accounts/{savings}/delete", new DeleteAccountRequest(Guid.NewGuid(), (await Accounts(client)).Version));
         await ScheduleAction(client, Assert.Single((await Schedules(client)).Items), "end");
         await Post<MutationDto>(client, $"/api/accounts/{planned}/delete", new DeleteAccountRequest(Guid.NewGuid(), (await Accounts(client)).Version));
+        // An account whose only entry is its own opening balance is deletable; the opening entry goes with it.
+        await Post<MutationDto>(client, $"/api/accounts/{opening}/delete", new DeleteAccountRequest(Guid.NewGuid(), (await Accounts(client)).Version));
         var remaining = await Accounts(client);
-        Assert.Equal(new[] { opening, cash }.Order(), remaining.Accounts.Select(a => a.Id).Order());
+        Assert.Equal(new[] { cash }, remaining.Accounts.Select(a => a.Id).ToArray());
         Assert.Equal(100, remaining.Accounts.Single(a => a.Id == cash).Balance);
         await using var verify = app.CreateDb();
         Assert.Equal(0, await verify.Schedules.CountAsync());
+        Assert.False(await verify.Transactions.AnyAsync(t => t.AccountId == opening)); // its opening entry was removed with it
         Assert.Equal(0, await verify.ScheduleOccurrences.CountAsync());
         Assert.True(Assert.Single(await verify.Transactions.Where(t => t.AccountId == cash && t.TransferId != null).ToListAsync()).IsDeleted);
     }

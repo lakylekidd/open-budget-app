@@ -11,7 +11,8 @@ public sealed partial class LedgerService
         {
             // The budget query filter scopes this lookup, so another budget's account is "not found".
             var account = await db.Accounts.SingleOrDefaultAsync(a => a.Id == id, ct) ?? throw new LedgerException("Account not found.", 404);
-            var transactions = await db.Transactions.CountAsync(t => t.AccountId == id && !t.IsDeleted, ct);
+            // The opening balance is created with the account, so it does not make the account "used": it is removed with it.
+            var transactions = await db.Transactions.CountAsync(t => t.AccountId == id && !t.IsDeleted && !t.IsOpening, ct);
             var schedules = await db.Schedules.Where(s => s.AccountId == id || s.ToAccountId == id).ToListAsync(ct);
             // Server-owned categories that exist only for this account: a credit card's payment category and a legacy loan category.
             string[] categoryIds = [CreditCardRules.PaymentCategoryId(id), LoanRules.AutoCategoryId(id)];
@@ -33,8 +34,8 @@ public sealed partial class LedgerService
             };
 
             // Rows that exist only for this account and would otherwise block the account row's foreign keys.
-            // Soft-deleted entries (and their splits/images by cascade) carry no balance; their receipts stay in the audit log.
-            db.Transactions.RemoveRange(await db.Transactions.Where(t => t.AccountId == id && t.IsDeleted).ToListAsync(ct));
+            // Soft-deleted entries and the opening balance entry (and their splits/images by cascade) are removed with the account; their receipts stay in the audit log.
+            db.Transactions.RemoveRange(await db.Transactions.Where(t => t.AccountId == id && (t.IsDeleted || t.IsOpening)).ToListAsync(ct));
             var scheduleIds = schedules.Select(s => s.Id).ToList();
             db.ScheduleOccurrences.RemoveRange(await db.ScheduleOccurrences.Where(o => scheduleIds.Contains(o.ScheduleId)).ToListAsync(ct));
             db.Schedules.RemoveRange(schedules);

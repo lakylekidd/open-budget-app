@@ -15,7 +15,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
         var accounts = await db.Accounts.OrderBy(x => x.SortOrder).ThenBy(x => x.Name).ThenBy(x => x.Id).ToListAsync(ct);
         var balances = await db.Transactions.Where(t => !t.IsDeleted).GroupBy(t => t.AccountId)
             .Select(g => new { Id = g.Key, Balance = g.Sum(t => t.Amount), Cleared = g.Sum(t => t.Status != "uncleared" ? t.Amount : 0),
-                Unapproved = g.Count(t => !t.IsApproved), Attention = g.Count(t => !t.IsApproved || (t.TransferId == null && !t.IsOpening && t.Amount < 0 && t.CategoryId == null && !t.Splits.Any() && !LoanRules.LoanTypes.Contains(t.Account.AccountType))),
+                Unapproved = g.Count(t => !t.IsApproved), Real = g.Count(t => !t.IsOpening), Attention = g.Count(t => !t.IsApproved || (t.TransferId == null && !t.IsOpening && t.Amount < 0 && t.CategoryId == null && !t.Splits.Any() && !LoanRules.LoanTypes.Contains(t.Account.AccountType))),
                 NeedsCategory = g.Count(t => t.TransferId == null && !t.IsOpening && t.Amount < 0 && t.CategoryId == null && !t.Splits.Any() && !LoanRules.LoanTypes.Contains(t.Account.AccountType)) }).ToDictionaryAsync(x => x.Id, ct);
         var reconciledAt = await db.Reconciliations.Where(r => !r.IsInvalidated).GroupBy(r => r.AccountId)
             .Select(g => new { Id = g.Key, At = g.Max(r => r.CreatedAt) }).ToDictionaryAsync(r => r.Id, r => r.At, ct);
@@ -23,7 +23,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
         {
             balances.TryGetValue(a.Id, out var b);
             return new AccountDto(a.Id, a.Name, a.IsClosed, b?.Balance ?? 0, b?.Cleared ?? 0, (b?.Balance ?? 0) - (b?.Cleared ?? 0),
-                a.AccountType, a.IsFavorite, "unlinked", reconciledAt.TryGetValue(a.Id, out var at) ? at : null, b?.NeedsCategory ?? 0, a.Notes, b?.Unapproved ?? 0, b?.Attention ?? 0, b is not null);
+                a.AccountType, a.IsFavorite, "unlinked", reconciledAt.TryGetValue(a.Id, out var at) ? at : null, b?.NeedsCategory ?? 0, a.Notes, b?.Unapproved ?? 0, b?.Attention ?? 0, (b?.Real ?? 0) > 0);
         }).ToList());
     }
 
