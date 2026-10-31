@@ -2,8 +2,8 @@ import { useId, useMemo, useState, type FormEvent } from 'react';
 import { MoneyInput } from '../MoneyInput';
 import { LedgerDialog } from '../ledger/LedgerDialog';
 import { parseMoney } from '../ledger/api';
-import { BucketPanel } from './BucketPanel';
-import { BucketTabs, maxBucketNameLength, type BucketEditing } from './BucketTabs';
+import { BucketTable } from './BucketTable';
+import { maxBucketNameLength, type BucketEditing } from './BucketNameInput';
 import { WishlistIcon } from './WishlistPlanParts';
 import {
   isWebLink, reorder, sendWishlistCommand, WishlistConflictError,
@@ -27,13 +27,16 @@ type ItemDraft = { name: string; url: string; cost: string; description: string;
 type Confirm = { kind: 'disable' } | { kind: 'deleteBucket'; bucket: WishlistBucket } | { kind: 'purchase'; bucket: WishlistBucket; item: WishlistItem };
 type Notice = { text: string; action?: { label: string; page: string } };
 
-// The selected bucket tab is remembered per budget in this browser; storage can be unavailable (private mode, blocked site data).
-const selectedBucketKey = (budgetId: string) => `openbudget.wishlist.bucket.${budgetId}`;
-function readSelectedBucket(budgetId: string): string | null {
-  try { return window.localStorage.getItem(selectedBucketKey(budgetId)); } catch { return null; }
+// Collapsed buckets are remembered per budget in this browser; storage can be unavailable (private mode, blocked site data).
+const collapsedKey = (budgetId: string) => `openbudget.wishlist.collapsed.${budgetId}`;
+function readCollapsed(budgetId: string): string[] {
+  try {
+    const stored: unknown = JSON.parse(window.localStorage.getItem(collapsedKey(budgetId)) ?? '[]');
+    return Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : [];
+  } catch { return []; }
 }
-function writeSelectedBucket(budgetId: string, bucketId: string) {
-  try { window.localStorage.setItem(selectedBucketKey(budgetId), bucketId); } catch { /* the selection just is not remembered */ }
+function writeCollapsed(budgetId: string, ids: string[]) {
+  try { window.localStorage.setItem(collapsedKey(budgetId), JSON.stringify(ids)); } catch { /* the state just is not remembered */ }
 }
 
 export function WishlistPage({ budgetId, currency, access, onAccessChange, onRetry, onNavigate, onRecordPurchase, onOpenTransaction }: Props) {
@@ -44,7 +47,7 @@ export function WishlistPage({ budgetId, currency, access, onAccessChange, onRet
   const idPrefix = useId();
   const [editing, setEditing] = useState<BucketEditing | null>(null);
   const [nameError, setNameError] = useState('');
-  const [selection, setSelection] = useState(() => ({ budgetId, id: readSelectedBucket(budgetId) }));
+  const [collapsedState, setCollapsedState] = useState(() => ({ budgetId, ids: readCollapsed(budgetId) }));
   const [itemDialog, setItemDialog] = useState<{ item?: WishlistItem } | null>(null);
   const [itemDraft, setItemDraft] = useState<ItemDraft>({ name: '', url: '', cost: '', description: '', bucketId: '' });
   const [itemError, setItemError] = useState('');
@@ -68,8 +71,9 @@ export function WishlistPage({ budgetId, currency, access, onAccessChange, onRet
     } finally { setBusy(false); }
   }
 
-  const storedBucketId = selection.budgetId === budgetId ? selection.id : readSelectedBucket(budgetId);
-  function selectBucket(bucketId: string) { setSelection({ budgetId, id: bucketId }); writeSelectedBucket(budgetId, bucketId); }
+  const collapsed = collapsedState.budgetId === budgetId ? collapsedState.ids : readCollapsed(budgetId);
+  function setCollapsed(ids: string[]) { setCollapsedState({ budgetId, ids }); writeCollapsed(budgetId, ids); }
+  function toggleBucket(bucketId: string) { setCollapsed(collapsed.includes(bucketId) ? collapsed.filter(id => id !== bucketId) : [...collapsed, bucketId]); }
   function startEditing(next: BucketEditing) { setError(''); setNameError(''); setEditing(next); }
   function stopEditing() { setError(''); setNameError(''); setEditing(null); }
 
@@ -82,7 +86,7 @@ export function WishlistPage({ budgetId, currency, access, onAccessChange, onRet
     const known = new Set(access.overview.buckets.map(bucket => bucket.id));
     const saved = editing.kind === 'rename' ? await run(`/buckets/${editing.bucketId}`, 'PUT', { name }) : await run('/buckets', 'POST', { name });
     if (!saved) return false;
-    if (editing.kind === 'new') { const created = saved.buckets.find(bucket => !known.has(bucket.id)); if (created) selectBucket(created.id); }
+    if (editing.kind === 'new') { const created = saved.buckets.find(bucket => !known.has(bucket.id)); if (created && collapsed.includes(created.id)) setCollapsed(collapsed.filter(id => id !== created.id)); }
     setEditing(null);
     return true;
   }
@@ -114,10 +118,10 @@ export function WishlistPage({ budgetId, currency, access, onAccessChange, onRet
     const next = reorder(buckets, from, to);
     if (next !== buckets) void run('/buckets/order', 'PUT', { bucketIds: next.map(bucket => bucket.id) });
   }
-  function dropOn(bucket: WishlistBucket, targetItemId?: string, fromTab = false) {
+  function dropOn(bucket: WishlistBucket, targetItemId?: string, onBucketRow = false) {
     const source = drag;
     setDrag(null); setDropTarget(null);
-    if (!source || busy || (fromTab && source.bucketId === bucket.id)) return;
+    if (!source || busy || (onBucketRow && source.bucketId === bucket.id)) return;
     if (source.bucketId !== bucket.id) {
       const sourceItem = access.status === 'ready' ? access.overview.buckets.find(b => b.id === source.bucketId)?.items.find(item => item.id === source.itemId) : undefined;
       if (sourceItem) void run(`/items/${sourceItem.id}`, 'PUT', { name: sourceItem.name, url: sourceItem.url, cost: sourceItem.cost, description: sourceItem.description, bucketId: bucket.id });
@@ -149,8 +153,6 @@ export function WishlistPage({ budgetId, currency, access, onAccessChange, onRet
   if (access.status === 'forbidden') return <div className="wishlist-page">{heading}<section className="wishlist-intro"><div className="wishlist-intro-icon"><WishlistIcon size={28} /></div><h2>Wishlist is a Plus and Pro feature</h2><p>Your current membership does not include Wishlist. Ask your administrator to upgrade your membership or enable Wishlist for your account.</p></section></div>;
 
   const overview = access.overview;
-  const selectedIndex = Math.max(0, overview.buckets.findIndex(bucket => bucket.id === storedBucketId));
-  const selectedBucket: WishlistBucket | undefined = overview.buckets[selectedIndex];
   if (!overview.isEnabled) return <div className="wishlist-page">{heading}
     {error && <p className="wishlist-error" role="alert">{error}</p>}
     {notice && <p className="wishlist-notice" role="status">{notice.text}</p>}
@@ -168,21 +170,17 @@ export function WishlistPage({ budgetId, currency, access, onAccessChange, onRet
     <p className="wishlist-subtitle">Each bucket is funded by its Plan category. Progress uses Available in {new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' }).format(new Date(`${overview.month}-01T12:00:00`))}.</p>
     {error && !editing && <p className="wishlist-error" role="alert">{error}</p>}
     {notice && <p className="wishlist-notice" role="status">{notice.text}{notice.action && <button type="button" onClick={() => onNavigate(notice.action!.page)}>{notice.action.label}</button>}<button type="button" aria-label="Dismiss" onClick={() => setNotice(null)}>×</button></p>}
-    <BucketTabs buckets={overview.buckets} selectedId={selectedBucket?.id ?? null} editing={editing} busy={busy} nameError={nameError || (editing ? error : '')} idPrefix={idPrefix}
-      onSelect={selectBucket} onStartCreate={() => startEditing({ kind: 'new' })} onStartRename={bucketId => startEditing({ kind: 'rename', bucketId })}
+    {overview.buckets.length === 0 ? <section className="wishlist-empty"><strong>No Buckets</strong><p>Use the + Bucket button to create a bucket such as Electronics, Games or Small/Large and start ranking the things you want.</p>
+        <button type="button" className="wishlist-primary" disabled={busy} onClick={() => startEditing({ kind: 'new' })}>+ Bucket</button></section> : null}
+    {(overview.buckets.length > 0 || editing?.kind === 'new') && <BucketTable buckets={overview.buckets} collapsed={collapsed} editing={editing} nameError={nameError || (editing ? error : '')} idPrefix={idPrefix} money={money} busy={busy} drag={drag} dropTarget={dropTarget}
+      onToggle={toggleBucket} onToggleAll={() => setCollapsed(overview.buckets.every(bucket => collapsed.includes(bucket.id)) ? [] : overview.buckets.map(bucket => bucket.id))}
+      onStartCreate={() => startEditing({ kind: 'new' })} onStartRename={bucketId => startEditing({ kind: 'rename', bucketId })}
       onCommitName={commitBucketName} onCancelEdit={stopEditing} onEditName={() => { setNameError(''); setError(''); }}
-      dropBucketId={drag && dropTarget && !dropTarget.itemId && dropTarget.bucketId !== drag.bucketId ? dropTarget.bucketId : null}
-      onItemDragOver={bucketId => { if (!drag || drag.bucketId === bucketId) return false; if (dropTarget?.bucketId !== bucketId || dropTarget.itemId) setDropTarget({ bucketId }); return true; }}
-      onItemDrop={bucketId => { const target = overview.buckets.find(bucket => bucket.id === bucketId); if (target) dropOn(target, undefined, true); }} />
-    {!selectedBucket ? <section className="wishlist-empty"><strong>No Buckets</strong><p>Use the + tab to create a bucket such as Electronics, Games or Small/Large and start ranking the things you want.</p></section>
-      : <BucketPanel key={selectedBucket.id} idPrefix={idPrefix} bucket={selectedBucket} bucketIndex={selectedIndex} bucketCount={overview.buckets.length} money={money} busy={busy} drag={drag} dropTarget={dropTarget}
-        onMoveBucket={to => moveBucket(overview.buckets, selectedIndex, to)} onRenameBucket={() => startEditing({ kind: 'rename', bucketId: selectedBucket.id })}
-        onDeleteBucket={() => setConfirm({ kind: 'deleteBucket', bucket: selectedBucket })}
-        onAddItem={() => openItemDialog(selectedBucket.id)} onEditItem={item => openItemDialog(selectedBucket.id, item)}
-        onPurchase={item => setConfirm({ kind: 'purchase', bucket: selectedBucket, item })} onRemove={item => void run(`/items/${item.id}/remove`, 'POST')} onRestore={item => void run(`/items/${item.id}/restore`, 'POST')}
-        onMoveItem={(from, to) => moveItem(selectedBucket, from, to)}
-        onDragStart={source => setDrag(source)} onDragEnd={() => { setDrag(null); setDropTarget(null); }} onDragOverItem={target => { if (dropTarget?.itemId !== target.itemId) setDropTarget(target); }}
-        onDropOn={targetItemId => dropOn(selectedBucket, targetItemId)} onOpenTransaction={onOpenTransaction} />}
+      onMoveBucket={(from, to) => moveBucket(overview.buckets, from, to)} onDeleteBucket={bucket => setConfirm({ kind: 'deleteBucket', bucket })}
+      onAddItem={bucket => openItemDialog(bucket.id)} onEditItem={item => openItemDialog(item.bucketId, item)}
+      onPurchase={(bucket, item) => setConfirm({ kind: 'purchase', bucket, item })} onRemove={item => void run(`/items/${item.id}/remove`, 'POST')} onRestore={item => void run(`/items/${item.id}/restore`, 'POST')}
+      onMoveItem={moveItem} onDragStart={source => setDrag(source)} onDragEnd={() => { setDrag(null); setDropTarget(null); }}
+      onDragOverTarget={target => setDropTarget(target)} onDropOn={dropOn} onOpenTransaction={onOpenTransaction} />}
 
     {itemDialog && <LedgerDialog title={itemDialog.item ? 'Edit item' : 'New wishlist item'} onClose={() => setItemDialog(null)}>
       <form className="wishlist-form" onSubmit={event => void saveItem(event)} noValidate>
