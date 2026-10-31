@@ -162,6 +162,32 @@ it('shows loading followed by balances and uncategorized spending', async () => 
   expect(screen.getByTestId('cleared-balance')).toHaveTextContent('€100.00');
 });
 
+it('keeps the register on screen while a live refresh re-fetches it, then swaps in the new rows', async () => {
+  // Regression: every background refresh (30-second poll, live ledger event) used to drop the saved view and show
+  // "Loading transactions…" in place of the rows, which flashed the whole register.
+  const props = { onSelectAccount: vi.fn(), onChanged: vi.fn(), onMenu: vi.fn() };
+  const page = render(<AccountsPage selectedAccount="checking" liveRefresh={0} {...props}/>); await ready();
+  const row = screen.getByRole('button', { name: 'Edit Shop 2026-10-21' }).closest('tr');
+  const baseFetch = vi.mocked(fetch).getMockImplementation()!;
+  let release!: () => void; const held = new Promise<void>(resolve => { release = resolve; });
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    if (String(input).startsWith('/api/transactions')) await held;
+    return baseFetch(input, init);
+  });
+  register = { ...register, version: 4, items: [{ ...register.items[0], id: 'later', payee: 'Cafe' }, ...register.items] };
+  page.rerender(<AccountsPage selectedAccount="checking" liveRefresh={1} {...props}/>);
+  await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => String(path).startsWith('/api/transactions'))).toHaveLength(2));
+  expect(screen.queryByText('Loading transactions…')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Edit Shop 2026-10-21' }).closest('tr')).toBe(row);
+  expect(screen.getByRole('button', { name: 'Add Transaction' })).toBeEnabled();
+  release();
+  expect(await screen.findByRole('button', { name: 'Edit Cafe 2026-10-21' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Edit Shop 2026-10-21' }).closest('tr')).toBe(row);
+  expect(screen.queryByText('Loading transactions…')).not.toBeInTheDocument();
+  // The unchanged saved view is revalidated without triggering a second register fetch.
+  expect(vi.mocked(fetch).mock.calls.filter(([path]) => String(path).startsWith('/api/transactions'))).toHaveLength(2);
+});
+
 it('distinguishes an empty account list, empty filters, and a failed load with retry', async () => {
   register = { ...register, items: [], total: 0, accounts: { version: 1, accounts: [] } };
   failRead = true; show();
