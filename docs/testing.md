@@ -238,6 +238,7 @@ Commit-time verification on October 22: the previous complete run passed the cou
 | UI-parity tools: Wishlist buckets/items/order/status with confirmation, stale-version conflict and entitlement denial; group and category ordering/moves carried to later months; receipt image list/delete with confirmation | `McpParityToolsTests` |
 | Agent tokens UI: create with scopes and budget multi-select, plaintext shown once with copy, Admin only for administrators, server errors, revoke confirmation, recent activity, load error/empty states | `AgentTokens.test.tsx` |
 | Live update hook: refresh on newer Plan versions, notice instead of refresh with unsaved edits, own-save/month/budget filtering, deferred evaluation during saves, ledger coalescing, admin refresh, reconnect backoff and cleanup | `liveUpdates.test.tsx` |
+| Register background refresh (live ledger event / 30-second poll) keeps rows mounted with no "Loading transactions…" flash, swaps in new rows, and does not refetch for an unchanged saved view | `AccountsPage.test.tsx` "keeps the register on screen while a live refresh re-fetches it" |
 
 Not automated: connecting a real Claude Code/Claude Desktop client to a deployed instance, and nginx SSE/MCP proxying (configuration in `deploy/nginx.conf`).
 

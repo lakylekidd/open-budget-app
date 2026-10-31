@@ -143,22 +143,25 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     } finally { viewInFlight.current = false; setViewSaving(false); }
   }
   useEffect(() => {
-    const controller = new AbortController(); setViewOpen(false); setMoreOpen(false); setSavedView(null); setSchedules(null);
+    // A refresh of the same scope revalidates in the background: the current view stays on screen, and an unchanged
+    // view keeps its identity so the register is not fetched (and redrawn) a second time.
+    const controller = new AbortController(); setViewOpen(false); setMoreOpen(false); setSavedView(current => current?.scope === scope ? current : null);
     requestJson<ViewOptions>(`/api/register-views/${scope}`, { signal: controller.signal })
-      .then(value => { if (!controller.signal.aborted) setSavedView({ scope, value }); })
+      .then(value => { if (!controller.signal.aborted) setSavedView(current => current?.scope === scope && JSON.stringify(current.value) === JSON.stringify(value) ? current : { scope, value }); })
       .catch(err => { if (!controller.signal.aborted) { setLoading(false); setRegister(null); setError('Could not load saved view options. Reload to retry. ' + err.message); } });
     return () => controller.abort();
   }, [scope, refresh]);
-  useEffect(() => { setInline(null); setSchedulePage(1); }, [scope]);
+  useEffect(() => { setInline(null); setSchedulePage(1); setSchedules(null); }, [scope]);
   useEffect(() => { if (focusTransaction) { setPage(1); setSchedulePage(1); setSelectedIds([focusTransaction.id]); } }, [focusTransaction?.id]);
   useEffect(() => {
     onPendingChange?.(busy || uncertain || viewSaving || payeePending);
     return () => onPendingChange?.(false);
   }, [busy, uncertain, viewSaving, payeePending, onPendingChange]);
   useEffect(() => { setPage(1); setSelectedIds(focusTransaction?.accountId === selectedAccount ? [focusTransaction.id] : []); }, [selectedAccount, search, from, to, category, status, reviewFilter, view.showReconciled, focusTransaction?.id]);
+  const loadedQuery = useRef<string | null>(null);
   useEffect(() => {
-    const controller = new AbortController(); setLoading(true);
-    if (savedView?.scope !== scope) return () => controller.abort();
+    const controller = new AbortController();
+    if (savedView?.scope !== scope) { setLoading(true); return () => controller.abort(); }
     const focused = focusTransaction?.accountId === selectedAccount ? focusTransaction : null;
     const query = new URLSearchParams({ page: String(page), pageSize: focused ? '100' : '25', includeReconciled: String(focused ? true : view.showReconciled) });
     if (selectedAccount) query.set('accountId', selectedAccount);
@@ -170,9 +173,13 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
       if (from) query.set('from', from); if (to) query.set('to', to);
       if (category) query.set('categoryId', category); if (status) query.set('status', status);
     }
+    // Only a new query blanks the register. Background refreshes (30-second poll, live ledger events, after a save)
+    // re-fetch the same query and swap the rows in place, so the screen does not flash "Loading transactions…".
+    const queryKey = `${scope}?${query}`;
+    if (loadedQuery.current !== queryKey) setLoading(true);
     requestJson<Register>(`/api/transactions?${query}`, { signal: controller.signal })
-      .then(nextRegister => { if (!controller.signal.aborted) { setAccounts(nextRegister.accounts); setRegister(nextRegister); if (focused && !focused.scheduled && nextRegister.items.some(item => item.id === focused.id)) setSelectedIds([focused.id]); setLoading(false); } })
-      .catch(err => { if (!controller.signal.aborted) { setError(err.message); setLoading(false); setRegister(null); } });
+      .then(nextRegister => { if (!controller.signal.aborted) { loadedQuery.current = queryKey; setAccounts(nextRegister.accounts); setRegister(nextRegister); if (focused && !focused.scheduled && nextRegister.items.some(item => item.id === focused.id)) setSelectedIds([focused.id]); setLoading(false); } })
+      .catch(err => { if (!controller.signal.aborted) { loadedQuery.current = null; setError(err.message); setLoading(false); setRegister(null); } });
     return () => controller.abort();
   }, [selectedAccount, search, from, to, category, status, page, refresh, savedView, scope, reviewFilter, view.showReconciled, payeeFilter, focusTransaction?.id]);
   useEffect(() => {
