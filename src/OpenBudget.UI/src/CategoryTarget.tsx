@@ -18,13 +18,18 @@ const trashIcon = <svg width="15" height="15" viewBox="0 0 24 24" fill="currentC
 function MoneyField({ label, value, disabled, money, onChange }: { label: string; value: string; disabled: boolean; money: Money; onChange: (value: string) => void }) {
   const id = useId();
   const [focused, setFocused] = useState(false);
+  const selectFrame = useRef(0);
+  const cancelSelect = () => cancelAnimationFrame(selectFrame.current);
+  useEffect(() => cancelSelect, []);
   const parsed = parseMoney(value || '0');
   return <div className="target-field">
     <label htmlFor={id}>{label}</label>
     <MoneyInput id={id} className="target-input" disabled={disabled}
       value={focused ? value : parsed !== null ? money(parsed) : value}
-      onFocus={event => { setFocused(true); const input = event.target; requestAnimationFrame(() => input.select()); }}
-      onBlur={() => setFocused(false)} onChange={raw => onChange(raw.replace(/[€\s]/g, ''))} />
+      // Select-all is deferred a frame so the browser's own click handling does not undo it; it must never run
+      // after the user has started typing, or it would select (and the next keystroke replace) what they typed.
+      onFocus={event => { setFocused(true); const input = event.target; cancelSelect(); selectFrame.current = requestAnimationFrame(() => input.select()); }}
+      onBlur={() => { cancelSelect(); setFocused(false); }} onChange={raw => { cancelSelect(); onChange(raw.replace(/[€\s]/g, '')); }} />
   </div>;
 }
 
