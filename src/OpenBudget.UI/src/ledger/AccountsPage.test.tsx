@@ -146,7 +146,7 @@ it('uses the transaction month for category balances and reloads them when its d
 });
 
 it('Payment/Transfer opens account choices and saves a new paired transfer',async()=>{
-  show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Add Transaction'}));await userEvent.type(screen.getByRole('textbox',{name:'Outflow'}),'15');await userEvent.click(screen.getByRole('combobox',{name:'Category'}));await userEvent.click(screen.getByRole('button',{name:'Payment/Transfer'}));await userEvent.click(await screen.findByRole('option',{name:'Transfer to Savings'}));await userEvent.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0]).toMatchObject({path:'/api/transfers',body:{fromAccountId:'checking',toAccountId:'savings',amount:15}});
+  show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Add Transaction'}));await userEvent.type(screen.getByRole('textbox',{name:'Outflow'}),'15');await userEvent.click(screen.getByRole('combobox',{name:'Category'}));await userEvent.click(screen.getByRole('button',{name:'Payment/Transfer'}));await userEvent.click(await screen.findByRole('option',{name:'To Savings'}));await userEvent.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0]).toMatchObject({path:'/api/transfers',body:{fromAccountId:'checking',toAccountId:'savings',amount:15}});
 });
 
 it('opens Manage Payees and filters the register by the exact saved payee id',async()=>{
@@ -493,32 +493,32 @@ it('hides the category column on tracking account registers',async()=>{
  await screen.findByRole('button',{name:'Add Transaction'});expect(screen.getByRole('table',{name:'Transaction register'})).not.toHaveClass('hide-category');
 });
 
-async function chooseTransfer(name:string){
+async function chooseTransfer(name:string,label:string){
  await userEvent.click(screen.getByRole('button',{name:'Add Transaction'}));await userEvent.type(screen.getByRole('textbox',{name:'Outflow'}),'25');
- const payee=screen.getByRole('combobox',{name:/Payee/});await userEvent.click(payee);await userEvent.type(payee,'Transfer to '+name);
- await userEvent.click((await screen.findAllByRole('option',{name:'Transfer to '+name})).at(-1)!);
+ const payee=screen.getByRole('combobox',{name:/Payee/});await userEvent.click(payee);await userEvent.type(payee,name);
+ await userEvent.click((await screen.findAllByRole('option',{name:label})).at(-1)!);
 }
 it('shows Payment: <loan> greyed out with the loans category, and blanks the payee when the category is changed',async()=>{
  register.accounts.accounts=[checking,carLoan];
  render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);await ready();
- await chooseTransfer('Car Loan');
- const payee=screen.getByRole('combobox',{name:/Payee/});expect(payee).toHaveValue('Payment: Car Loan');expect(payee).toBeDisabled();
+ await chooseTransfer('Car Loan','Payment: Car Loan');
+ const payee=screen.getByRole('combobox',{name:/Payee/});expect(payee).toHaveValue('Payment: Car Loan');expect(payee).not.toBeDisabled();
  expect(screen.getByRole('combobox',{name:'Category'})).not.toBeDisabled();
 });
 it('shows Payment: <card> with the cards category locked, and To <account> with a required category for tracking accounts',async()=>{
  register.accounts.accounts=[checking,card,investments];
  render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);await ready();
- await chooseTransfer('Mastercard');
+ await chooseTransfer('Mastercard','Payment: Mastercard');
  expect(screen.getByRole('combobox',{name:/Payee/})).toHaveValue('Payment: Mastercard');expect(screen.getByRole('combobox',{name:'Category'})).toBeDisabled();
  await userEvent.click(screen.getByRole('button',{name:'Cancel'}));
- await chooseTransfer('Investments');
+ await chooseTransfer('Investments','To Investments');
  expect(screen.getByRole('combobox',{name:/Payee/})).toHaveValue('To Investments');expect(screen.getByRole('combobox',{name:'Category'})).not.toBeDisabled();
  await userEvent.click(screen.getByRole('button',{name:'Save'}));expect(await screen.findByRole('alert')).toHaveTextContent('Choose a category');expect(mutations).toHaveLength(0);
 });
 it('keeps the category not needed between two cash accounts',async()=>{
  register.accounts.accounts=[checking,savings];
  render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);await ready();
- await chooseTransfer('Savings');
+ await chooseTransfer('Savings','To Savings');
  expect(screen.getByRole('combobox',{name:/Payee/})).toHaveValue('To Savings');expect(screen.getByRole('combobox',{name:'Category'})).toHaveValue('Category not needed');
 });
 
