@@ -59,8 +59,20 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
             .OrderByDescending(x => x.Month)
             .FirstOrDefaultAsync(cancellationToken);
 
-        var created = previous is null ? CreateStarterMonth(month, budgetId) : CreateNextMonth(month, previous);
-        if (previous is null)
+        // A month before the budget's first one copies the nearest later month's groups and categories (balances start at zero)
+        // instead of seeding the starter template, which would add categories the user never created. Only a budget with no
+        // months at all starts from the template.
+        var later = previous is not null ? null : await db.Budgets
+            .Where(x => x.BudgetId == budgetId && string.Compare(x.Month, month) > 0)
+            .Include(x => x.Plan)
+            .Include(x => x.Groups).ThenInclude(x => x.Categories)
+            .OrderBy(x => x.Month)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var created = previous is not null ? CreateNextMonth(month, previous)
+            : later is not null ? CreateEarlierMonth(month, later)
+            : CreateStarterMonth(month, budgetId);
+        if (previous is null && later is null)
             created.Plan = await db.BudgetPlans.SingleAsync(x => x.Id == budgetId, cancellationToken);
         db.Budgets.Add(created);
         try
@@ -376,6 +388,44 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
                 Id = category.Id,
                 Name = category.Name,
                 OpeningAvailable = BudgetCarryForward.OpeningAvailable(category.Available),
+                Assigned = 0,
+                Activity = 0,
+                Target = category.Target,
+                Icon = category.Icon,
+                Snoozed = category.Snoozed,
+                SortOrder = category.SortOrder,
+                IsArchived = category.IsArchived
+            }).ToList()
+        }).ToList()
+    };
+
+    // Structure-only copy used for a month that precedes every existing month: same groups, categories, targets and order,
+    // but no assigned, activity or carried-over amounts.
+    private static BudgetEntity CreateEarlierMonth(string month, BudgetEntity later) => new()
+    {
+        Month = month,
+        BudgetId = later.BudgetId,
+        Plan = later.Plan,
+        Note = "",
+        OpeningReadyToAssign = 0,
+        FundsAdded = 0,
+        Version = 1,
+        Groups = later.Groups.OrderBy(x => x.SortOrder).Select(group => new CategoryGroupEntity
+        {
+            BudgetId = later.BudgetId,
+            BudgetMonth = month,
+            Id = group.Id,
+            Name = group.Name,
+            SortOrder = group.SortOrder,
+            IsArchived = group.IsArchived,
+            Categories = group.Categories.OrderBy(x => x.SortOrder).Select(category => new CategoryEntity
+            {
+                BudgetId = later.BudgetId,
+                BudgetMonth = month,
+                GroupId = group.Id,
+                Id = category.Id,
+                Name = category.Name,
+                OpeningAvailable = 0,
                 Assigned = 0,
                 Activity = 0,
                 Target = category.Target,

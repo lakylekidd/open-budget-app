@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ApiError, requestJson } from './api';
+import { ApiError, budgetMonthPath, requestJson } from './api';
 import { LedgerDialog } from './LedgerDialog';
 
 type Category = {id:string;name:string;assigned:number;target:number;icon:string|null;snoozed:boolean;sortOrder:number;isArchived:boolean};
@@ -9,7 +9,7 @@ export function NewCategoryDialog({date,onClose,onCreated,onPendingChange}: {dat
   const month=date.slice(0,7);const [snapshot,setSnapshot]=useState<Month|null>(null);const [name,setName]=useState('');const [group,setGroup]=useState('');
   const [error,setError]=useState('');const [busy,setBusy]=useState(false);const [uncertain,setUncertain]=useState(false);const [conflict,setConflict]=useState(false);const [refresh,setRefresh]=useState(0);
   const pending=useRef<{id:string;group:string;name:string;body:string;version:number}|null>(null);const inFlight=useRef(false);
-  useEffect(()=>{const controller=new AbortController();setSnapshot(null);requestJson<Month>(`/api/budget/${month}`,{signal:controller.signal}).then(value=>{if(controller.signal.aborted)return;setSnapshot(value);setGroup(current=>value.groups.some(g=>g.id===current&&!g.isArchived)?current:value.groups.find(g=>!g.isArchived)?.id??'');setConflict(false);setError('');}).catch(err=>{if(!controller.signal.aborted)setError(err.message);});return()=>controller.abort();},[month,refresh]);
+  useEffect(()=>{const controller=new AbortController();setSnapshot(null);requestJson<Month>(budgetMonthPath(month),{signal:controller.signal}).then(value=>{if(controller.signal.aborted)return;setSnapshot(value);setGroup(current=>value.groups.some(g=>g.id===current&&!g.isArchived)?current:value.groups.find(g=>!g.isArchived)?.id??'');setConflict(false);setError('');}).catch(err=>{if(!controller.signal.aborted)setError(err.message);});return()=>controller.abort();},[month,refresh]);
   useEffect(()=>{onPendingChange?.(busy||uncertain);return()=>onPendingChange?.(false);},[busy,uncertain,onPendingChange]);
   function close(){if(!busy&&!uncertain)onClose();}
   async function save(){
@@ -28,12 +28,12 @@ export function NewCategoryDialog({date,onClose,onCreated,onPendingChange}: {dat
       const command=pending.current;
       // A monthly snapshot has no command receipt: recover a lost response by the stable new category ID.
       if(uncertain){
-        const latest=await requestJson<Month>(`/api/budget/${month}`);
+        const latest=await requestJson<Month>(budgetMonthPath(month));
         const saved=latest.groups.find(g=>g.id===command.group)?.categories.find(c=>c.id===command.id);
         if(saved&&saved.name===command.name){pending.current=null;setUncertain(false);onCreated(command.id);return;}
         if(latest.version!==command.version)throw new ApiError('The budget changed. Reload it before creating this category.',409);
       }
-      await requestJson<Month>(`/api/budget/${month}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:command.body});
+      await requestJson<Month>(budgetMonthPath(month),{method:'PUT',headers:{'Content-Type':'application/json'},body:command.body});
       pending.current=null;setUncertain(false);onCreated(command.id);
     }catch(err){setError(err instanceof Error?err.message:'Could not create category.');if(err instanceof ApiError&&err.status<500){pending.current=null;setUncertain(false);setConflict(err.status===409);}else setUncertain(true);}
     finally{inFlight.current=false;setBusy(false);}

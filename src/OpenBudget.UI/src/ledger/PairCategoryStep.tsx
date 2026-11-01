@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react';
-import { creditPaymentGroupId, requestJson, today } from './api';
+import { budgetMonthPath, creditPaymentGroupId, requestJson, today } from './api';
 import { wishlistGroupId } from '../wishlist/wishlistApi';
 import { type LoanPairing, type LoanPairingItem, type NewPairedCategory, unpaired } from './loans';
 import './loans.css';
@@ -67,7 +67,7 @@ export function PairCategoryStep({ draft, onChange, accountId, subject, includes
     const controller = new AbortController();
     setLoadError('');
     Promise.all([
-      requestJson<{ groups: MonthGroup[] }>(`/api/budget/${today().slice(0, 7)}`, { signal: controller.signal }),
+      requestJson<{ groups: MonthGroup[] }>(budgetMonthPath(today().slice(0, 7)), { signal: controller.signal }),
       requestJson<{ items: LoanPairingItem[] }>('/api/loan-pairings', { signal: controller.signal })
     ]).then(([month, pairs]) => { if (!controller.signal.aborted) { setGroups(month.groups); setPairings(pairs.items); } })
       .catch(error => { if (!controller.signal.aborted) setLoadError(`Could not load your plan categories. ${error.message}`); });

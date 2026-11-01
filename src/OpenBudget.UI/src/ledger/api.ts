@@ -48,11 +48,18 @@ export function parseMoney(value: string): number | null {
   return amount !== null && Math.abs(amount) <= 999999999.99 ? amount : null;
 }
 
+// Plan month endpoint for the budget the user has open. The server scopes requests by the same cookie App.tsx writes;
+// the legacy /api/budget/{month} route always reads the "default" budget, so use the budget-scoped route whenever one is selected.
+export function budgetMonthPath(month: string): string {
+  const id = /(?:^|;\s*)openbudget\.activeBudgetId=([^;]*)/.exec(typeof document === 'undefined' ? '' : document.cookie)?.[1];
+  return id ? `/api/budgets/${id}/months/${month}` : `/api/budget/${month}`;
+}
+
 export async function loadCategories(date: string, signal?: AbortSignal): Promise<CategoryOption[]> {
   return (await loadCategoryBudget(date, signal)).categories;
 }
 export async function loadCategoryBudget(date: string, signal?: AbortSignal): Promise<{categories:CategoryOption[];readyToAssign?:number}> {
-  const month = await requestJson<{ readyToAssign?:number; groups: { id?:string;name?:string;isArchived?: boolean; categories: CategoryOption[] }[] }>(`/api/budget/${date.slice(0, 7)}`, { signal });
+  const month = await requestJson<{ readyToAssign?:number; groups: { id?:string;name?:string;isArchived?: boolean; categories: CategoryOption[] }[] }>(budgetMonthPath(date.slice(0, 7)), { signal });
   return {readyToAssign:month.readyToAssign,categories:month.groups.filter(group => group.id !== creditPaymentGroupId).flatMap(group => group.categories.map(category => ({ ...category, groupId:group.id,groupName:group.name,isArchived: group.isArchived || category.isArchived })))};
 }
 export type ScheduledItem = { id:string;occurrenceId:string;repeat:string;startDate:string;isPaused:boolean;endDate:string|null;count:number|null;toAccountId:string|null;transaction:Entry;postingError?:string|null };

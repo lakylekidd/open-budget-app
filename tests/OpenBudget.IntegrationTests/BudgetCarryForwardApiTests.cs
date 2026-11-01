@@ -32,6 +32,18 @@ public sealed class BudgetCarryForwardApiTests(PostgresFixture fixture) : IClass
         var budget=await Month(c,month);Assert.Equal(available,Electricity(budget,category).Available);Assert.Equal(assigned,Electricity(budget,category).Assigned);
     }
 
+    [Fact]
+    public async Task A_month_before_the_first_one_copies_the_users_categories_instead_of_the_starter_template()
+    {
+        await using var app=await fixture.CreateAppAsync();var c=app.CreateClient();
+        var later=await Month(c,October);var edit=Editable(later);
+        await Put<BudgetDto>(c,"/api/budget/"+October,edit with{Groups=edit.Groups.Select(g=>g with{Categories=g.Categories.Select(x=>x.Id=="utilities"?x with{Name="My own category"}:x).ToList()}).ToList()});
+        var earlier=await Month(c,August);
+        Assert.Equal("My own category",Electricity(earlier).Name);
+        Assert.All(earlier.Groups.SelectMany(g=>g.Categories),x=>{Assert.Equal(0,x.Assigned);Assert.Equal(0,x.Available);});
+        Assert.Equal(0,earlier.ReadyToAssign);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
