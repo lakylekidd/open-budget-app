@@ -1,6 +1,6 @@
 import { fireEvent, render,screen,waitFor,within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach,expect,it,vi } from 'vitest';
+import { afterEach,beforeEach,expect,it,vi } from 'vitest';
 import App from './App';
 
 type Month={month:string;note:string;version:number;fundsAdded:number;openingReadyToAssign:number;ledgerIncome:number;readyToAssign:number;groups:{id:string;name:string;sortOrder:number;isArchived:boolean;categories:{id:string;name:string;assigned:number;activity:number;available:number;target:number;icon:string;snoozed:boolean;sortOrder:number;isArchived:boolean}[]}[]};
@@ -10,7 +10,9 @@ let months:Record<string,Month>;let ownedBudgets:{id:string;name:string;currency
 let planningHistory:Record<number,unknown>;
 let sharing:{manager:Record<string,unknown>;members:Record<string,unknown>[];invitations:Record<string,unknown>[];canManage:boolean;invitesRemaining:number};let recentActions:Record<string,unknown>[];
 const planningYear=(year:number,actuals:Record<string,{assigned:number|null;spent:number|null}>)=>({year,version:1,hasPlanningData:false,months:[],groups:[{id:'home',name:'Home',sortOrder:0,isArchived:false,categories:[{id:'utilities',name:'Electricity',sortOrder:0,isArchived:false,months:Array.from({length:12},(_,index)=>{const month=`${year}-${String(index+1).padStart(2,'0')}`;const actual=actuals[month];return {month,plannedBudgetOverride:null,plannedBudgetBeforeMonth:0,plannedBudget:0,plannedExpenses:0,plannedAvailable:0,actualAssigned:actual?.assigned??null,actualExpenses:actual?.spent??null,actualAvailable:null};})}]}]});
+afterEach(()=>{vi.useRealTimers();});
 beforeEach(()=>{
+  vi.useFakeTimers({toFake:['Date'],now:new Date('2026-10-15T12:00:00Z')});
   window.history.replaceState(null, '', '/');planningHistory={};
   window.localStorage.clear();ownedBudgets=[{id:'default',name:'Test budget',currency:'EUR',version:1,isArchived:false,createdAt:'2026-01-01T00:00:00Z'}];archivedBudgets=[];months={'2026-08':budget('2026-08',50,-35,15),'2026-09':budget('2026-09',0,0,15),'2026-10':budget('2026-10',0,0,15),'2026-11':budget('2026-11',0,0,15)};writes=[];holdSave=false;releaseSave=undefined;focusRows=[];focusAccounts=[];scheduleRows=[];
   sharing={manager:{id:'u1',name:'alice',email:'alice@example.test',role:'manager',joinedAt:'2026-01-01T00:00:00Z'},members:[],invitations:[],canManage:true,invitesRemaining:4};recentActions=[];
