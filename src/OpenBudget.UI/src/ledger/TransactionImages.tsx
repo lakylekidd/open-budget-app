@@ -9,7 +9,7 @@ import './transactionImages.css';
 const focusableSelector = 'button:not(:disabled), input:not(:disabled), [tabindex="0"]';
 
 export function transactionImageLabel(entry: Pick<Entry, 'payee' | 'date' | 'transferId' | 'transferAccountName' | 'isOpening'>) {
-  return entry.transferId ? `Transfer: ${entry.transferAccountName ?? 'Cash account'}` : entry.isOpening ? 'Starting Balance' : entry.payee || 'Transaction';
+  return entry.transferId ? entry.payee || `Transfer: ${entry.transferAccountName ?? 'Cash account'}` : entry.isOpening ? 'Starting Balance' : entry.payee || 'Transaction';
 }
 
 /** Register cell button: image icon plus count, opening the attachments dialog. */

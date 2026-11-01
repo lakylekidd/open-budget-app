@@ -35,6 +35,13 @@ public sealed partial class LedgerService
         var total = await query.CountAsync(ct);
         var rows = await query.OrderByDescending(x => x.Date).ThenBy(x => x.Rule.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
         var accounts = (await GetAccountsAsync(ct)).Accounts.ToDictionary(a => a.Id);
+        var paymentTargets = await PaymentTargetsAsync(ct);
+        // Payment categories are labelled from the latest month that has them: a future occurrence's month may not exist yet.
+        var paymentCategoryIds = paymentTargets.Values.Select(t => t.CategoryId).OfType<string>().ToArray();
+        var labelRows = await db.Categories.Where(c => c.BudgetId == db.ActiveBudgetId && paymentCategoryIds.Contains(c.Id))
+            .Join(db.CategoryGroups.Where(g => g.BudgetId == db.ActiveBudgetId), c => new { c.BudgetId, c.BudgetMonth, Id = c.GroupId }, g => new { g.BudgetId, g.BudgetMonth, g.Id },
+                (c, g) => new { c.BudgetMonth, c.Id, Name = g.Name + ": " + c.Name }).ToListAsync(ct);
+        var labels = labelRows.GroupBy(c => c.Id).ToDictionary(g => g.Key, g => g.OrderByDescending(c => c.BudgetMonth, StringComparer.Ordinal).First().Name);
         var result = rows.Select(x => {
             var rule = x.Rule; var data = Template(rule, x.Occurrence);
             var incoming = accountId is not null && rule.ToAccountId == accountId;
@@ -43,9 +50,13 @@ public sealed partial class LedgerService
             var projected = accounts[target].Balance + forecast.Where(f => f.Date < x.Date || f.Date == x.Date && f.Rule.Id.CompareTo(rule.Id) >= 0)
                 .Sum(f => { var money = Template(f.Rule, f.Occurrence).Amount; return f.Rule.AccountId == target ? money : f.Rule.ToAccountId == target ? -money : 0; });
             var other = incoming ? rule.AccountId : rule.ToAccountId;
-            var entry = new TransactionDto(RecurrenceRules.OccurrenceId(rule.Id, rule.Sequence), target, x.Date, amount, data.Payee ?? "", data.Memo ?? "", data.CategoryId,
+            var payment = !incoming && other is not null && paymentTargets.TryGetValue(other.Value, out var paymentTarget)
+                && PaymentPresentation.IsPayment(accounts[target].AccountType, amount, accounts[other.Value].AccountType) ? paymentTarget : null;
+            var entry = new TransactionDto(RecurrenceRules.OccurrenceId(rule.Id, rule.Sequence), target, x.Date, amount, payment is not null ? PaymentPresentation.Payee(payment.AccountName)
+                : other is null ? data.Payee ?? "" : PaymentPresentation.CashTransferPayee(accounts[target].AccountType, amount, accounts[other.Value].AccountType, accounts[other.Value].Name) ?? data.Payee ?? "", data.Memo ?? "", data.CategoryId,
                 "uncleared", rule.ToAccountId is null ? null : rule.Id, false, data.Splits ?? [], false, rule.IsPaused ? null : projected,
-                other is null ? null : accounts[other.Value].Name, FlagColor:rule.FlagColor, ScheduleId:rule.Id);
+                other is null ? null : accounts[other.Value].Name, payment?.CategoryId is { } paymentCategory ? labels.GetValueOrDefault(paymentCategory) : null,
+                FlagColor:rule.FlagColor, ScheduleId:rule.Id, IsPayment: payment is not null);
             return new ScheduledItemDto(rule.Id, entry.Id, rule.Repeat, rule.AnchorDate, rule.IsPaused, rule.EndDate, rule.Count, rule.ToAccountId, entry, rule.PostingError);
         }).ToList();
         return new((await db.LedgerStates.SingleAsync(ct)).Version, page, pageSize, total, result);

@@ -240,6 +240,8 @@ app.MapPut("/api/register-views/{scope}", (string scope, RegisterViewDto request
     gate.RunAsync(() => views.SaveAsync(scope, request, ct), ct));
 app.MapPost("/api/accounts", (CreateAccountRequest request, LedgerService ledger, CancellationToken ct) => ledger.CreateAccountAsync(request, ct));
 app.MapPut("/api/accounts/{id:guid}", (Guid id, UpdateAccountRequest request, LedgerService ledger, CancellationToken ct) => ledger.UpdateAccountAsync(id, request, ct));
+app.MapPut("/api/accounts/order", (ReorderAccountsRequest request, LedgerService ledger, CancellationToken ct) => ledger.ReorderAccountsAsync(request, ct));
+app.MapPost("/api/accounts/{id:guid}/delete", (Guid id, DeleteAccountRequest request, LedgerService ledger, CancellationToken ct) => ledger.DeleteAccountAsync(id, request, ct));
 app.MapGet("/api/accounts/{id:guid}/credit-summary/{month}", (Guid id, string month, LedgerService ledger, LedgerGate gate, CancellationToken ct) =>
     gate.RunAsync(() => ledger.GetCreditSummaryAsync(id, month, ct), ct));
 app.MapGet("/api/accounts/{id:guid}/credit-activity/{month}", (Guid id, string month, LedgerService ledger, LedgerGate gate, CancellationToken ct) =>
@@ -255,6 +257,7 @@ app.MapGet("/api/accounts/{id:guid}/loan", (Guid id, LedgerService ledger, Ledge
 app.MapGet("/api/accounts/{id:guid}/loan/simulation", (Guid id, decimal? payment, string? payoffMonth, decimal? extra, LedgerService ledger, LedgerGate gate, CancellationToken ct) =>
     gate.RunAsync(() => ledger.SimulateLoanAsync(id, payment, payoffMonth, extra, ct), ct));
 app.MapPut("/api/accounts/{id:guid}/loan", (Guid id, SaveLoanTermsRequest request, LedgerService ledger, CancellationToken ct) => ledger.SaveLoanTermsAsync(id, request, ct));
+app.MapPost("/api/accounts/{id:guid}/loan/interest", (Guid id, LoanInterestRequest request, LedgerService ledger, CancellationToken ct) => ledger.RecordLoanInterestAsync(id, request, ct));
 app.MapPost("/api/accounts/{id:guid}/loan/balance", (Guid id, LoanBalanceRequest request, LedgerService ledger, CancellationToken ct) => ledger.ConfirmLoanBalanceAsync(id, request, ct));
 app.MapPost("/api/accounts/{id:guid}/reconcile", (Guid id, ReconcileRequest request, LedgerService ledger, CancellationToken ct) => ledger.ReconcileAsync(id, request, ct));
 app.MapGet("/api/transactions", async (Guid? accountId, Guid? transferId, string? search, DateOnly? from, DateOnly? to, string? categoryId, string? status,

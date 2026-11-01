@@ -1,18 +1,20 @@
 import { evaluateMoneyExpression } from '../moneyExpression';
-export type Account = { unapprovedCount?:number; attentionCount?:number; notes?:string; id: string; name: string; isClosed: boolean; balance: number; clearedBalance: number; unclearedBalance: number;
-  accountType: AccountType; isFavorite: boolean; connectionStatus: 'unlinked' | 'connected'; lastReconciledAt: string | null; needsCategoryCount: number };
+export type Account = { unapprovedCount?:number; attentionCount?:number; notes?:string; hasTransactions?:boolean; id: string; name: string; isClosed: boolean; balance: number; clearedBalance: number; unclearedBalance: number;
+  accountType: AccountType; paymentCategoryId?: string | null; isFavorite: boolean; connectionStatus: 'unlinked' | 'connected'; lastReconciledAt: string | null; needsCategoryCount: number };
 export type LoanAccountType = 'mortgage' | 'autoLoan' | 'studentLoan' | 'personalLoan' | 'medicalDebt' | 'otherDebt' | 'contract';
-export type AccountType = 'checking' | 'savings' | 'cash' | 'creditCard' | 'lineOfCredit' | LoanAccountType;
+export type AccountType = 'checking' | 'savings' | 'cash' | 'creditCard' | 'lineOfCredit' | 'trackingAsset' | 'trackingLiability' | LoanAccountType;
 export const accountTypeSections: { title: string; description: string; types: { value: AccountType; label: string }[] }[] = [
   { title: 'Cash Accounts', description: 'A cash account holds funds you already own and can spend immediately.', types: [{ value: 'checking', label: 'Checking' }, { value: 'savings', label: 'Savings' }, { value: 'cash', label: 'Cash' }] },
   { title: 'Credit Accounts', description: 'A credit account lets you spend borrowed money that you’ll need to repay later, often with interest.', types: [{ value: 'creditCard', label: 'Credit Card' }, { value: 'lineOfCredit', label: 'Line of Credit' }] },
   { title: 'Mortgages and Loans', description: 'Accounts that have an outstanding balance you’re currently paying off, and aren’t spending from.', types: [{ value: 'mortgage', label: 'Mortgage' }, { value: 'autoLoan', label: 'Auto Loan' }, { value: 'studentLoan', label: 'Student Loan' }, { value: 'personalLoan', label: 'Personal Loan' }, { value: 'medicalDebt', label: 'Medical Debt' }, { value: 'otherDebt', label: 'Other Debt' }, { value: 'contract', label: 'Contract' }] },
+  { title: 'Tracking Accounts', description: 'Tracking accounts sit outside your budget. Money moving to or from a budget account needs a category on the budget side.', types: [{ value: 'trackingAsset', label: 'Asset (e.g. Investment)' }, { value: 'trackingLiability', label: 'Liability' }] },
 ];
 export const loanAccountTypes = accountTypeSections[2].types;
 export const accountTypeLabel = (type: AccountType) => accountTypeSections.flatMap(section => section.types).find(item => item.value === type)?.label ?? type;
 export const isCreditAccount = (account: Pick<Account, 'accountType'> | undefined) => account?.accountType === 'creditCard' || account?.accountType === 'lineOfCredit';
 export const isLoanAccount = (account: Pick<Account, 'accountType'> | undefined) => loanAccountTypes.some(type => type.value === account?.accountType);
-export const accountFamily = (account: Pick<Account, 'accountType'> | undefined) => isLoanAccount(account) ? 'loan' : isCreditAccount(account) ? 'credit' : 'cash';
+export const isTrackingAccount = (account: Pick<Account, 'accountType'> | undefined) => account?.accountType === 'trackingAsset' || account?.accountType === 'trackingLiability';
+export const accountFamily = (account: Pick<Account, 'accountType'> | undefined) => isLoanAccount(account) ? 'loan' : isCreditAccount(account) ? 'credit' : isTrackingAccount(account) ? 'tracking' : 'cash';
 export const creditPaymentGroupId = 'credit-card-payments';
 export const creditPaymentCategoryId = (accountId: string) => `ccp-${accountId}`;
 export type CreditSummary = { accountId: string; month: string; priorBalance: number; spendingAndOutflows: number; interestCharges: number; paymentsAndInflows: number; currentBalance: number };
@@ -20,7 +22,7 @@ export type Accounts = { version: number; accounts: Account[] };
 export type Split = { categoryId: string; amount: number; payee?: string; memo?: string };
 export type Entry = { id: string; accountId: string; date: string; amount: number; payee: string; memo: string; categoryId: string | null;
   status: 'uncleared' | 'cleared' | 'reconciled'; transferId: string | null; isOpening: boolean; splits: Split[]; needsAttention: boolean;
-  isApproved?:boolean; needsCategory?:boolean; imageCount?:number; canEdit?:boolean; flagColor?:string|null; scheduleId?:string|null; runningBalance: number | null; transferAccountName: string | null; categoryName: string | null; isLocked: boolean };
+  isApproved?:boolean; needsCategory?:boolean; imageCount?:number; canEdit?:boolean; flagColor?:string|null; scheduleId?:string|null; runningBalance: number | null; transferAccountName: string | null; isPayment?: boolean; categoryName: string | null; isLocked: boolean };
 export type Register = { version: number; page: number; pageSize: number; total: number; items: Entry[]; accounts: Accounts };
 export type CategoryOption = { id: string; name: string; isArchived?: boolean; groupId?: string; groupName?: string; available?: number };
 export type Audit = { id: string; kind: string; version: number; createdAt: string; beforeJson: string; afterJson: string };

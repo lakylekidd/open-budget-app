@@ -4,6 +4,7 @@ import { type Account, type LoanAccountType, loanAccountTypes, parseMoney, reque
 import { ContractFields, contractDraft, parseContract } from './LoanAccountForm';
 import { type LoanDetails, type LoanPairing, type LoanTerms, parseRate, unpaired as noPairing } from './loans';
 import { type PairDraft, PairCategoryStep, pairDraft } from './PairCategoryStep';
+import { DeleteAccountSection } from './DeleteAccountSection';
 
 type Pairing = { value: LoanPairing; main: string | null; device: string | null };
 
@@ -11,8 +12,8 @@ type Pairing = { value: LoanPairing; main: string | null; device: string | null 
 // transaction is created for a change) and the loan terms, including any pairing change, in one versioned account update.
 // "Pair Category" / "Change Pairing" opens the same optional pairing step as Add Account (the parent sets the title/back
 // button through `pairing`); its Next returns here with the choice, which is saved with Save.
-export function EditLoanAccountForm({ account, busy, onSubmit, onCancel, onOpenCategory, pairing = false, onPairingChange }: {
-  account: Account; busy: boolean; onSubmit: (fields: object) => Promise<void>; onCancel: () => void; onOpenCategory?: (categoryId: string) => void;
+export function EditLoanAccountForm({ account, busy, onSubmit, onCancel, onDelete, onOpenCategory, pairing = false, onPairingChange }: {
+  account: Account; busy: boolean; onSubmit: (fields: object) => Promise<void>; onCancel: () => void; onDelete?: () => Promise<void>; onOpenCategory?: (categoryId: string) => void;
   pairing?: boolean; onPairingChange?: (open: boolean) => void;
 }) {
   const [details, setDetails] = useState<LoanDetails | null>(null);
@@ -25,12 +26,12 @@ export function EditLoanAccountForm({ account, busy, onSubmit, onCancel, onOpenC
   }, [account.id]);
   if (loadError) return <div className="edit-account-form"><p role="alert">{loadError}</p><div className="edit-account-actions"><button type="button" onClick={onCancel}>Cancel</button></div></div>;
   if (!details) return <p role="status">Loading loan details…</p>;
-  return <LoanEditor account={account} details={details} busy={busy} onSubmit={onSubmit} onCancel={onCancel} onOpenCategory={onOpenCategory}
+  return <LoanEditor account={account} details={details} busy={busy} onSubmit={onSubmit} onCancel={onCancel} onDelete={onDelete} onOpenCategory={onOpenCategory}
     pairing={pairing} onPairingChange={onPairingChange} />;
 }
 
-function LoanEditor({ account, details, busy, onSubmit, onCancel, onOpenCategory, pairing: pairingOpen, onPairingChange }: {
-  account: Account; details: LoanDetails; busy: boolean; onSubmit: (fields: object) => Promise<void>; onCancel: () => void; onOpenCategory?: (categoryId: string) => void;
+function LoanEditor({ account, details, busy, onSubmit, onCancel, onDelete, onOpenCategory, pairing: pairingOpen, onPairingChange }: {
+  account: Account; details: LoanDetails; busy: boolean; onSubmit: (fields: object) => Promise<void>; onCancel: () => void; onDelete?: () => Promise<void>; onOpenCategory?: (categoryId: string) => void;
   pairing: boolean; onPairingChange?: (open: boolean) => void;
 }) {
   const isContract = account.accountType === 'contract';
@@ -126,6 +127,7 @@ function LoanEditor({ account, details, busy, onSubmit, onCancel, onOpenCategory
       {error && <p role="alert">{error}</p>}
     </div>
     <div className="edit-account-actions"><button className="account-close-button" type="button" disabled={busy} onClick={() => void onSubmit({ name, notes, isClosed: !account.isClosed })}>{account.isClosed ? 'Reopen Account' : 'Close Account'}</button><button type="button" disabled={busy} onClick={onCancel}>Cancel</button><button className="button-primary" disabled={busy}>Save</button></div>
+    {onDelete && <DeleteAccountSection account={account} busy={busy} onDelete={onDelete} />}
   </form>;
 }
 

@@ -10,7 +10,7 @@ import { type Account, type Register } from './api';
 const checking: Account = { id: 'checking', name: 'Checking', isClosed: false, balance: 90, clearedBalance: 100, unclearedBalance: -10, accountType:'checking', isFavorite:false, connectionStatus:'unlinked', lastReconciledAt:null, needsCategoryCount:1 };
 const savings: Account = { id: 'savings', name: 'Savings', isClosed: false, balance: 0, clearedBalance: 0, unclearedBalance: 0, accountType:'savings', isFavorite:false, connectionStatus:'unlinked', lastReconciledAt:null, needsCategoryCount:0 };
 let register: Register;
-let failMutation: 'network' | 'conflict' | null;
+let failMutation: 'network' | 'conflict' | 'refused' | null;
 let mutations: { path: string; body: Record<string, unknown> }[];
 let scheduledItems: import("./api").ScheduledItem[];
 let failRead: boolean;
@@ -39,6 +39,7 @@ beforeEach(() => {
       mutations.push({ path, body: JSON.parse(String(init.body)) });
       if (failMutation === 'network') { failMutation = null; throw new Error('Connection lost. Retry the same action.'); }
       if (failMutation === 'conflict') { failMutation = null; return response({ error: 'The ledger changed in another session.' }, 409); }
+      if (failMutation === 'refused') { failMutation = null; return response({ error: 'This account has transactions. Delete them first or close the account instead.' }, 400); }
       return response({ id: 'saved', version: 4 });
     }
     if (path.startsWith('/api/schedules')) {const accountId=new URL(path,'http://localhost').searchParams.get('accountId');const items=scheduledItems.filter(item=>!accountId||item.transaction.accountId===accountId);return response({version:3,page:1,pageSize:25,total:items.length,items});}
@@ -145,7 +146,7 @@ it('uses the transaction month for category balances and reloads them when its d
 });
 
 it('Payment/Transfer opens account choices and saves a new paired transfer',async()=>{
-  show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Add Transaction'}));await userEvent.type(screen.getByRole('textbox',{name:'Outflow'}),'15');await userEvent.click(screen.getByRole('combobox',{name:'Category'}));await userEvent.click(screen.getByRole('button',{name:'Payment/Transfer'}));await userEvent.click(await screen.findByRole('option',{name:'Transfer to Savings'}));await userEvent.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0]).toMatchObject({path:'/api/transfers',body:{fromAccountId:'checking',toAccountId:'savings',amount:15}});
+  show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Add Transaction'}));await userEvent.type(screen.getByRole('textbox',{name:'Outflow'}),'15');await userEvent.click(screen.getByRole('combobox',{name:'Category'}));await userEvent.click(screen.getByRole('button',{name:'Payment/Transfer'}));await userEvent.click(await screen.findByRole('option',{name:'To Savings'}));await userEvent.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0]).toMatchObject({path:'/api/transfers',body:{fromAccountId:'checking',toAccountId:'savings',amount:15}});
 });
 
 it('opens Manage Payees and filters the register by the exact saved payee id',async()=>{
@@ -160,6 +161,32 @@ it('shows loading followed by balances and uncategorized spending', async () => 
   expect(screen.getByText('Needs category', { selector: 'span' })).toBeInTheDocument();
   expect(screen.getByTestId('working-balance')).toHaveTextContent('€90.00');
   expect(screen.getByTestId('cleared-balance')).toHaveTextContent('€100.00');
+});
+
+it('keeps the register on screen while a live refresh re-fetches it, then swaps in the new rows', async () => {
+  // Regression: every background refresh (30-second poll, live ledger event) used to drop the saved view and show
+  // "Loading transactions…" in place of the rows, which flashed the whole register.
+  const props = { onSelectAccount: vi.fn(), onChanged: vi.fn(), onMenu: vi.fn() };
+  const page = render(<AccountsPage selectedAccount="checking" liveRefresh={0} {...props}/>); await ready();
+  const row = screen.getByRole('button', { name: 'Edit Shop 2026-10-21' }).closest('tr');
+  const baseFetch = vi.mocked(fetch).getMockImplementation()!;
+  let release!: () => void; const held = new Promise<void>(resolve => { release = resolve; });
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    if (String(input).startsWith('/api/transactions')) await held;
+    return baseFetch(input, init);
+  });
+  register = { ...register, version: 4, items: [{ ...register.items[0], id: 'later', payee: 'Cafe' }, ...register.items] };
+  page.rerender(<AccountsPage selectedAccount="checking" liveRefresh={1} {...props}/>);
+  await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => String(path).startsWith('/api/transactions'))).toHaveLength(2));
+  expect(screen.queryByText('Loading transactions…')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Edit Shop 2026-10-21' }).closest('tr')).toBe(row);
+  expect(screen.getByRole('button', { name: 'Add Transaction' })).toBeEnabled();
+  release();
+  expect(await screen.findByRole('button', { name: 'Edit Cafe 2026-10-21' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Edit Shop 2026-10-21' }).closest('tr')).toBe(row);
+  expect(screen.queryByText('Loading transactions…')).not.toBeInTheDocument();
+  // The unchanged saved view is revalidated without triggering a second register fetch.
+  expect(vi.mocked(fetch).mock.calls.filter(([path]) => String(path).startsWith('/api/transactions'))).toHaveLength(2);
 });
 
 it('distinguishes an empty account list, empty filters, and a failed load with retry', async () => {
@@ -435,6 +462,66 @@ it('tabs from the payee field to the next editable field and skips inline dropdo
  expect(screen.getByRole('button',{name:'Choose date and repeat'})).toHaveAttribute('tabindex','-1');
 });
 
+it('deletes a scheduled transaction by ending its schedule after confirmation',async()=>{
+ scheduledItems=[{id:'rule',occurrenceId:'occurrence',repeat:'monthly',startDate:'2036-10-25',isPaused:false,endDate:null,count:null,toAccountId:null,transaction:{...register.items[0],id:'occurrence',date:'2036-10-25',payee:'Employer',memo:'Next salary',amount:2500}}];
+ render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);await ready();await screen.findByRole('button',{name:'Edit Employer 2036-10-25'});
+ await userEvent.click(screen.getByText('Next salary'));await userEvent.click(screen.getByRole('button',{name:'More account actions'}));
+ await userEvent.click(screen.getByRole('button',{name:'Delete selected'}));expect(screen.getByText(/Delete this scheduled transaction/)).toBeInTheDocument();expect(mutations).toHaveLength(0);
+ await userEvent.click(screen.getByRole('button',{name:'Confirm deletion'}));await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0]).toMatchObject({path:'/api/schedules/rule/actions',body:{action:'end',occurrenceId:'occurrence'}});
+});
+
+const carLoan: Account = { id: 'loan', name: 'Car Loan', isClosed: false, balance: -5000, clearedBalance: -5000, unclearedBalance: 0, accountType:'autoLoan', paymentCategoryId:'bills-car', isFavorite:false, connectionStatus:'unlinked', lastReconciledAt:null, needsCategoryCount:0 };
+const card: Account = { id: 'card', name: 'Mastercard', isClosed: false, balance: -20, clearedBalance: 0, unclearedBalance: -20, accountType:'creditCard', paymentCategoryId:'ccp-card', isFavorite:false, connectionStatus:'unlinked', lastReconciledAt:null, needsCategoryCount:0 };
+const investments: Account = { id: 'invest', name: 'Investments', isClosed: false, balance: 0, clearedBalance: 0, unclearedBalance: 0, accountType:'trackingAsset', isFavorite:false, connectionStatus:'unlinked', lastReconciledAt:null, needsCategoryCount:0 };
+
+it('offers Record Payment on credit account pages only and opens a transfer into the card',async()=>{
+ register.accounts.accounts=[checking,savings,card];
+ const page=render(<AccountsPage selectedAccount="card" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);
+ await userEvent.click(await screen.findByRole('button',{name:'Record Payment'}));
+ expect(screen.getByLabelText('To account')).toHaveValue('card');
+ page.unmount();
+ render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);
+ await screen.findByRole('button',{name:'Add Transaction'});expect(screen.queryByRole('button',{name:'Record Payment'})).not.toBeInTheDocument();
+});
+
+it('hides the category column on tracking account registers',async()=>{
+ register.accounts.accounts=[checking,investments];
+ const page=render(<AccountsPage selectedAccount="invest" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);
+ await screen.findByRole('button',{name:'Add Transaction'});await waitFor(()=>expect(screen.getByRole('table',{name:'Transaction register'})).toHaveClass('hide-category'));
+ page.unmount();
+ render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);
+ await screen.findByRole('button',{name:'Add Transaction'});expect(screen.getByRole('table',{name:'Transaction register'})).not.toHaveClass('hide-category');
+});
+
+async function chooseTransfer(name:string,label:string){
+ await userEvent.click(screen.getByRole('button',{name:'Add Transaction'}));await userEvent.type(screen.getByRole('textbox',{name:'Outflow'}),'25');
+ const payee=screen.getByRole('combobox',{name:/Payee/});await userEvent.click(payee);await userEvent.type(payee,name);
+ await userEvent.click((await screen.findAllByRole('option',{name:label})).at(-1)!);
+}
+it('shows Payment: <loan> greyed out with the loans category, and blanks the payee when the category is changed',async()=>{
+ register.accounts.accounts=[checking,carLoan];
+ render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);await ready();
+ await chooseTransfer('Car Loan','Payment: Car Loan');
+ const payee=screen.getByRole('combobox',{name:/Payee/});expect(payee).toHaveValue('Payment: Car Loan');expect(payee).not.toBeDisabled();
+ expect(screen.getByRole('combobox',{name:'Category'})).not.toBeDisabled();
+});
+it('shows Payment: <card> with the cards category locked, and To <account> with a required category for tracking accounts',async()=>{
+ register.accounts.accounts=[checking,card,investments];
+ render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);await ready();
+ await chooseTransfer('Mastercard','Payment: Mastercard');
+ expect(screen.getByRole('combobox',{name:/Payee/})).toHaveValue('Payment: Mastercard');expect(screen.getByRole('combobox',{name:'Category'})).toBeDisabled();
+ await userEvent.click(screen.getByRole('button',{name:'Cancel'}));
+ await chooseTransfer('Investments','To Investments');
+ expect(screen.getByRole('combobox',{name:/Payee/})).toHaveValue('To Investments');expect(screen.getByRole('combobox',{name:'Category'})).not.toBeDisabled();
+ await userEvent.click(screen.getByRole('button',{name:'Save'}));expect(await screen.findByRole('alert')).toHaveTextContent('Choose a category');expect(mutations).toHaveLength(0);
+});
+it('keeps the category not needed between two cash accounts',async()=>{
+ register.accounts.accounts=[checking,savings];
+ render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);await ready();
+ await chooseTransfer('Savings','To Savings');
+ expect(screen.getByRole('combobox',{name:/Payee/})).toHaveValue('To Savings');expect(screen.getByRole('combobox',{name:'Category'})).toHaveValue('Category not needed');
+});
+
 it('expands scheduled rows, posts Enter Now explicitly, and keeps forecast actions separate',async()=>{
  scheduledItems=[{id:'rule',occurrenceId:'occurrence',repeat:'monthly',startDate:'2036-10-25',isPaused:false,endDate:null,count:null,toAccountId:null,transaction:{...register.items[0],id:'occurrence',date:'2036-10-25',payee:'Employer',memo:'Next salary',amount:2500}}];
  const page=render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);await ready();await screen.findByRole('button',{name:'Edit Employer 2036-10-25'});
@@ -478,4 +565,28 @@ it('trades width only with the right neighbour and keeps both columns at least 2
   expect(resizeColumnPair(widths, order, 'outflow', 500)).toEqual({ ...widths, outflow: 216, inflow: 24 });
   expect(resizeColumnPair(widths, order, 'date', -500)).toEqual({ ...widths, date: 24, payee: 306 });
   expect(resizeColumnPair(widths, order, 'status', 30)).toBe(widths);
+});
+
+it('deletes an account after confirmation, then shows All Accounts with a refreshed list',async()=>{
+ const onSelectAccount=vi.fn(),onChanged=vi.fn();
+ render(<AccountsPage selectedAccount="savings" onSelectAccount={onSelectAccount} onChanged={onChanged} onMenu={vi.fn()} />);await ready();
+ await userEvent.click(screen.getByRole('button',{name:'Edit account'}));
+ const dialog=screen.getByRole('dialog',{name:'Edit Account'});
+ await userEvent.click(within(dialog).getByRole('button',{name:'Delete Account'}));
+ expect(within(dialog).getByText(/Permanently delete “Savings”/)).toBeInTheDocument();expect(mutations).toHaveLength(0);
+ await userEvent.click(within(dialog).getByRole('button',{name:'Delete Permanently'}));
+ await waitFor(()=>expect(onSelectAccount).toHaveBeenCalledWith(''));
+ expect(mutations).toEqual([{path:'/api/accounts/savings/delete',body:{commandId:expect.any(String),version:3}}]);
+ expect(screen.queryByRole('dialog')).not.toBeInTheDocument();expect(onChanged).toHaveBeenCalled();
+ expect(screen.getByText('Account “Savings” deleted.')).toBeInTheDocument();
+});
+
+it('keeps the edit dialog open with the server reason when deletion is refused',async()=>{
+ const onSelectAccount=vi.fn();failMutation='refused';
+ render(<AccountsPage selectedAccount="savings" onSelectAccount={onSelectAccount} onChanged={vi.fn()} onMenu={vi.fn()} />);await ready();
+ await userEvent.click(screen.getByRole('button',{name:'Edit account'}));
+ const dialog=screen.getByRole('dialog',{name:'Edit Account'});
+ await userEvent.click(within(dialog).getByRole('button',{name:'Delete Account'}));await userEvent.click(within(dialog).getByRole('button',{name:'Delete Permanently'}));
+ expect(await within(dialog).findByRole('alert')).toHaveTextContent('This account has transactions.');
+ expect(onSelectAccount).not.toHaveBeenCalled();expect(within(dialog).getByRole('button',{name:'Delete Permanently'})).toBeEnabled();
 });

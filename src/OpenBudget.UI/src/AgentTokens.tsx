@@ -4,7 +4,8 @@ import './agentTokens.css';
 type Permission = 'Admin' | 'Budget' | 'Reporting';
 export type AgentToken = {
   id: string; name: string; prefix: string; permission: Permission; budgets: { id: string; name: string }[];
-  createdAt: string; expiresAt: string; lastUsedAt: string | null; revokedAt: string | null; status: 'active' | 'expired' | 'revoked';
+  createdAt: string; expiresAt: string | null; lastUsedAt: string | null; revokedAt: string | null; status: 'active' | 'expired' | 'revoked';
+  renewedAt?: string | null;
 };
 type Activity = { id: string; tool: string; budgetId: string | null; success: boolean; outcome: string; createdAt: string };
 type BudgetOption = { id: string; name: string; isArchived: boolean; accessRole?: string };
@@ -33,11 +34,13 @@ export function AgentTokens({ isAdministrator }: { isAdministrator: boolean }) {
   const [permission, setPermission] = useState<Permission>('Reporting');
   const [selectedBudgets, setSelectedBudgets] = useState<string[]>([]);
   const [expiresInDays, setExpiresInDays] = useState('90');
+  const [neverExpires, setNeverExpires] = useState(false);
   const [formError, setFormError] = useState('');
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<{ token: string; name: string } | null>(null);
   const [copied, setCopied] = useState('');
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
+  const [confirmRenew, setConfirmRenew] = useState<string | null>(null);
   const [activity, setActivity] = useState<Record<string, Activity[] | 'loading' | 'error'>>({});
 
   useEffect(() => {
@@ -62,18 +65,19 @@ export function AgentTokens({ isAdministrator }: { isAdministrator: boolean }) {
     setFormError(''); setCopied('');
     const days = Number(expiresInDays);
     if (!name.trim()) { setFormError('Enter a token name.'); return; }
-    if (!Number.isInteger(days) || days < 1 || days > 365) { setFormError('Expiry must be between 1 and 365 days.'); return; }
+    if (!neverExpires && (!Number.isInteger(days) || days < 1 || days > 365)) { setFormError('Expiry must be between 1 and 365 days.'); return; }
     if (permission !== 'Admin' && selectedBudgets.length === 0) { setFormError('Choose at least one budget for this token.'); return; }
     setBusy(true);
     try {
       const response = await fetch(tokensPath, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), permission, budgetIds: permission === 'Admin' ? [] : selectedBudgets, expiresInDays: days }),
+        // No expiration is sent only as an explicit opt-in; otherwise the dated expiry is always included.
+        body: JSON.stringify({ name: name.trim(), permission, budgetIds: permission === 'Admin' ? [] : selectedBudgets, ...(neverExpires ? { neverExpires: true } : { expiresInDays: days }) }),
       });
       const result = await readJson<{ token: string; details: AgentToken }>(response, 'The token could not be created.');
       setCreated({ token: result.token, name: result.details.name });
       setTokens(current => [result.details, ...(current ?? [])]);
-      setName(''); setSelectedBudgets([]); setExpiresInDays('90'); setPermission('Reporting');
+      setName(''); setSelectedBudgets([]); setExpiresInDays('90'); setNeverExpires(false); setPermission('Reporting');
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'The token could not be created.');
     } finally { setBusy(false); }
@@ -95,6 +99,19 @@ export function AgentTokens({ isAdministrator }: { isAdministrator: boolean }) {
       setTokens(current => (current ?? []).map(item => item.id === token.id ? { ...item, status: 'revoked', revokedAt: new Date().toISOString() } : item));
       setConfirmRevoke(null);
     } catch (error) { setFormError(error instanceof Error ? error.message : 'The token could not be revoked.'); }
+    finally { setBusy(false); }
+  }
+
+  async function renew(token: AgentToken) {
+    setBusy(true); setFormError(''); setCopied('');
+    try {
+      // Keeps the token's permission, budgets and expiry mode; the server rotates the secret.
+      const response = await fetch(`${tokensPath}/${token.id}/renew`, { method: 'POST' });
+      const result = await readJson<{ token: string; details: AgentToken }>(response, 'The token could not be renewed. Reload and try again.');
+      setCreated({ token: result.token, name: result.details.name });
+      setTokens(current => (current ?? []).map(item => item.id === token.id ? result.details : item));
+      setConfirmRenew(null);
+    } catch (error) { setFormError(error instanceof Error ? error.message : 'The token could not be renewed.'); }
     finally { setBusy(false); }
   }
 
@@ -137,7 +154,9 @@ export function AgentTokens({ isAdministrator }: { isAdministrator: boolean }) {
         {budgets.length === 0 ? <span className="agent-token-hint">You have no active budgets to share with an agent.</span>
           : budgets.map(budget => <label key={budget.id} className="agent-token-budget"><input type="checkbox" checked={selectedBudgets.includes(budget.id)} onChange={() => toggleBudget(budget.id)} />{budget.name}</label>)}
       </fieldset>}
-      <label>Expires in (days)<input aria-label="Expires in (days)" type="number" min={1} max={365} value={expiresInDays} onChange={event => setExpiresInDays(event.target.value)} /></label>
+      <label>Expires in (days)<input aria-label="Expires in (days)" type="number" min={1} max={365} value={expiresInDays} disabled={neverExpires} onChange={event => setExpiresInDays(event.target.value)} /></label>
+      <label className="agent-token-budget"><input type="checkbox" checked={neverExpires} onChange={event => setNeverExpires(event.target.checked)} />No expiration</label>
+      {neverExpires && <p className="agent-token-warning" role="note">This token will not expire. If it leaks, it grants access until you renew or revoke it. Prefer an expiry, keep the token in a secret store and renew it regularly.</p>}
       {formError && <p className="agent-token-error" aria-live="assertive">{formError}</p>}
       <button type="submit" className="agent-token-primary" disabled={busy}>Create token</button>
     </form>
@@ -156,13 +175,20 @@ export function AgentTokens({ isAdministrator }: { isAdministrator: boolean }) {
             <code>{token.prefix}…</code>
             <span>{token.permission === 'Admin' ? 'All your budgets' : token.budgets.map(budget => budget.name).join(', ')}</span>
             <span>Created {formatDate(token.createdAt)}</span>
-            <span>Expires {formatDate(token.expiresAt)}</span>
+            <span>{token.expiresAt ? `Expires ${formatDate(token.expiresAt)}` : 'No expiration'}</span>
+            {token.renewedAt && <span>Renewed {formatDate(token.renewedAt)}</span>}
             <span>Last used {formatDate(token.lastUsedAt)}</span>
           </div>
           <div className="agent-token-actions">
             <button type="button" aria-expanded={Boolean(activity[token.id])} onClick={() => void toggleActivity(token.id)}>Recent activity</button>
-            {token.status === 'active' && confirmRevoke !== token.id && <button type="button" className="agent-token-danger" onClick={() => setConfirmRevoke(token.id)}>Revoke</button>}
+            {token.status !== 'revoked' && confirmRenew !== token.id && <button type="button" onClick={() => { setConfirmRenew(token.id); setConfirmRevoke(null); }}>Renew</button>}
+            {token.status === 'active' && confirmRevoke !== token.id && <button type="button" className="agent-token-danger" onClick={() => { setConfirmRevoke(token.id); setConfirmRenew(null); }}>Revoke</button>}
           </div>
+          {confirmRenew === token.id && <div className="agent-token-confirm" role="group" aria-label={`Confirm renewing ${token.name}`}>
+            <span>Renew “{token.name}”? A new token is generated and the current one stops working immediately. Update your agents with the new token.</span>
+            <button type="button" onClick={() => setConfirmRenew(null)}>Cancel</button>
+            <button type="button" disabled={busy} onClick={() => void renew(token)}>Confirm renew</button>
+          </div>}
           {confirmRevoke === token.id && <div className="agent-token-confirm" role="group" aria-label={`Confirm revoking ${token.name}`}>
             <span>Revoke “{token.name}”? Agents using it lose access immediately. This cannot be undone.</span>
             <button type="button" onClick={() => setConfirmRevoke(null)}>Cancel</button>

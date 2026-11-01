@@ -41,14 +41,15 @@
 .loan-schedule th{position:sticky;top:0;background:#15172d;color:#c4c5dd;font-weight:600}
 .loan-schedule tr.is-discounted td{background:#1f2a1a}.loan-schedule tr.is-past td{color:#8d8ea6}
 .loan-discount-tag{margin-left:8px;padding:1px 6px;border-radius:999px;background:#3e6614;color:#e6ffd0;font-size:11px}
-.loan-activity{display:grid;gap:8px}.loan-activity h2{margin:8px 0;font-size:22px}
+.loan-activity{display:grid;gap:12px}.loan-activity h2{margin:8px 0;font-size:22px}
+.loan-year-group{display:grid;gap:12px}
 .loan-month{background:#15172d;border-radius:8px;overflow:hidden}
-.loan-month-heading{width:100%;display:flex;justify-content:space-between;align-items:center;background:none;border:0;color:#fff;padding:18px 16px;font-size:14px;font-weight:700}
+.loan-month-heading{width:100%;display:flex;justify-content:space-between;align-items:center;background:none;border:0;color:#fff;padding:26px 20px;font-size:15px;font-weight:700}
 .loan-month-heading>span{display:inline-flex;gap:8px;align-items:center}
 .loan-month-body{border-top:1px solid #2c2e43}
 .loan-month-row{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;padding:10px 16px;border-top:1px solid #23243a;font-size:14px}
 .loan-month-row:first-child{border-top:0}.loan-month-row>div{display:grid;gap:2px}.loan-month-row small{color:#c4c5dd;font-size:13px}.loan-month-row b.positive{color:#84c43a}
-.loan-month-row .loan-check{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#75bd22;color:#14152b;font-size:12px;font-weight:700}
+.loan-month-row .loan-tick{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#75bd22;color:#fff;font-size:12px;font-weight:700}
 .loan-year-divider{width:100%;display:flex;justify-content:center;align-items:center;gap:6px;background:none;border:0;border-top:1px solid #2c2e43;color:#fff;padding:10px;margin-top:8px;font-weight:700}
 .loan-help{margin:0;font-size:12px;line-height:1.5;color:#c1becf}.loan-error{color:#ffc2ce}
 /* Add Unlinked Account (loan) */
@@ -144,3 +145,35 @@
 .loan-category-slots{display:grid;gap:16px}.loan-category-slot{display:grid;grid-template-columns:1fr auto auto;align-items:start;gap:24px}.loan-category-slot>div{display:grid;gap:6px;justify-items:start}
 .loan-category-slot h3{grid-column:1/-1;margin:0;font-size:14px}.loan-category-slot+.loan-category-slot{border-top:1px solid #2c2e43;padding-top:16px}
 @media (max-width:640px){.loan-category-slot{grid-template-columns:1fr}}
+
+/* Loan activity rows: hover pencil, count badge and edit dialogs. */
+.loan-row-editable,.loan-row-group{position:relative}
+.loan-row-hit{position:absolute;inset:0;width:100%;height:100%;background:none;border:0;cursor:pointer;padding:0;z-index:1}
+.loan-row-hit:disabled{cursor:default}
+.loan-row-editable:hover:has(.loan-row-hit:not(:disabled)),.loan-row-group:hover{background:#1c1f45}
+.loan-row-edit{display:none;color:#a9a6ff;align-items:center}
+.loan-row-editable:hover .loan-row-edit{display:inline-flex}
+.loan-month-row.loan-row-sub{min-height:46px;padding:0 16px;border-top:1px solid #2c2e43}
+.loan-row-sub small{white-space:nowrap}
+.loan-row-sub .loan-transfer-icon{display:inline-block;margin-right:8px;font-size:13px;color:#c4c5dd}
+.loan-row-sub{padding-left:16px}.loan-row-sub .loan-row-edit{display:inline-flex;visibility:hidden}.loan-row-sub:hover .loan-row-edit{visibility:visible}
+.loan-row-sub small{font-size:14px;color:#e6e7f5}
+.loan-month-row .loan-row-edit{position:absolute;left:16px;top:50%;transform:translateY(-50%);pointer-events:none}
+.loan-month-row.loan-row-editable:hover>.loan-tick,.loan-month-row.loan-row-editable:hover>.loan-count{visibility:hidden}
+.loan-month-row.loan-row-sub:hover>span:first-child{visibility:hidden}
+.loan-count{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#4f7f1e;color:#fff;font-size:11px;font-weight:700}
+.loan-month-row strong .loan-chevron{margin-left:6px;vertical-align:middle}
+.loan-dialog{display:grid;gap:14px;min-width:min(420px,86vw)}
+.loan-dialog>p{margin:0;font-size:14px;line-height:1.4}
+.loan-dialog label{display:grid;gap:6px;font-weight:700;font-size:13px}
+.loan-dialog small{color:#c4c5dd;font-size:12px;margin-top:-8px}
+.loan-dialog-note{background:#2a2f5c;border-radius:8px;padding:14px;font-size:14px;line-height:1.4}
+.loan-dialog-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.loan-dialog select,.loan-dialog input{width:100%;min-width:0;min-height:40px;border:1px solid #4a4964;border-radius:6px;background:#3a394f;color:#f4f3fa;padding:6px 10px;font:inherit;font-weight:400;color-scheme:dark}
+.loan-dialog select:focus,.loan-dialog input:focus{outline:0;border-color:#6a6cff;box-shadow:0 0 0 1px #6a6cff}
+.loan-dialog-footer{display:flex;gap:8px;align-items:center;margin-top:6px}
+.loan-dialog-spacer{flex:1}
+.loan-danger{background:#6d1020;color:#fff;border:0;border-radius:8px;padding:10px 16px;font-weight:700}
+.loan-danger:disabled{opacity:.6}
+.loan-year-months{display:grid;gap:12px;padding:0 12px 12px;border-top:1px solid #2c2e43;padding-top:12px}
+.loan-year-card .loan-year-months .loan-month{background:#1c1e3a}

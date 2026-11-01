@@ -1,7 +1,7 @@
 import { Fragment as ReactFragment, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { MoneyInput } from '../MoneyInput';
 import { DisclosureChevron } from '../DisclosureChevron';
-import { type Account, type Accounts, type Audit, type CategoryOption, type Entry, type Register, type Schedules, type ScheduledItem, ApiError, formatMoney, loadCategories, parseMoney, requestJson, today, type AccountType, accountTypeLabel, accountTypeSections, isCreditAccount, isLoanAccount, type LoanAccountType } from './api';
+import { isTrackingAccount, type Account, type Accounts, type Audit, type CategoryOption, type Entry, type Register, type Schedules, type ScheduledItem, ApiError, formatMoney, loadCategories, parseMoney, requestJson, today, type AccountType, accountTypeLabel, accountTypeSections, isCreditAccount, isLoanAccount, type LoanAccountType } from './api';
 import { LedgerDialog } from './LedgerDialog';
 import { TransactionForm } from './TransactionForm';
 import { AccountHeader, ClearedSymbol, RegisterIcon, TransactionRow } from './AccountRegister';
@@ -20,8 +20,8 @@ import './ledger.css';
 type Dialog = { kind: 'account'; account?: Account; accountType?: AccountType } | { kind: 'transaction'; entry?: Entry; wishlistItemId?: string } | { kind: 'transfer'; entry?: Entry; from?: string; to?: string }
   | { kind: 'reconcile'; account: Account } | { kind: 'loanActivity'; account: Account; mode?: 'payment' | 'other' } | { kind: 'delete'; entry: Entry } | { kind: 'history' };
 
-export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMenu, onPendingChange, createAccountRequest, editAccountRequest, onEditAccountRequestHandled, focusTransaction, onOpenCategory, liveRefresh, wishlist, wishlistPurchaseRequest }: {
-  selectedAccount: string; onSelectAccount: (id: string) => void; onChanged: () => void; onMenu: () => void; onPendingChange?: (pending: boolean) => void; createAccountRequest?: number; editAccountRequest?: {id:string;token:number}; onEditAccountRequestHandled?: () => void;
+export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMenu, onPendingChange, createAccountRequest, onCreateAccountRequestHandled, editAccountRequest, onEditAccountRequestHandled, focusTransaction, onOpenCategory, liveRefresh, wishlist, wishlistPurchaseRequest }: {
+  selectedAccount: string; onSelectAccount: (id: string) => void; onChanged: () => void; onMenu: () => void; onPendingChange?: (pending: boolean) => void; createAccountRequest?: number; onCreateAccountRequestHandled?: () => void; editAccountRequest?: {id:string;token:number}; onEditAccountRequestHandled?: () => void;
   onOpenCategory?: (categoryId: string, editTarget: boolean) => void;
   /** Bumped when another session changes this budget's ledger; refreshes unless the user is mid-edit (the 30s poll retries). */
   liveRefresh?: number;
@@ -41,11 +41,12 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   const handledPurchase = useRef<number | null>(null);
   const handledCreate = useRef(0);
   useEffect(() => {
-    if (createAccountRequest && createAccountRequest !== handledCreate.current) {
+    if (!createAccountRequest) handledCreate.current = 0;
+    else if (createAccountRequest !== handledCreate.current) {
       handledCreate.current = createAccountRequest;
-      setDialog({ kind: 'account' });
+      setDialog({ kind: 'account' }); onCreateAccountRequestHandled?.();
     }
-  }, [createAccountRequest]);
+  }, [createAccountRequest, onCreateAccountRequestHandled]);
   const [accounts, setAccounts] = useState<Accounts>({ version: 1, accounts: [] });
   const [register, setRegister] = useState<Register | null>(null);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
@@ -142,22 +143,25 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     } finally { viewInFlight.current = false; setViewSaving(false); }
   }
   useEffect(() => {
-    const controller = new AbortController(); setViewOpen(false); setMoreOpen(false); setSavedView(null); setSchedules(null);
+    // A refresh of the same scope revalidates in the background: the current view stays on screen, and an unchanged
+    // view keeps its identity so the register is not fetched (and redrawn) a second time.
+    const controller = new AbortController(); setViewOpen(false); setMoreOpen(false); setSavedView(current => current?.scope === scope ? current : null);
     requestJson<ViewOptions>(`/api/register-views/${scope}`, { signal: controller.signal })
-      .then(value => { if (!controller.signal.aborted) setSavedView({ scope, value }); })
+      .then(value => { if (!controller.signal.aborted) setSavedView(current => current?.scope === scope && JSON.stringify(current.value) === JSON.stringify(value) ? current : { scope, value }); })
       .catch(err => { if (!controller.signal.aborted) { setLoading(false); setRegister(null); setError('Could not load saved view options. Reload to retry. ' + err.message); } });
     return () => controller.abort();
   }, [scope, refresh]);
-  useEffect(() => { setInline(null); setSchedulePage(1); }, [scope]);
+  useEffect(() => { setInline(null); setSchedulePage(1); setSchedules(null); }, [scope]);
   useEffect(() => { if (focusTransaction) { setPage(1); setSchedulePage(1); setSelectedIds([focusTransaction.id]); } }, [focusTransaction?.id]);
   useEffect(() => {
     onPendingChange?.(busy || uncertain || viewSaving || payeePending);
     return () => onPendingChange?.(false);
   }, [busy, uncertain, viewSaving, payeePending, onPendingChange]);
   useEffect(() => { setPage(1); setSelectedIds(focusTransaction?.accountId === selectedAccount ? [focusTransaction.id] : []); }, [selectedAccount, search, from, to, category, status, reviewFilter, view.showReconciled, focusTransaction?.id]);
+  const loadedQuery = useRef<string | null>(null);
   useEffect(() => {
-    const controller = new AbortController(); setLoading(true);
-    if (savedView?.scope !== scope) return () => controller.abort();
+    const controller = new AbortController();
+    if (savedView?.scope !== scope) { setLoading(true); return () => controller.abort(); }
     const focused = focusTransaction?.accountId === selectedAccount ? focusTransaction : null;
     const query = new URLSearchParams({ page: String(page), pageSize: focused ? '100' : '25', includeReconciled: String(focused ? true : view.showReconciled) });
     if (selectedAccount) query.set('accountId', selectedAccount);
@@ -169,9 +173,13 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
       if (from) query.set('from', from); if (to) query.set('to', to);
       if (category) query.set('categoryId', category); if (status) query.set('status', status);
     }
+    // Only a new query blanks the register. Background refreshes (30-second poll, live ledger events, after a save)
+    // re-fetch the same query and swap the rows in place, so the screen does not flash "Loading transactions…".
+    const queryKey = `${scope}?${query}`;
+    if (loadedQuery.current !== queryKey) setLoading(true);
     requestJson<Register>(`/api/transactions?${query}`, { signal: controller.signal })
-      .then(nextRegister => { if (!controller.signal.aborted) { setAccounts(nextRegister.accounts); setRegister(nextRegister); if (focused && !focused.scheduled && nextRegister.items.some(item => item.id === focused.id)) setSelectedIds([focused.id]); setLoading(false); } })
-      .catch(err => { if (!controller.signal.aborted) { setError(err.message); setLoading(false); setRegister(null); } });
+      .then(nextRegister => { if (!controller.signal.aborted) { loadedQuery.current = queryKey; setAccounts(nextRegister.accounts); setRegister(nextRegister); if (focused && !focused.scheduled && nextRegister.items.some(item => item.id === focused.id)) setSelectedIds([focused.id]); setLoading(false); } })
+      .catch(err => { if (!controller.signal.aborted) { loadedQuery.current = null; setError(err.message); setLoading(false); setRegister(null); } });
     return () => controller.abort();
   }, [selectedAccount, search, from, to, category, status, page, refresh, savedView, scope, reviewFilter, view.showReconciled, payeeFilter, focusTransaction?.id]);
   useEffect(() => {
@@ -225,7 +233,7 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     setInline(null); setDialog({ kind: 'transaction', wishlistItemId: wishlistPurchaseRequest.itemId });
   }, [wishlistPurchaseRequest, loading, wishlist]);
   const reload = useCallback(() => { setError(''); setConflict(false); setRefresh(value => value + 1); }, []);
-  async function mutate(path: string, method: string, fields: object) {
+  async function mutate(path: string, method: string, fields: object, onSaved?: () => void) {
     if (inFlight.current || conflict || loading || viewInFlight.current) return false;
     const signature = path + JSON.stringify(fields);
     if (uncertain && pending.current?.signature !== signature) { setError('Retry the previous save first to resolve its outcome.'); return false; }
@@ -235,7 +243,7 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     try {
       await requestJson(path, { method, headers: { 'Content-Type': 'application/json' }, body: pending.current.body });
       pending.current = null; setUncertain(false); setDialog(null); if(path!=='/api/flags'&&!path.endsWith('/flag'))setInline(null); setSelectedIds([]); setNotice(path==='/api/flags'?'Flag names saved.':path.endsWith('/flag')?'Flag saved.':path.startsWith('/api/schedules')&&!path.endsWith('/actions')?'Scheduled transaction saved. Actual balances change when you choose Enter Now.':'Ledger saved. Balances and budget activity updated.');
-      setRefresh(value => value + 1); onChanged(); return true;
+      onSaved?.(); setRefresh(value => value + 1); onChanged(); return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save. Retry the same action safely.');
       if (err instanceof ApiError && err.status < 500) { pending.current = null; setUncertain(false); if (err.status === 409) setConflict(true); }
@@ -245,6 +253,10 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   }
   function open(next: Dialog) { setError(''); setNotice(''); setViewOpen(false); setMoreOpen(false); setDialog(next); }
   function close() { if (!inFlight.current) setDialog(null); }
+  // Deleting leaves the account's register: show All Accounts and refresh the sidebar list.
+  async function deleteAccount(account: Account) {
+    await mutate(`/api/accounts/${account.id}/delete`, 'POST', {}, () => { onSelectAccount(''); setNotice(`Account “${account.name}” deleted.`); });
+  }
   async function edit(entry: Entry) {
     setSelectedIds([entry.id]);
     setViewOpen(false);setMoreOpen(false);
@@ -257,6 +269,7 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not load transfer.'); }
   }
   const current = accounts.accounts.find(a => a.id === selectedAccount);
+  const trackingAccount = isTrackingAccount(current);
   const openAccounts = accounts.accounts.filter(a => !a.isClosed);
   const disabled = busy || conflict || loading || uncertain || viewSaving;
   const feedback = <>{error && <div role="alert" className="ledger-error">{error} <button type="button" disabled={busy} onClick={reload}>{conflict ? 'Reload ledger' : 'Reload'}</button></div>}
@@ -271,7 +284,7 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   const chosenSchedule = schedules?.items.find(s=>s.occurrenceId===chosen?.id);
   const chosenEditLocked = !chosen || chosen.canEdit === false || accounts.accounts.find(a=>a.id===chosen.accountId)?.isClosed;
   async function scheduleAction(item:ScheduledItem,action:string,date?:string) {
-    await mutate(`/api/schedules/${item.id}/actions`,'POST',{action,occurrenceId:item.occurrenceId,date});
+    return await mutate(`/api/schedules/${item.id}/actions`,'POST',{action,occurrenceId:item.occurrenceId,date});
   }
   async function saveInline(fields:InlineFields,another:boolean) {
     let path='/api/transactions';let method='POST';let payload:object=fields;
@@ -296,10 +309,10 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     setPayeeFilter(null);setReviewFilter(false);setSearch(''); setCategory(''); setStatus(''); setPage(1);
     if (from || to || !view.showReconciled) void applyView({ ...view, datePreset:'allDates', showReconciled:true }).catch(err => setError(err.message));
   }
-  const selectedActions = selectedIds.length > 0 && <div className="register-selected-actions"><strong>Selected transaction</strong><button disabled={disabled || chosenEditLocked} onClick={() => chosen && void edit(chosen)}>Edit selected</button><button disabled={disabled || chosenLocked || !!chosenSchedule} onClick={() => chosen && open({kind:'delete',entry:chosen})}>Delete selected</button>{chosenSchedule&&<><button disabled={disabled||chosenSchedule.isPaused} onClick={()=>void scheduleAction(chosenSchedule,'post',chosenSchedule.transaction.date>today()?today():undefined)}>Enter Now</button><button disabled={disabled||chosenSchedule.isPaused} onClick={()=>void scheduleAction(chosenSchedule,'skip')}>Skip</button><button disabled={disabled||chosenSchedule.isPaused} onClick={()=>{const d=new Date(chosenSchedule.transaction.date+'T12:00:00');d.setDate(d.getDate()+1);void scheduleAction(chosenSchedule,'snooze',`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);}}>Snooze one day</button><button disabled={disabled} onClick={()=>void scheduleAction(chosenSchedule,chosenSchedule.isPaused?'resume':'pause')}>{chosenSchedule.isPaused?'Resume':'Pause'}</button><button disabled={disabled} onClick={()=>void scheduleAction(chosenSchedule,'end')}>End schedule</button></>}<button onClick={() => setSelectedIds([])}>Clear selection</button></div>;
+  const selectedActions = selectedIds.length > 0 && <div className="register-selected-actions"><strong>Selected transaction</strong><button disabled={disabled || chosenEditLocked} onClick={() => chosen && void edit(chosen)}>Edit selected</button><button disabled={disabled || chosenLocked} onClick={() => chosen && open({kind:'delete',entry:chosen})}>Delete selected</button>{chosenSchedule&&<><button disabled={disabled||chosenSchedule.isPaused} onClick={()=>void scheduleAction(chosenSchedule,'post',chosenSchedule.transaction.date>today()?today():undefined)}>Enter Now</button><button disabled={disabled||chosenSchedule.isPaused} onClick={()=>void scheduleAction(chosenSchedule,'skip')}>Skip</button><button disabled={disabled||chosenSchedule.isPaused} onClick={()=>{const d=new Date(chosenSchedule.transaction.date+'T12:00:00');d.setDate(d.getDate()+1);void scheduleAction(chosenSchedule,'snooze',`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);}}>Snooze one day</button><button disabled={disabled} onClick={()=>void scheduleAction(chosenSchedule,chosenSchedule.isPaused?'resume':'pause')}>{chosenSchedule.isPaused?'Resume':'Pause'}</button><button disabled={disabled} onClick={()=>void scheduleAction(chosenSchedule,'end')}>End schedule</button></>}<button onClick={() => setSelectedIds([])}>Clear selection</button></div>;
   const loanPage = current && isLoanAccount(current);
   return <section className="ledger-page account-register-page" aria-label="Accounts and transactions">
-    {loanPage ? <>{!dialog && feedback}<LoanAccountPage account={current} refresh={refresh} disabled={disabled} onMenu={onMenu}
+    {loanPage ? <>{!dialog && feedback}<LoanAccountPage account={current} accounts={accounts.accounts} refresh={refresh} disabled={disabled} onMenu={onMenu}
       onEdit={() => open({ kind: 'account', account: current })} onAddActivity={() => open({ kind: 'loanActivity', account: current })}
       onMutate={mutate} onOpenCategory={id => onOpenCategory?.(id, false)} onCreateTarget={id => onOpenCategory?.(id, true)} /></> : <>
       {focusTransaction && focusTransaction.accountId === selectedAccount && <div className="account-focus-banner" role="status">Showing the transaction selected from the {focusTransaction.source ?? 'Plan'} screen. <button onClick={() => setSelectedIds([focusTransaction.id])}>Highlight transaction</button></div>}
@@ -312,6 +325,7 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     <div className="register-toolbar">
       <button aria-label="Add Transaction" className="register-add" disabled={disabled || !openAccounts.length} onClick={() => {setInline({key:crypto.randomUUID()});setSelectedIds([]);setViewOpen(false);setMoreOpen(false);}}><span className="register-plus">+</span>Add Transaction</button>
       <button disabled title="File import is planned for a later milestone"><RegisterIcon name="import"/>File Import</button>
+      {isCreditAccount(current)&&!current?.isClosed&&<button className="register-record-payment" disabled={disabled||openAccounts.length<2} onClick={()=>{setSelectedIds([]);setViewOpen(false);setMoreOpen(false);open({kind:'transfer',to:current!.id,from:openAccounts.find(a=>!isLoanAccount(a)&&!isCreditAccount(a)&&!isTrackingAccount(a))?.id});}}><RegisterIcon name="transfer"/>Record Payment</button>}
       <span className="register-toolbar-divider"/>
       <button disabled title="Ledger changes are recorded in Audit history"><span className="register-history-icon">↶</span>Undo</button>
       <button disabled title="Ledger changes are recorded in Audit history"><span className="register-history-icon">↷</span>Redo</button>
@@ -333,8 +347,8 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     </div>
 
     <div className="register-scroll">
-      <table ref={tableRef} onKeyDown={e=>{if(e.key==='Escape'&&inline&&!disabled)setInline(null);}} className="register-table" aria-label="Transaction register"><colgroup>
-        <col style={{width:columnWidths.check}}/><col style={{width:columnWidths.info}}/>{view.showFlags && <col style={{width:columnWidths.flag}}/>}{view.showImages && <col style={{width:columnWidths.image}}/>}<col style={{width:columnWidths.date}}/><col style={{width:columnWidths.payee}}/><col style={{width:columnWidths.category}}/><col style={{width:columnWidths.memo}}/><col style={{width:columnWidths.outflow}}/><col style={{width:columnWidths.inflow}}/>{view.showRunningBalance && <col style={{width:columnWidths.balance}}/>}<col style={{width:columnWidths.status}}/></colgroup>
+      <table ref={tableRef} onKeyDown={e=>{if(e.key==='Escape'&&inline&&!disabled)setInline(null);}} className={`register-table${trackingAccount?' hide-category':''}`} aria-label="Transaction register"><colgroup>
+        <col style={{width:columnWidths.check}}/><col style={{width:columnWidths.info}}/>{view.showFlags && <col style={{width:columnWidths.flag}}/>}{view.showImages && <col style={{width:columnWidths.image}}/>}<col style={{width:columnWidths.date}}/><col style={{width:columnWidths.payee}}/><col className="register-category-col" style={{width:columnWidths.category}}/><col style={{width:columnWidths.memo}}/><col style={{width:columnWidths.outflow}}/><col style={{width:columnWidths.inflow}}/>{view.showRunningBalance && <col style={{width:columnWidths.balance}}/>}<col style={{width:columnWidths.status}}/></colgroup>
         <thead><tr><th aria-label="Select transactions">{resizeHandle('check','selection')}<input type="checkbox" aria-label="Select visible transactions" checked={Boolean(register?.items.length && register.items.every(t => selectedIds.includes(t.id)))} onChange={e => setSelectedIds(e.target.checked ? register?.items.map(t => t.id) ?? [] : [])}/></th>
           <th aria-label="Attention">{resizeHandle('info','attention')}<span className="transaction-info muted-info" aria-hidden="true">i</span><span className="sr-only">Attention</span></th>{view.showFlags && <th className="register-decoration-heading" aria-label="Flag">{resizeHandle('flag','flag')}<RegisterIcon name="flag" size={15}/><span className="sr-only">Flag</span></th>}{view.showImages && <th className="register-decoration-heading" aria-label="Attachment">{resizeHandle('image','attachment')}<RegisterIcon name="image" size={15}/><span className="sr-only">Attachment</span></th>}
           <th aria-label="DATE" aria-sort="descending">{resizeHandle('date','date')}DATE <span className="register-sort-arrow">▾</span></th><th aria-label="PAYEE">{resizeHandle('payee','payee')}PAYEE</th><th aria-label="CATEGORY">{resizeHandle('category','category')}CATEGORY</th><th aria-label="MEMO">{resizeHandle('memo','memo')}MEMO</th><th aria-label="OUTFLOW" className="register-money">{resizeHandle('outflow','outflow')}OUTFLOW</th><th aria-label="INFLOW" className="register-money">{resizeHandle('inflow','inflow')}INFLOW</th>{view.showRunningBalance && <th aria-label="BALANCE" className="register-money">{resizeHandle('balance','balance')}BALANCE</th>}<th aria-label="Cleared status">{resizeHandle('status','cleared status')}<ClearedSymbol cleared title="Cleared status" /><span className="sr-only">Cleared status</span></th></tr></thead>
@@ -355,12 +369,12 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
       {register && (register.total > 25 || page > 1) && <nav className="register-pagination" aria-label="Transaction pages"><button disabled={page === 1 || loading} onClick={() => setPage(p => p - 1)}>Previous</button><span>Page {page} · {register.total} transactions</span><button disabled={page * 25 >= register.total || loading} onClick={() => setPage(p => p + 1)}>Next</button></nav>}
     </div></>}
     {managePayees&&<ManagePayees accounts={accounts.accounts} categories={categories} onPendingChange={setPayeePending} onClose={()=>setManagePayees(false)} onChanged={()=>{setRefresh(n=>n+1);onChanged();}} onShowTransactions={payee=>{setPayeeFilter(payee.id);setSearch('');setCategory('');setStatus('');setReviewFilter(false);setManagePayees(false);setPage(1);}}/>}
-    {selected.length>0&&!inline&&!dialog&&<TransactionSelectionBar key={selected.map(t=>t.id).join(',')} entries={selected} accounts={accounts.accounts} flags={flags} disabled={disabled} scheduled={selected.some(t=>schedules?.items.some(s=>s.occurrenceId===t.id))} onClear={()=>setSelectedIds([])} onRenameFlags={renameFlags} onApply={action=>mutate('/api/transactions/selection','POST',{ids:selected.map(t=>t.id),...action})}/>}
+    {selected.length>0&&!inline&&!dialog&&<TransactionSelectionBar key={selected.map(t=>t.id).join(',')} entries={selected} accounts={accounts.accounts} flags={flags} disabled={disabled} scheduled={selected.some(t=>schedules?.items.some(s=>s.occurrenceId===t.id))} allScheduled={selected.every(t=>schedules?.items.some(s=>s.occurrenceId===t.id))} onClear={()=>setSelectedIds([])} onRenameFlags={renameFlags} onApply={async action=>{const rules=selected.map(t=>schedules?.items.find(s=>s.occurrenceId===t.id));if(action.action==='delete'&&rules.every(Boolean)){for(const rule of rules){if(!await scheduleAction(rule!,'end'))return false;}return true;}return mutate('/api/transactions/selection','POST',{ids:selected.map(t=>t.id),...action});}}/>}
     {dialog && <LedgerDialog onBack={dialog.kind === 'account' && pairingStep ? () => { if (!inFlight.current) setPairingStep(false); } : dialog.kind === 'account' && !dialog.account && dialog.accountType ? () => setDialog({ kind: 'account' }) : undefined} title={dialog.kind === 'loanActivity' ? 'Add Activity' : dialog.kind === 'account' && pairingStep ? 'Optional: Pair a Category' : dialog.kind === 'account' ? dialog.account ? 'Edit Account' : dialog.accountType ? isLoanAccount({ accountType: dialog.accountType }) ? 'Add Unlinked Account' : `Add ${accountTypeLabel(dialog.accountType)} account` : 'Select Account Type' : dialog.kind === 'transaction' ? dialog.entry ? 'Edit transaction' : 'Add transaction' : dialog.kind === 'transfer' ? dialog.entry ? 'Edit transfer' : 'Transfer money' : dialog.kind === 'reconcile' ? 'Reconcile account' : dialog.kind === 'history' ? 'Audit history' : 'Delete transaction'} onClose={close}>
       {feedback}
       {dialog.kind === 'transaction' && <TransactionForm accounts={accounts.accounts} selectedAccount={selectedAccount} entry={dialog.entry} busy={disabled} wishlist={wishlist} initialWishlistItemId={dialog.wishlistItemId} onSubmit={async ({ wishlistItemId, ...fields }) => { await mutate(wishlistItemId && wishlist && !dialog.entry ? wishlistPurchasePath(wishlist.budgetId, wishlistItemId) : `/api/transactions${dialog.entry ? `/${dialog.entry.id}` : ''}`, dialog.entry ? 'PUT' : 'POST', fields); }} />}
-      {dialog.kind === 'account' && (dialog.account ? isLoanAccount(dialog.account) ? <EditLoanAccountForm account={dialog.account} busy={disabled} onCancel={close} pairing={pairingStep} onPairingChange={setPairingStep} onOpenCategory={id => { setDialog(null); onOpenCategory?.(id, false); }} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account!.id}`, 'PUT', fields); }}/>
-        : <EditAccountForm account={dialog.account} busy={disabled} onCancel={close} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account!.id}`, 'PUT', fields); }}/>
+      {dialog.kind === 'account' && (dialog.account ? isLoanAccount(dialog.account) ? <EditLoanAccountForm account={dialog.account} busy={disabled} onCancel={close} pairing={pairingStep} onPairingChange={setPairingStep} onOpenCategory={id => { setDialog(null); onOpenCategory?.(id, false); }} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account!.id}`, 'PUT', fields); }} onDelete={() => deleteAccount(dialog.account!)}/>
+        : <EditAccountForm account={dialog.account} busy={disabled} onCancel={close} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account!.id}`, 'PUT', fields); }} onDelete={() => deleteAccount(dialog.account!)}/>
         : dialog.accountType && isLoanAccount({ accountType: dialog.accountType }) ? <LoanAccountForm key={dialog.accountType} accountType={dialog.accountType as LoanAccountType} busy={disabled} pairing={pairingStep} onPairingChange={setPairingStep} onSubmit={async fields => { await mutate('/api/accounts', 'POST', fields); }}/>
         : dialog.accountType ? <AccountForm key={dialog.accountType} accountType={dialog.accountType} busy={disabled} onSubmit={async fields => { await mutate('/api/accounts', 'POST', fields); }}/> : <AccountTypeList onSelect={accountType => setDialog({ kind: 'account', accountType })}/>) }
       {dialog.kind === 'loanActivity' && <div className="loan-activity-dialog">
@@ -372,7 +386,8 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
       </div>}
       {dialog.kind === 'transfer' && <TransferForm accounts={openAccounts} selectedAccount={selectedAccount} dialog={dialog} busy={disabled} onSubmit={async fields => { await mutate(`/api/transfers${dialog.entry ? `/${dialog.entry.id}` : ''}`, dialog.entry ? 'PUT' : 'POST', fields); }} />}
       {dialog.kind === 'reconcile' && <ReconcileForm account={accounts.accounts.find(a => a.id === dialog.account.id) ?? dialog.account} busy={disabled} onSubmit={async fields => { await mutate(`/api/accounts/${dialog.account.id}/reconcile`, 'POST', fields); }} />}
-      {dialog.kind === 'delete' && <><p>Delete this entry{dialog.entry.transferId ? ' and its linked transfer entry' : ''}? Balances and budget activity will be recalculated. The audit history is retained.</p><button disabled={disabled} className="button-primary" onClick={() => mutate(`/api/transactions/${dialog.entry.id}/delete`, 'POST', {})}>Confirm deletion</button></>}
+      {dialog.kind === 'delete' && (()=>{const rule=schedules?.items.find(x=>x.occurrenceId===dialog.entry.id);return rule?<><p>Delete this scheduled transaction? It stops repeating and no future occurrences are entered. Transactions already entered stay in the register. The audit history is retained.</p><button disabled={disabled} className="button-primary" onClick={() => void scheduleAction(rule,'end')}>Confirm deletion</button></>:null;})()}
+      {dialog.kind === 'delete' && !schedules?.items.some(x=>x.occurrenceId===dialog.entry.id) && <><p>Delete this entry{dialog.entry.transferId ? ' and its linked transfer entry' : ''}? Balances and budget activity will be recalculated. The audit history is retained.</p><button disabled={disabled} className="button-primary" onClick={() => mutate(`/api/transactions/${dialog.entry.id}/delete`, 'POST', {})}>Confirm deletion</button></>}
       {dialog.kind === 'history' && <>{audit === null ? <p role="status">Loading audit history…</p> : !audit.length ? <p>No ledger changes yet.</p> : audit.map(item => <article className="audit-entry" key={item.id}><strong>{item.kind.split('/')[0]}</strong><small>{new Date(item.createdAt).toLocaleString()} · Revision {item.version}</small><details><summary>View before and after</summary><h3>Before</h3><pre>{JSON.stringify(JSON.parse(item.beforeJson), null, 2)}</pre><h3>After</h3><pre>{JSON.stringify(JSON.parse(item.afterJson), null, 2)}</pre></details></article>)}
         <nav className="register-pagination"><button disabled={auditPage === 1} onClick={() => setAuditPage(p => p - 1)}>Previous changes</button><span>Page {auditPage}</span><button disabled={auditPage * 25 >= auditTotal} onClick={() => setAuditPage(p => p + 1)}>Next changes</button></nav></>}
     </LedgerDialog>}

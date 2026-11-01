@@ -304,6 +304,9 @@ public sealed class McpServerApiTests(PostgresFixture fixture) : IClassFixture<P
         (await mcp.CallAsync("transactions_set_flag", new { budgetId = b, transactionId = spendId, color = "red" })).AssertOk();
         (await mcp.CallAsync("transfers_create", new { budgetId = b, fromAccountId = checkingId, toAccountId = savingsId, date = "2026-10-07", amount = 100m })).AssertOk();
         (await mcp.CallAsync("accounts_update", new { budgetId = b, accountId = savingsId, name = "Rainy day", isFavorite = true })).AssertOk();
+        (await mcp.CallAsync("accounts_reorder", new { budgetId = b, accountIds = new[] { savingsId, cardId, checkingId } })).AssertOk();
+        var reordered = (await mcp.CallAsync("accounts_list", new { budgetId = b })).Structured().GetProperty("accounts").EnumerateArray().Select(x => x.GetProperty("id").GetString()).ToArray();
+        Assert.Equal([savingsId, cardId, checkingId], reordered);
         (await mcp.CallAsync("flags_rename", new { budgetId = b, flags = new[] { "red", "orange", "yellow", "green", "blue", "purple" }.Select(color => new { color, name = color == "red" ? "Review" : color }).ToArray() })).AssertOk();
         (await mcp.CallAsync("credit_payoff_target_save", new { budgetId = b, accountId = cardId, kind = "monthlyAmount", monthlyAmount = 50m })).AssertOk();
         (await mcp.CallAsync("credit_payoff_target_get", new { budgetId = b, accountId = cardId, month = Month })).AssertOk();
@@ -344,6 +347,12 @@ public sealed class McpServerApiTests(PostgresFixture fixture) : IClassFixture<P
         Assert.Contains(listing.Structured().GetProperty("items").EnumerateArray(), x => x.GetProperty("id").GetString() == spendId);
         Assert.Equal("confirmation_required", (await mcp.CallAsync("transactions_bulk_update", new { budgetId = b, ids = new[] { spendId }, action = "delete" })).ErrorCode());
         Assert.Equal("confirmation_required", (await mcp.CallAsync("budgets_delete", new { budgetId = b })).ErrorCode());
+        var mistake = await mcp.CallAsync("accounts_create", new { budgetId = b, name = "Mistake", accountType = "cash", date = "2026-10-01" });
+        var mistakeId = mistake.Structured().GetProperty("id").GetString()!;
+        Assert.Equal("confirmation_required", (await mcp.CallAsync("accounts_delete", new { budgetId = b, accountId = mistakeId })).ErrorCode());
+        Assert.Equal("invalid_request", (await mcp.CallAsync("accounts_delete", new { budgetId = b, accountId = savingsId, confirm = true })).ErrorCode());
+        (await mcp.CallAsync("accounts_delete", new { budgetId = b, accountId = mistakeId, confirm = true })).AssertOk();
+        Assert.DoesNotContain((await mcp.CallAsync("accounts_list", new { budgetId = b })).Structured().GetProperty("accounts").EnumerateArray(), x => x.GetProperty("id").GetString() == mistakeId);
         (await mcp.CallAsync("transactions_bulk_update", new { budgetId = b, ids = new[] { spendId }, action = "memo", memo = "checked" })).AssertOk();
         (await mcp.CallAsync("transactions_delete", new { budgetId = b, transactionId = spendId, confirm = true })).AssertOk();
         listing = await mcp.CallAsync("transactions_list", new { budgetId = b, accountId = checkingId });

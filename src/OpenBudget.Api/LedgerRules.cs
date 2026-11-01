@@ -19,19 +19,34 @@ public static class LedgerRules
         return null;
     }
 
+    // Tracking accounts (assets such as investments, and liabilities) sit outside the budget: their own activity never touches
+    // Ready to Assign or categories. Money moving between a tracking account and a budget account is categorized on the budget side.
+    public const string TrackingAsset = "trackingAsset", TrackingLiability = "trackingLiability";
+    public static readonly string[] TrackingTypes = [TrackingAsset, TrackingLiability];
+    public static bool IsTracking(string? accountType) => accountType is TrackingAsset or TrackingLiability;
+
     public static decimal Income(TransactionEntity entry) =>
         !entry.IsDeleted && entry.TransferId is null && entry.CategoryId is null && entry.Splits.Count == 0 ? entry.Amount : 0;
 
     public static Dictionary<string, decimal> Activity(IEnumerable<TransactionEntity> entries) => entries
-        .Where(t => !t.IsDeleted && t.TransferId is null)
+        .Where(t => !t.IsDeleted && (t.TransferId is null || t.CategoryId is not null))
         .SelectMany(t => t.Splits.Count > 0 ? t.Splits.Select(s => new SplitDto(s.CategoryId, s.Amount))
             : t.CategoryId is not null ? [new SplitDto(t.CategoryId, t.Amount)] : Enumerable.Empty<SplitDto>())
         .GroupBy(s => s.CategoryId).ToDictionary(g => g.Key, g => g.Sum(s => s.Amount));
 
     // Loan activity (interest, fees, corrections) is never categorized, so it never needs a category.
     public static bool NeedsAttention(TransactionEntity entry) => !entry.IsDeleted && entry.TransferId is null && !entry.IsOpening
-        && entry.Amount < 0 && entry.CategoryId is null && entry.Splits.Count == 0 && !LoanRules.IsLoan(entry.Account?.AccountType);
+        && entry.Amount < 0 && entry.CategoryId is null && entry.Splits.Count == 0 && !LoanRules.IsLoan(entry.Account?.AccountType) && !IsTracking(entry.Account?.AccountType);
 
     public static decimal Balance(IEnumerable<TransactionEntity> entries, bool clearedOnly = false) =>
         entries.Where(t => !t.IsDeleted && (!clearedOnly || t.Status != "uncleared")).Sum(t => t.Amount);
+
+    // Only an account without ledger history or planned activity can be deleted. Any nondeleted entry other than its own
+    // opening balance, which is removed with the account (transfer leg, loan activity, posted schedule, imported or reconciled row) blocks, as does an active schedule from or
+    // to the account and money still held in its server-owned payment category. Returns null when deletion is allowed.
+    public static string? AccountDeletionError(int transactions, int activeSchedules, bool paymentCategoryHasMoney) =>
+        transactions > 0 ? "This account has transactions. Delete them first or close the account instead."
+        : activeSchedules > 0 ? "This account has scheduled transactions. End them first or close the account instead."
+        : paymentCategoryHasMoney ? "This account's payment category still has money assigned. Move it to another category first."
+        : null;
 }

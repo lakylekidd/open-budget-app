@@ -334,7 +334,7 @@ it('groups loan accounts under a collapsible LOANS section after CREDIT',async()
   expect(headings.map(text=>text?.replace(/[-€\d.,]/g,''))).toEqual(['CASH','CREDIT','LOANS']);
   const loans=screen.getByRole('button',{name:/LOANS/});
   expect(loans).toHaveTextContent('-€390,326.76');
-  expect(loans.querySelector('strong')).toHaveClass('negative-account-balance');
+  expect(loans.querySelector('strong')).not.toHaveClass('negative-account-balance');expect(screen.getByRole('button',{name:/Mortgage -€389,651.68/}).querySelector('strong')).not.toHaveClass('negative-account-balance');expect(screen.getByRole('button',{name:/^Mastercard/}).querySelector('strong')).toHaveClass('negative-account-balance');
   const list=document.getElementById('loan-account-list')!;
   expect(list).toContainElement(screen.getByRole('button',{name:/Mortgage -€389,651.68/}));
   expect(list).toContainElement(screen.getByRole('button',{name:/Phone -€675.08/}));
@@ -367,6 +367,66 @@ it('hides the LOANS section when there are no loan accounts',async()=>{
   focusAccounts=[{...account,id:'cash-1',name:'Salary',balance:10,clearedBalance:10,accountType:'checking'}];
   render(<App/>);await saved();
   expect(screen.queryByRole('button',{name:/LOANS/})).not.toBeInTheDocument();
+});
+
+const orderAccount=(id:string,name:string,accountType:string)=>({id,name,accountType,isClosed:false,balance:0,clearedBalance:0,unclearedBalance:0,isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0});
+const sectionNames=(id:string)=>Array.from(document.getElementById(id)!.querySelectorAll('.sidebar-account-select span')).map(node=>node.textContent);
+// Serves account-order saves: persists the order on success (so a reload shows it) or fails with the given status.
+function stubAccountOrder(fail?:{status:number;error:string}){
+  const base=vi.mocked(fetch).getMockImplementation()!;const orderWrites:{commandId:string;version:number;accountIds:string[]}[]=[];
+  vi.mocked(fetch).mockImplementation(async(input,init)=>{
+    if(input==='/api/accounts/order'&&init?.method==='PUT'){const body=JSON.parse(String(init.body));orderWrites.push(body);
+      if(fail)return new Response(JSON.stringify({error:fail.error}),{status:fail.status,headers:{'Content-Type':'application/json'}});
+      focusAccounts=body.accountIds.map((id:string)=>focusAccounts.find(account=>account.id===id)!);return response({id:'00000000-0000-0000-0000-000000000000',version:2});}
+    return base(input as string,init);
+  });
+  return orderWrites;
+}
+
+const dragOnto=(sourceId:string,targetId:string)=>{const store:Record<string,string>={};const dataTransfer={effectAllowed:'',dropEffect:'',setData:(k:string,v:string)=>{store[k]=v;},getData:(k:string)=>store[k]};const source=screen.getByTestId('sortable-account-'+sourceId),target=screen.getByTestId('sortable-account-'+targetId);fireEvent.dragStart(source,{dataTransfer});fireEvent.dragOver(target,{dataTransfer});fireEvent.drop(target,{dataTransfer});fireEvent.dragEnd(source,{dataTransfer});};
+it('reorders accounts within a sidebar section by dragging and keeps the persisted order after reload',async()=>{
+  focusAccounts=[orderAccount('cash-1','Salary','checking'),orderAccount('card-1','Visa','creditCard'),orderAccount('cash-2','Savings','savings'),orderAccount('cash-3','Wallet','cash')];
+  const orderWrites=stubAccountOrder();
+  const view=render(<App/>);await saved();
+  expect(sectionNames('cash-account-list')).toEqual(['Salary','Savings','Wallet']);
+  for(const name of ['Salary','Savings','Wallet','Visa'])expect(screen.queryByRole('button',{name:'Move '+name+' up'})).not.toBeInTheDocument();
+  dragOnto('cash-3','cash-2');
+  expect(sectionNames('cash-account-list')).toEqual(['Salary','Wallet','Savings']);
+  await waitFor(()=>expect(orderWrites).toHaveLength(1));
+  expect(orderWrites[0]).toMatchObject({version:1,accountIds:['cash-1','card-1','cash-3','cash-2']});
+  expect(orderWrites[0].commandId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  view.unmount();render(<App/>);await saved();
+  expect(sectionNames('cash-account-list')).toEqual(['Salary','Wallet','Savings']);
+  expect(sectionNames('credit-account-list')).toEqual(['Visa']);
+});
+
+it('drags an account within its section but ignores drops onto another section',async()=>{
+  focusAccounts=[orderAccount('cash-1','Salary','checking'),orderAccount('cash-2','Savings','savings'),orderAccount('card-1','Visa','creditCard')];
+  const orderWrites=stubAccountOrder();
+  render(<App/>);await saved();
+  const store:Record<string,string>={};const dataTransfer={effectAllowed:'',dropEffect:'',setData:(k:string,v:string)=>{store[k]=v;},getData:(k:string)=>store[k]};
+  fireEvent.dragStart(screen.getByTestId('sortable-account-cash-1'),{dataTransfer});
+  fireEvent.dragOver(screen.getByTestId('sortable-account-card-1'),{dataTransfer});fireEvent.drop(screen.getByTestId('sortable-account-card-1'),{dataTransfer});
+  fireEvent.dragEnd(screen.getByTestId('sortable-account-cash-1'),{dataTransfer});
+  expect(orderWrites).toHaveLength(0);
+  fireEvent.dragStart(screen.getByTestId('sortable-account-cash-2'),{dataTransfer});
+  fireEvent.dragOver(screen.getByTestId('sortable-account-cash-1'),{dataTransfer});fireEvent.drop(screen.getByTestId('sortable-account-cash-1'),{dataTransfer});
+  await waitFor(()=>expect(orderWrites).toHaveLength(1));
+  expect(orderWrites[0].accountIds).toEqual(['cash-2','cash-1','card-1']);
+  expect(sectionNames('cash-account-list')).toEqual(['Savings','Salary']);
+});
+
+it.each([[400,'Account order must list every account in this budget exactly once.',/Could not save the account order\. Account order must list/],[409,'The ledger changed in another session.',/changed in another session/]])('rolls back an optimistic reorder and explains a %s failure',async(status,error,message)=>{
+  focusAccounts=[orderAccount('cash-1','Salary','checking'),orderAccount('cash-2','Savings','savings')];
+  const orderWrites=stubAccountOrder({status,error});
+  render(<App/>);await saved();
+  dragOnto('cash-2','cash-1');
+  expect(await screen.findByRole('alert')).toHaveTextContent(message);
+  expect(orderWrites).toHaveLength(1);
+  expect(sectionNames('cash-account-list')).toEqual(['Salary','Savings']);
+  await userEvent.click(screen.getByRole('button',{name:'Dismiss account order error'}));
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 
 it('shows only the no accounts message and add action when the account list is empty',async()=>{
@@ -419,6 +479,20 @@ it('opens Edit Account only once, not again when the account is revisited',async
   await screen.findByRole('button',{name:/Salary €100.00/});
   await new Promise(resolve=>setTimeout(resolve,50));
   expect(screen.queryByRole('dialog',{name:/Edit Account/i})).not.toBeInTheDocument();
+});
+
+it('does not reopen an account dialog when an account is selected from Plan after Add Account was used',async()=>{
+  const account={isClosed:false,unclearedBalance:0,isFavorite:false,connectionStatus:'unlinked',lastReconciledAt:null,needsCategoryCount:0};
+  focusAccounts=[{...account,id:'cash-1',name:'Salary',balance:100,clearedBalance:100,accountType:'checking'}];
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('button',{name:'Add Account'}));
+  const picker=await screen.findByRole('dialog',{name:'Select Account Type'});
+  await userEvent.click(within(picker).getByRole('button',{name:/Cancel|Close|Back/}));
+  await userEvent.click(screen.getByRole('button',{name:'Plan'}));
+  await userEvent.click(screen.getByRole('button',{name:/Salary €100.00/}));
+  await screen.findByRole('button',{name:/Salary €100.00/});
+  await new Promise(resolve=>setTimeout(resolve,50));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 
 it('creates a budget and selects it as the active plan',async()=>{

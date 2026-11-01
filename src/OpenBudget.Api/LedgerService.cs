@@ -12,18 +12,20 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
     public async Task<AccountsDto> GetAccountsAsync(CancellationToken ct)
     {
         var version = await db.LedgerStates.Select(x => x.Version).SingleAsync(ct);
-        var accounts = await db.Accounts.OrderBy(x => x.IsClosed).ThenBy(x => x.Name).ThenBy(x => x.Id).ToListAsync(ct);
+        var accounts = await db.Accounts.OrderBy(x => x.SortOrder).ThenBy(x => x.Name).ThenBy(x => x.Id).ToListAsync(ct);
         var balances = await db.Transactions.Where(t => !t.IsDeleted).GroupBy(t => t.AccountId)
             .Select(g => new { Id = g.Key, Balance = g.Sum(t => t.Amount), Cleared = g.Sum(t => t.Status != "uncleared" ? t.Amount : 0),
-                Unapproved = g.Count(t => !t.IsApproved), Attention = g.Count(t => !t.IsApproved || (t.TransferId == null && !t.IsOpening && t.Amount < 0 && t.CategoryId == null && !t.Splits.Any() && !LoanRules.LoanTypes.Contains(t.Account.AccountType))),
-                NeedsCategory = g.Count(t => t.TransferId == null && !t.IsOpening && t.Amount < 0 && t.CategoryId == null && !t.Splits.Any() && !LoanRules.LoanTypes.Contains(t.Account.AccountType)) }).ToDictionaryAsync(x => x.Id, ct);
+                Unapproved = g.Count(t => !t.IsApproved), Real = g.Count(t => !t.IsOpening), Attention = g.Count(t => !t.IsApproved || (t.TransferId == null && !t.IsOpening && t.Amount < 0 && t.CategoryId == null && !t.Splits.Any() && !LoanRules.LoanTypes.Contains(t.Account.AccountType))),
+                NeedsCategory = g.Count(t => t.TransferId == null && !t.IsOpening && t.Amount < 0 && t.CategoryId == null && !t.Splits.Any() && !LoanRules.LoanTypes.Contains(t.Account.AccountType) && !LedgerRules.TrackingTypes.Contains(t.Account.AccountType)) }).ToDictionaryAsync(x => x.Id, ct);
         var reconciledAt = await db.Reconciliations.Where(r => !r.IsInvalidated).GroupBy(r => r.AccountId)
             .Select(g => new { Id = g.Key, At = g.Max(r => r.CreatedAt) }).ToDictionaryAsync(r => r.Id, r => r.At, ct);
+        var loanTerms = await db.LoanTerms.ToDictionaryAsync(t => t.AccountId, ct);
         return new(version, accounts.Select(a =>
         {
             balances.TryGetValue(a.Id, out var b);
             return new AccountDto(a.Id, a.Name, a.IsClosed, b?.Balance ?? 0, b?.Cleared ?? 0, (b?.Balance ?? 0) - (b?.Cleared ?? 0),
-                a.AccountType, a.IsFavorite, "unlinked", reconciledAt.TryGetValue(a.Id, out var at) ? at : null, b?.NeedsCategory ?? 0, a.Notes, b?.Unapproved ?? 0, b?.Attention ?? 0);
+                a.AccountType, a.IsFavorite, "unlinked", reconciledAt.TryGetValue(a.Id, out var at) ? at : null, b?.NeedsCategory ?? 0, a.Notes, b?.Unapproved ?? 0, b?.Attention ?? 0, (b?.Real ?? 0) > 0,
+                PaymentPresentation.IsDebt(a.AccountType) ? PaymentPresentation.CategoryId(a, loanTerms.GetValueOrDefault(a.Id)) : null);
         }).ToList());
     }
 
@@ -67,7 +69,8 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
         var transferIds = items.Where(t => t.TransferId != null).Select(t => t.TransferId!.Value).Distinct().ToArray();
         var legs = await db.Transactions.Where(t => !t.IsDeleted && t.TransferId != null && transferIds.Contains(t.TransferId.Value))
-            .Select(t => new { t.Id, t.TransferId, t.Status, t.Account.Name, t.Account.IsClosed }).ToListAsync(ct);
+            .Select(t => new { t.Id, t.TransferId, t.AccountId, t.Status, t.Account.Name, t.Account.IsClosed }).ToListAsync(ct);
+        var paymentTargets = await PaymentTargetsAsync(ct);
         var months = items.Select(t => Month(t.Date)).Distinct().ToArray();
         var labels = await db.Categories.Where(c => c.BudgetId == db.ActiveBudgetId && months.Contains(c.BudgetMonth))
             .Join(db.CategoryGroups.Where(g => g.BudgetId == db.ActiveBudgetId), c => new { c.BudgetId, c.BudgetMonth, Id = c.GroupId }, g => new { g.BudgetId, g.BudgetMonth, g.Id },
@@ -76,8 +79,15 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
         return new(accounts.Version, page, pageSize, total, items.Select(entry =>
         {
             var other = entry.TransferId is null ? null : legs.SingleOrDefault(t => t.TransferId == entry.TransferId && t.Id != entry.Id);
+            var ownAccount = accounts.Accounts.Single(a => a.Id == entry.AccountId);
+            var payment = other is not null && paymentTargets.TryGetValue(other.AccountId, out var target)
+                && PaymentPresentation.IsPayment(ownAccount.AccountType, entry.Amount, accounts.Accounts.Single(a => a.Id == other.AccountId).AccountType) ? target : null;
+            var overridden = payment is not null && entry.CategoryId is not null; // the user chose another category for a loan payment
+            var categoryId = payment is null || overridden ? entry.CategoryId : payment.CategoryId;
             return ToDto(entry) with { RunningBalance = running.GetValueOrDefault(entry.Id), TransferAccountName = other?.Name, ImageCount = imageCounts.GetValueOrDefault(entry.Id),
-                CategoryName = entry.CategoryId is null ? null : labels.GetValueOrDefault((Month(entry.Date), entry.CategoryId)),
+                Payee = overridden ? "" : payment is not null ? PaymentPresentation.Payee(payment.AccountName)
+                    : other is null ? ToDto(entry).Payee : PaymentPresentation.CashTransferPayee(ownAccount.AccountType, entry.Amount, accounts.Accounts.Single(a => a.Id == other.AccountId).AccountType, other.Name) ?? ToDto(entry).Payee, IsPayment = payment is not null && !overridden, 
+                CategoryName = categoryId is null ? null : labels.GetValueOrDefault((Month(entry.Date), categoryId)),
                 CanEdit = !accounts.Accounts.Single(a => a.Id == entry.AccountId).IsClosed && other?.IsClosed != true,
                 IsLocked = entry.Status == "reconciled" || accounts.Accounts.Single(a => a.Id == entry.AccountId).IsClosed || other?.Status == "reconciled" || other?.IsClosed == true };
         }).ToList(), accounts);
@@ -116,7 +126,8 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
                 else if (openingBalance > 0) throw new LedgerException("Enter the loan balance you owe as a positive amount; it is recorded as debt.");
             }
             await budgets.GetMonthAsync(db.ActiveBudgetId, Month(request.Date), ct);
-            var account = new AccountEntity { Id = Guid.NewGuid(), Name = request.Name.Trim(), AccountType = request.AccountType };
+            var sortOrder = AccountOrderRules.NextSortOrder(await db.Accounts.Select(a => a.SortOrder).ToListAsync(ct));
+            var account = new AccountEntity { Id = Guid.NewGuid(), Name = request.Name.Trim(), AccountType = request.AccountType, SortOrder = sortOrder };
             db.Accounts.Add(account);
             TransactionEntity? opening = null;
             if (openingBalance != 0)
@@ -262,9 +273,10 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             if (request.FromAccountId == request.ToAccountId || request.Amount <= 0 || !LedgerRules.IsMoney(request.Amount)
                 || request.Date.Year is < 1900 or > 9998 || request.Memo?.Length > 1000)
                 throw new LedgerException("A transfer needs two different open accounts, a valid date, and a positive amount with two decimal places.");
-            await OpenAccountAsync(request.FromAccountId, ct);
-            await OpenAccountAsync(request.ToAccountId, ct);
+            var fromAccount = await OpenAccountAsync(request.FromAccountId, ct);
+            var toAccount = await OpenAccountAsync(request.ToAccountId, ct);
             await budgets.GetMonthAsync(db.ActiveBudgetId, Month(request.Date), ct);
+            var categoryId = await TransferCategoryAsync(fromAccount, toAccount, request, ct);
             List<Guid> invalidated = [];
             List<TransactionEntity> pair;
             List<TransactionDto>? before = null;
@@ -287,7 +299,9 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             pair[0].Amount = -request.Amount;
             pair[1].AccountId = request.ToAccountId;
             pair[1].Amount = request.Amount;
-            foreach (var item in pair) { item.Date = request.Date; item.Memo = request.Memo?.Trim() ?? ""; }
+            foreach (var item in pair) { item.Date = request.Date; item.Memo = request.Memo?.Trim() ?? ""; item.CategoryId = null; }
+            // The category lives on the budget-side leg (the cash leg of a loan payment, or the non-tracking leg of a tracking transfer).
+            if (categoryId is not null) (LedgerRules.IsTracking(fromAccount.AccountType) ? pair[1] : pair[0]).CategoryId = categoryId;
             if (request.Repeat != "never") await CreateNextScheduleAsync(pair[0], request.Repeat, ct, pair[1].AccountId);
             return new Change(pair[0].TransferId!.Value, before, request.Repeat != "never" ? new { entries = pair.Select(ToDto).ToList(), schedule = db.Schedules.Local.Single(r => r.Id == pair[0].ScheduleId), invalidatedReconciliations = invalidated } : invalidated.Count == 0 ? pair.Select(ToDto).ToList() : new { entries = pair.Select(ToDto).ToList(), invalidatedReconciliations = invalidated });
         }, ct);
@@ -358,7 +372,8 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
         var categories = (await db.Budgets.AsNoTracking().Where(b => b.BudgetId == db.ActiveBudgetId && b.Month == month)
             .Include(b => b.Groups).ThenInclude(g => g.Categories).SingleOrDefaultAsync(ct))?.Groups.SelectMany(g => g.Categories)
             .ToDictionary(c => c.Id, StringComparer.Ordinal) ?? [];
-        var cashActivity = LedgerRules.Activity(entries.Where(t => !creditIds.Contains(t.AccountId)));
+        var trackingIds = (await db.Accounts.AsNoTracking().Where(a => LedgerRules.TrackingTypes.Contains(a.AccountType)).Select(a => a.Id).ToListAsync(ct)).ToHashSet();
+        var cashActivity = LedgerRules.Activity(entries.Where(t => !creditIds.Contains(t.AccountId) && !trackingIds.Contains(t.AccountId)));
         var flows = CreditCardRules.Project(entries, creditIds, categoryId => categories.TryGetValue(categoryId, out var c)
             ? c.OpeningAvailable + c.Assigned + c.LegacyActivity + cashActivity.GetValueOrDefault(categoryId) : 0);
         var card = flows.Cards!.GetValueOrDefault(id) ?? new CreditCardRules.CardFlow(0, 0, 0, 0);
@@ -428,8 +443,8 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
     }
     private static void ValidateAccountType(string? type)
     {
-        if (type is not ("checking" or "savings" or "cash" or "creditCard" or "lineOfCredit") && !LoanRules.IsLoan(type))
-            throw new LedgerException("Account type must be checking, savings, cash, creditCard, lineOfCredit, mortgage, autoLoan, studentLoan, personalLoan, medicalDebt, otherDebt or contract.");
+        if (type is not ("checking" or "savings" or "cash" or "creditCard" or "lineOfCredit") && !LoanRules.IsLoan(type) && !LedgerRules.IsTracking(type))
+            throw new LedgerException("Account type must be checking, savings, cash, creditCard, lineOfCredit, trackingAsset, trackingLiability, mortgage, autoLoan, studentLoan, personalLoan, medicalDebt, otherDebt or contract.");
     }
     private sealed class LedgerBalanceRow
     {

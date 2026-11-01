@@ -1024,6 +1024,118 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
         Assert.Equal(2,(await ManagedPayees(reloaded)).Payees.Count);
     }
 
+    [Fact]
+    public async Task Empty_account_delete_is_replay_safe_stale_safe_and_removes_account_only_rows()
+    {
+        await using var app = await fixture.CreateAppAsync(); var client = app.CreateClient();
+        var keep = await AddAccount(client, 50, "Keep");
+        var mistake = await AddAccount(client, 0, "Mistake");
+        await Put<RegisterViewDto>(client, $"/api/register-views/{mistake}", new RegisterViewDto(0, "allDates", null, null, false, true, true, true, [], true));
+        var state = await Accounts(client);
+        Assert.False(state.Accounts.Single(a => a.Id == mistake).HasTransactions);
+        Assert.False(state.Accounts.Single(a => a.Id == keep).HasTransactions); // an opening balance alone does not make an account "used"
+
+        // A stale ledger version and an unknown account change nothing.
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync($"/api/accounts/{mistake}/delete", new DeleteAccountRequest(Guid.NewGuid(), state.Version - 1))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsJsonAsync($"/api/accounts/{Guid.NewGuid()}/delete", new DeleteAccountRequest(Guid.NewGuid(), state.Version))).StatusCode);
+        Assert.Equal(state.Version, (await Accounts(client)).Version);
+        Assert.Equal(2, (await Accounts(client)).Accounts.Count);
+
+        var request = new DeleteAccountRequest(Guid.NewGuid(), state.Version);
+        var deleted = await Post<MutationDto>(client, $"/api/accounts/{mistake}/delete", request);
+        Assert.Equal(mistake, deleted.Id); Assert.Equal(state.Version + 1, deleted.Version);
+        Assert.Equal(deleted, await Post<MutationDto>(client, $"/api/accounts/{mistake}/delete", request));
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync($"/api/accounts/{keep}/delete", request)).StatusCode);
+        var after = await Accounts(client);
+        Assert.Equal(keep, Assert.Single(after.Accounts).Id); Assert.Equal(deleted.Version, after.Version);
+        Assert.Equal(50, (await Budget(client)).ReadyToAssign);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/register-views/{mistake}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsJsonAsync($"/api/accounts/{mistake}/delete", new DeleteAccountRequest(Guid.NewGuid(), after.Version))).StatusCode);
+        await using var db = app.CreateDb();
+        Assert.Equal(0, await db.RegisterViews.CountAsync());
+        Assert.Single(await db.LedgerCommands.Where(c => c.Kind == $"account.delete/{mistake}").ToListAsync());
+    }
+
+    [Fact]
+    public async Task Account_delete_is_refused_while_transactions_or_active_schedules_exist_and_writes_nothing()
+    {
+        await using var app = await fixture.CreateAppAsync(); var client = app.CreateClient();
+        var opening = await AddAccount(client, 25, "Opening");
+        var cash = await AddAccount(client, 100);
+        var savings = await AddAccount(client, 0, "Savings");
+        var transfer = await Post<MutationDto>(client, "/api/transfers", new TransferRequest(Guid.NewGuid(), (await Accounts(client)).Version, cash, savings, Date, 30, "Move"));
+        var planned = await AddAccount(client, 0, "Planned");
+        await Post<MutationDto>(client, "/api/schedules", new ScheduleRequest(Guid.NewGuid(), (await Accounts(client)).Version, planned, new(2027, 1, 31), -20, "Bill", "", "groceries", [], "monthly"));
+
+        await using (var db = app.CreateDb())
+        {
+            var before = (await Accounts(client)).Version;
+            var commands = await db.LedgerCommands.CountAsync();
+            foreach (var (id, message) in new[] { (savings, "has transactions"), (planned, "scheduled transactions") })
+            {
+                var refused = await client.PostAsJsonAsync($"/api/accounts/{id}/delete", new DeleteAccountRequest(Guid.NewGuid(), before));
+                Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+                Assert.Contains(message, await refused.Content.ReadAsStringAsync());
+            }
+            Assert.Equal(before, (await Accounts(client)).Version);
+            Assert.Equal(4, (await Accounts(client)).Accounts.Count);
+            Assert.Equal(commands, await db.LedgerCommands.CountAsync());
+            Assert.Equal(4, await db.Transactions.CountAsync());
+            Assert.Single(await db.Schedules.ToListAsync());
+            Assert.False((await Accounts(client)).Accounts.Single(a => a.Id == opening).HasTransactions);
+            Assert.True((await Accounts(client)).Accounts.Single(a => a.Id == savings).HasTransactions);
+        }
+
+        // Once its transfer is deleted and its schedule ended, each account can be deleted; the other transfer leg stays (deleted) in its own account.
+        await Delete(client, transfer.Id);
+        await Post<MutationDto>(client, $"/api/accounts/{savings}/delete", new DeleteAccountRequest(Guid.NewGuid(), (await Accounts(client)).Version));
+        await ScheduleAction(client, Assert.Single((await Schedules(client)).Items), "end");
+        await Post<MutationDto>(client, $"/api/accounts/{planned}/delete", new DeleteAccountRequest(Guid.NewGuid(), (await Accounts(client)).Version));
+        // An account whose only entry is its own opening balance is deletable; the opening entry goes with it.
+        await Post<MutationDto>(client, $"/api/accounts/{opening}/delete", new DeleteAccountRequest(Guid.NewGuid(), (await Accounts(client)).Version));
+        var remaining = await Accounts(client);
+        Assert.Equal(new[] { cash }, remaining.Accounts.Select(a => a.Id).ToArray());
+        Assert.Equal(100, remaining.Accounts.Single(a => a.Id == cash).Balance);
+        await using var verify = app.CreateDb();
+        Assert.Equal(0, await verify.Schedules.CountAsync());
+        Assert.False(await verify.Transactions.AnyAsync(t => t.AccountId == opening)); // its opening entry was removed with it
+        Assert.Equal(0, await verify.ScheduleOccurrences.CountAsync());
+        Assert.True(Assert.Single(await verify.Transactions.Where(t => t.AccountId == cash && t.TransferId != null).ToListAsync()).IsDeleted);
+    }
+
+    [Fact]
+    public async Task Credit_account_delete_removes_its_payment_category_and_payoff_target_unless_money_is_assigned()
+    {
+        await using var app = await fixture.CreateAppAsync(); var client = app.CreateClient();
+        await AddAccount(client, 100);
+        var card = (await Post<MutationDto>(client, "/api/accounts", new CreateAccountRequest(Guid.NewGuid(), (await Accounts(client)).Version, "Mistake card", Date, 0, "creditCard"))).Id;
+        var payment = $"ccp-{card}";
+        Assert.Equal("Mistake card", Category(await Budget(client), payment).Name);
+        await Put<MutationDto>(client, $"/api/accounts/{card}/payoff-target", new SaveCreditPayoffTargetRequest(Guid.NewGuid(), (await Accounts(client)).Version, "monthlyAmount", null, 25));
+        var editable = Editable(await Budget(client));
+        var funded = await Put<BudgetDto>(client, "/api/budget/2026-10", editable with { Groups = editable.Groups.Select(g => g with { Categories = g.Categories.Select(c => c.Id == payment ? c with { Assigned = 10 } : c).ToList() }).ToList() });
+
+        var version = (await Accounts(client)).Version;
+        var refused = await client.PostAsJsonAsync($"/api/accounts/{card}/delete", new DeleteAccountRequest(Guid.NewGuid(), version));
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.Contains("payment category", await refused.Content.ReadAsStringAsync());
+        Assert.Equal(version, (await Accounts(client)).Version);
+        Assert.Equal(10, Category(await Budget(client), payment).Assigned);
+
+        var unfunded = Editable(funded);
+        await Put<BudgetDto>(client, "/api/budget/2026-10", unfunded with { Groups = unfunded.Groups.Select(g => g with { Categories = g.Categories.Select(c => c.Id == payment ? c with { Assigned = 0 } : c).ToList() }).ToList() });
+        var monthVersion = (await Budget(client)).Version;
+        await Post<MutationDto>(client, $"/api/accounts/{card}/delete", new DeleteAccountRequest(Guid.NewGuid(), (await Accounts(client)).Version));
+        var budget = await Budget(client);
+        Assert.DoesNotContain(budget.Groups, g => g.Id == "credit-card-payments");
+        Assert.True(budget.Version > monthVersion);
+        Assert.Equal(100, budget.ReadyToAssign);
+        Assert.Single((await Accounts(client)).Accounts);
+        await using var db = app.CreateDb();
+        Assert.Equal(0, await db.CreditPayoffTargets.CountAsync());
+        Assert.Equal(0, await db.Categories.CountAsync(c => c.Id == payment));
+    }
+
     private static Task<AccountsDto> Accounts(HttpClient client) => Get<AccountsDto>(client, "/api/accounts");
     private static Task<RegisterDto> Register(HttpClient client, string query = "") => Get<RegisterDto>(client, "/api/transactions?" + query);
     private static Task<BudgetDto> Budget(HttpClient client) => Get<BudgetDto>(client, "/api/budget/2026-10");

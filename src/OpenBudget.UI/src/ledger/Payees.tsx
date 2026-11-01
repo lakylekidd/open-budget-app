@@ -17,9 +17,9 @@ type Shared = {
   onPendingChange?: (pending: boolean) => void; onShowTransactions?: (payee: SavedPayee) => void;
 };
 
-export function PayeePicker({ value, onChange, accountId, disabled, form, categories, accounts, onChanged, onPendingChange, onShowTransactions, paymentsRequest=0, allowTransfers=true, label='Payee' }: Shared & {
+export function PayeePicker({ value, onChange, accountId, disabled, form, categories, accounts, onChanged, onPendingChange, onShowTransactions, paymentsRequest=0, allowTransfers=true, label='Payee', transferLabel=(a: Account) => 'Transfer to ' + a.name }: Shared & {
   value: string; onChange: (name: string, transferId?: string, categoryId?: string | null) => void;
-  accountId: string; disabled?: boolean; form: string;paymentsRequest?:number;allowTransfers?:boolean;label?:string;
+  accountId: string; disabled?: boolean; form: string;paymentsRequest?:number;allowTransfers?:boolean;label?:string;transferLabel?:(account: Account) => string;
 }) {
   const [open, setOpen] = useState(false); const [manage, setManage] = useState(false);
   const [paymentsOnly,setPaymentsOnly]=useState(false);
@@ -48,11 +48,11 @@ export function PayeePicker({ value, onChange, accountId, disabled, form, catego
     return () => { document.removeEventListener('mousedown', close); window.removeEventListener('resize', positionPopup); window.removeEventListener('scroll', positionPopup, true); };
   }, [open]);
   const needle = value.trim().toLocaleLowerCase(); const selected = data?.payees.find(p => !p.isHidden && p.name.toLocaleLowerCase() === needle);
-  const transfers = allowTransfers ? accounts.filter(a => paymentsOnly || !needle || ('Transfer to ' + a.name).toLocaleLowerCase().includes(needle)) : [];
+  const transfers = allowTransfers ? accounts.filter(a => paymentsOnly || !needle || transferLabel(a).toLocaleLowerCase().includes(needle)) : [];
   const saved = (data?.payees ?? []).filter(p => !paymentsOnly&&!p.isHidden && (!needle || p.name.toLocaleLowerCase().includes(needle)));
   const options = [
     ...(selected ? [{ key: 'selected', label: selected.name, choose: () => onChange(selected.name, undefined, selected.effectiveCategoryId), disabled: false }] : []),
-    ...transfers.map(a => ({ key: a.id, label: 'Transfer to ' + a.name, choose: () => onChange('Transfer to ' + a.name, a.id), disabled: a.isClosed || a.id === accountId })),
+    ...transfers.map(a => ({ key: a.id, label: transferLabel(a), choose: () => onChange(transferLabel(a), a.id), disabled: a.isClosed || a.id === accountId })),
     ...saved.filter(p => p.id !== selected?.id).map(p => ({ key: p.id, label: p.name, choose: () => onChange(p.name, undefined, p.effectiveCategoryId), disabled: false }))
   ];
   const selectedCount = selected ? 1 : 0;

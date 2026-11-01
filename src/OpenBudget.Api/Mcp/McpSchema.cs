@@ -43,6 +43,12 @@ public static class S
         ["multipleOf"] = 0.01
     };
 
+    /// <summary>A decimal number within bounds without the money precision rule (for example an interest rate); services check precision.</summary>
+    public static JsonObject Decimal(string description, decimal minimum, decimal maximum) => new()
+    {
+        ["type"] = "number", ["description"] = description, ["minimum"] = minimum, ["maximum"] = maximum
+    };
+
     public static JsonObject Array(string description, JsonObject items, int maxItems, int minItems = 0) => new()
     {
         ["type"] = "array", ["description"] = description, ["items"] = items, ["minItems"] = minItems, ["maxItems"] = maxItems
@@ -115,7 +121,10 @@ public static class McpArgumentValidator
                 }
                 if (schema["required"] is JsonArray required)
                     foreach (var name in required.Select(x => x!.GetValue<string>()))
-                        if (!seen.Contains(name)) return $"{path}.{name} is required.";
+                        if (!seen.Contains(name))
+                            return properties[name]?["enum"] is JsonArray values
+                                ? $"{path}.{name} is required; use one of: {string.Join(", ", values.Select(x => x!.GetValue<string>()))}."
+                                : $"{path}.{name} is required.";
                 return null;
             case "array":
                 if (value.ValueKind != JsonValueKind.Array) return $"{path} must be an array.";
@@ -169,5 +178,5 @@ public static class McpArgumentValidator
         }
     }
 
-    private static string Truncate(string name) => name.Length <= 40 ? name : name[..40] + "…";
+    private static string Truncate(string name) => name.Length <= 40 ? name : name[..40] + "â€¦";
 }

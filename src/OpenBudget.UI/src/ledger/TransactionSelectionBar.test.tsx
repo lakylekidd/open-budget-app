@@ -9,7 +9,7 @@ const accounts=[{id:'one',name:'Checking',isClosed:false},{id:'two',name:'Saving
 const entry:Entry={id:'a',accountId:'one',date:'2026-10-21',amount:-12.35,payee:'Cafe',memo:'Lunch',categoryId:'food',categoryName:'Everyday: Food',status:'uncleared',transferId:null,isOpening:false,splits:[],needsAttention:false,runningBalance:87.65,transferAccountName:null,isLocked:false};
 const apply=vi.fn();const clear=vi.fn();
 beforeEach(()=>{apply.mockReset().mockResolvedValue(true);clear.mockReset();});
-function show(entries=[entry],disabled=false,scheduled=false){render(<TransactionSelectionBar entries={entries} accounts={accounts} flags={defaultFlags} disabled={disabled} scheduled={scheduled} onApply={apply} onClear={clear} onRenameFlags={vi.fn()}/>);}
+function show(entries=[entry],disabled=false,scheduled=false){render(<TransactionSelectionBar entries={entries} accounts={accounts} flags={defaultFlags} disabled={disabled} scheduled={scheduled} allScheduled={scheduled} onApply={apply} onClear={clear} onRenameFlags={vi.fn()}/>);}
 async function menu(){await userEvent.click(screen.getByRole('button',{name:'More selected transaction actions'}));return screen.getByRole('menu',{name:'Selected transaction actions'});}
 
 it('shows the count, clear, flag and More controls with the reference menu options',async()=>{
@@ -37,6 +37,10 @@ it('flags the whole selection with the existing named flag picker',async()=>{
 });
 it('keeps destructive actions disabled for opening balances, transfers and scheduled forecasts',async()=>{
   show([{...entry,isOpening:true,transferId:'pair'}]);await menu();for(const name of [/Duplicate/,/Make Repeating/,/Move to Account/])expect(screen.getByRole('menuitem',{name})).toBeDisabled();
+});
+it('allows deleting scheduled transactions while other actions stay disabled',async()=>{
+  show([entry],false,true);await menu();expect(screen.getByRole('menuitem',{name:/Duplicate/})).toBeDisabled();expect(screen.getByRole('menuitem',{name:/Delete/})).toBeEnabled();
+  await userEvent.click(screen.getByRole('menuitem',{name:/Delete/}));expect(screen.getByText(/stop repeating/)).toBeInTheDocument();await userEvent.click(screen.getByRole('button',{name:'Delete'}));expect(apply).toHaveBeenCalledWith({action:'delete'});
 });
 it('supports menu keyboard navigation and shortcuts without hijacking memo input',async()=>{
   show();await menu();await userEvent.keyboard('{Home}');expect(screen.getByRole('menuitem',{name:/Mark as Cleared/})).toHaveFocus();await userEvent.keyboard('{ArrowDown}');expect(screen.getByRole('menuitem',{name:/Duplicate/})).toHaveFocus();await userEvent.keyboard('{Escape}');expect(screen.queryByRole('menu')).not.toBeInTheDocument();expect(screen.getByRole('button',{name:'More selected transaction actions'})).toHaveFocus();await userEvent.keyboard('C');expect(apply).toHaveBeenCalledWith({action:'status',status:'cleared'});apply.mockClear();await menu();await userEvent.click(screen.getByRole('menuitem',{name:/Memo/}));await userEvent.type(screen.getByRole('textbox'),'C');expect(apply).not.toHaveBeenCalled();

@@ -13,8 +13,8 @@ export type LoanTerms = { interestRate: number; minimumPayment: number; escrowAm
 export type BalancePoint = { month: string; balance: number };
 export type LoanProjection = { monthlyPayment: number; paymentsRemaining: number | null; payoffMonth: string | null; interestRemaining: number;
   principalRemaining: number; remainingToPay: number; neverPaidOff: boolean; track: BalancePoint[] };
-export type LoanActivityItem = { id: string; date: string; amount: number; kind: 'payment' | 'draw' | 'opening' | 'transaction'; description: string; accountName: string | null };
-export type LoanActivityMonth = { month: string; endBalance: number; estimatedInterest: number; payments: LoanActivityItem[]; other: LoanActivityItem[] };
+export type LoanActivityItem = { id: string; date: string; amount: number; kind: 'payment' | 'draw' | 'opening' | 'transaction' | 'interest'; description: string; accountName: string | null; accountId?: string | null };
+export type LoanActivityMonth = { month: string; endBalance: number; estimatedInterest: number; payments: LoanActivityItem[]; other: LoanActivityItem[]; interest?: LoanActivityItem | null };
 export type PairedCategory = { id: string; name: string; groupName: string; available: number; isArchived: boolean; isAutomatic: boolean;
   targetKind: string | null; targetMoreNeeded: number | null };
 export type ContractScheduleItem = { number: number; dueDate: string; service: number; device: number; total: number; isDiscounted: boolean; isPast: boolean };

@@ -6,7 +6,6 @@ namespace OpenBudget.Api.Mcp;
 
 public static partial class McpToolCatalog
 {
-    private static readonly string[] AccountTypes = ["checking", "savings", "cash", "creditCard", "lineOfCredit"];
     private static readonly string[] FlagColors = ["red", "orange", "yellow", "green", "blue", "purple"];
 
     private static JsonObject SplitSchema() => Obj("A split line.",
@@ -52,36 +51,62 @@ public static partial class McpToolCatalog
                 return Done(response, $"{Count(response.Body, "accounts")} account(s); ledger version {Number(response.Body, "version")}.");
             });
 
-        yield return Tool("accounts_create", "Create account", "Creates a cash or credit account with an optional opening balance.",
+        yield return Tool("accounts_create", "Create account",
+            "Creates an account of any type the web app offers. " + AccountTypeHelp + " " +
+            "Cash and credit accounts take an optional openingBalance (credit debt is negative). Loan types never take openingBalance: pass 'loan' with balanceOwed, " +
+            "interestRate and minimumPayment (contract: loan.contract instead), optionally pairing a Plan category. An unknown or missing accountType is rejected; nothing is defaulted.",
             McpPermissions.AdminOnly, Effect.Write,
-            Obj(R("name", Str("Account name.", 120, 1)), R("accountType", Enum("Account type.", AccountTypes)),
-                R("date", Date("Opening balance date YYYY-MM-DD.")), O("openingBalance", Money("Opening balance (negative for credit debt). Default 0.")), LedgerVersionArg, CommandIdArg),
-            c => LedgerWriteAsync(c, version => c.Send("POST", "/api/accounts", new
+            Obj(R("name", Str("Account name.", 120, 1)), R("accountType", Enum("Account type. " + AccountTypeHelp, AccountTypes)),
+                R("date", Date("Opening balance date YYYY-MM-DD (for loans, normally today).")),
+                O("openingBalance", Money("Cash/credit accounts only: opening balance (negative for credit debt). Default 0.")),
+                O("loan", LoanSchema(create: true)), LedgerVersionArg, CommandIdArg),
+            async c =>
             {
-                commandId = c.CommandId(), version, name = c.Str("name"), date = c.Str("date"), openingBalance = c.OptMoney("openingBalance") ?? 0m, accountType = c.Str("accountType")
-            }), "Account created."));
+                var type = c.Str("accountType");
+                if (ValidateAccountTypeArguments(type, c.Element("loan"), create: true, hasOpeningBalance: c.Has("openingBalance")) is { } error) return McpToolOutcome.Invalid(error);
+                return await LedgerWriteAsync(c, version => c.Send("POST", "/api/accounts", new
+                {
+                    commandId = c.CommandId(), version, name = c.Str("name"), date = c.Str("date"), openingBalance = OpeningBalanceFor(c, type), accountType = type,
+                    loan = LoanTermsBody(c.Element("loan"))
+                }), $"Account created as {type}.");
+            });
 
         yield return Tool("accounts_update", "Update account",
-            "Updates an account: rename, close/reopen, change type within cash or credit, favorite, notes, or adjust the working balance (creates an adjustment transaction). Omitted fields keep their current values.",
+            "Updates an account: rename, close/reopen, change type within its family (cash, credit or loan; contracts stay contracts), favorite, notes, " +
+            "adjust the working balance (creates an adjustment transaction) or, for loan types, replace the loan terms and pairing ('loan'). Omitted fields keep their current values. " + AccountTypeHelp,
             McpPermissions.AdminOnly, Effect.Write,
             Obj(R("accountId", Uuid("Account ID.")), O("name", Str("New name.", 120, 1)), O("isClosed", Bool("Close (true) or reopen (false). Closing requires a zero balance.")),
-                O("accountType", Enum("New type (cannot switch between cash and credit).", AccountTypes)), O("isFavorite", Bool("Favorite flag.")),
-                O("notes", Str("Account notes.", 1000)), O("workingBalance", Money("Target working balance; the difference is recorded as an adjustment.")), LedgerVersionArg, CommandIdArg),
+                O("accountType", Enum("New type within the same family (cash, credit, tracking or loan).", AccountTypes)), O("isFavorite", Bool("Favorite flag.")),
+                O("notes", Str("Account notes.", 1000)), O("workingBalance", Money("Target working balance; the difference is recorded as an adjustment.")),
+                O("loan", LoanSchema(create: false)), LedgerVersionArg, CommandIdArg),
             async c =>
             {
                 var accounts = await c.Get("/api/accounts");
                 if (!accounts.IsSuccess || accounts.Body is not { } body) return Done(accounts, "");
                 var account = body.GetProperty("accounts").EnumerateArray().FirstOrDefault(x => x.GetProperty("id").GetGuid() == c.Guid("accountId"));
                 if (account.ValueKind != JsonValueKind.Object) return McpToolOutcome.NotFound("Account not found.");
+                var type = c.OptStr("accountType") ?? account.GetProperty("accountType").GetString()!;
+                if (ValidateAccountTypeArguments(type, c.Element("loan"), create: false, hasOpeningBalance: false) is { } error) return McpToolOutcome.Invalid(error);
                 var version = c.OptLong("version") ?? body.GetProperty("version").GetInt64();
                 var response = await c.Send("PUT", "/api/accounts/{id}", new
                 {
                     commandId = c.CommandId(), version, name = c.OptStr("name") ?? account.GetProperty("name").GetString(),
                     isClosed = c.OptBool("isClosed") ?? account.GetProperty("isClosed").GetBoolean(), accountType = c.OptStr("accountType"),
-                    isFavorite = c.OptBool("isFavorite"), notes = c.OptStr("notes"), workingBalance = c.OptMoney("workingBalance")
+                    isFavorite = c.OptBool("isFavorite"), notes = c.OptStr("notes"), workingBalance = c.OptMoney("workingBalance"), loan = LoanTermsBody(c.Element("loan"))
                 }, Route.Of(("id", c.Str("accountId"))));
                 return Done(response, $"Account updated. Ledger version is now {Number(response.Body, "version")}.");
             });
+
+        yield return Tool("accounts_reorder", "Reorder accounts",
+            "Sets the budget's account order. accountIds must list every account from accounts_list (open and closed) exactly once, first to last.",
+            McpPermissions.AdminOnly, Effect.Write,
+            Obj(R("accountIds", Array("Every account ID in the new order.", Uuid("Account ID."), 1000, 1)), LedgerVersionArg, CommandIdArg),
+            c => LedgerWriteAsync(c, version => c.Send("PUT", "/api/accounts/order", new { commandId = c.CommandId(), version, accountIds = c.Element("accountIds") }), "Accounts reordered."));
+        yield return Tool("accounts_delete", "Delete account",
+            "Permanently deletes an account created by mistake. Refused while it has any transactions (including an opening balance), active scheduled transactions or money in its payment category.",
+            McpPermissions.AdminOnly, Effect.Destructive, Obj(R("accountId", Uuid("Account ID.")), LedgerVersionArg, CommandIdArg),
+            c => LedgerWriteAsync(c, version => c.Send("POST", "/api/accounts/{id}/delete", new { commandId = c.CommandId(), version },
+                Route.Of(("id", c.Str("accountId")))), "Account deleted."));
 
         yield return Tool("accounts_credit_summary", "Credit account monthly summary",
             "Reads a credit account's monthly summary: prior balance, spending, interest, payments and current balance.",
@@ -175,22 +200,22 @@ public static partial class McpToolCatalog
             McpPermissions.AdminOnly, Effect.Write,
             Obj(R("fromAccountId", Uuid("Source account.")), R("toAccountId", Uuid("Destination account.")), R("date", Date("Transfer date YYYY-MM-DD.")),
                 R("amount", Money("Positive amount.", 0.01m)), O("memo", Str("Memo.", 1000)), O("repeat", Enum("Also schedule repeats. Default never.", RecurrenceRules.Repeats)),
-                LedgerVersionArg, CommandIdArg),
+                O("categoryId", Id("Category for the budget side. Required between a tracking account and a budget account; optional on a cash account paying a loan (replaces the loan's paired category); not used otherwise.")), LedgerVersionArg, CommandIdArg),
             c => LedgerWriteAsync(c, version => c.Send("POST", "/api/transfers", new
             {
                 commandId = c.CommandId(), version, fromAccountId = c.Guid("fromAccountId"), toAccountId = c.Guid("toAccountId"), date = c.Str("date"),
-                amount = c.Money("amount"), memo = c.OptStr("memo"), repeat = c.OptStr("repeat") ?? "never"
+                amount = c.Money("amount"), memo = c.OptStr("memo"), repeat = c.OptStr("repeat") ?? "never", categoryId = c.OptStr("categoryId")
             }), "Transfer created."));
 
         yield return Tool("transfers_update", "Update transfer", "Replaces a transfer pair's accounts, date, amount and memo. Pass the ID of either transfer leg.",
             McpPermissions.AdminOnly, Effect.Write,
             Obj(R("transactionId", Uuid("ID of either transfer leg.")), R("fromAccountId", Uuid("Source account.")), R("toAccountId", Uuid("Destination account.")),
                 R("date", Date("Transfer date YYYY-MM-DD.")), R("amount", Money("Positive amount.", 0.01m)), O("memo", Str("Memo.", 1000)),
-                O("confirmReconciledEdit", Bool("Allow editing reconciled legs.")), LedgerVersionArg, CommandIdArg),
+                O("confirmReconciledEdit", Bool("Allow editing reconciled legs.")), O("categoryId", Id("Category for the budget side. Required between a tracking account and a budget account; optional on a cash account paying a loan (replaces the loan's paired category); not used otherwise.")), LedgerVersionArg, CommandIdArg),
             c => LedgerWriteAsync(c, version => c.Send("PUT", "/api/transfers/{id}", new
             {
                 commandId = c.CommandId(), version, fromAccountId = c.Guid("fromAccountId"), toAccountId = c.Guid("toAccountId"), date = c.Str("date"),
-                amount = c.Money("amount"), memo = c.OptStr("memo"), repeat = "never", confirmReconciledEdit = c.Bool("confirmReconciledEdit")
+                amount = c.Money("amount"), memo = c.OptStr("memo"), repeat = "never", confirmReconciledEdit = c.Bool("confirmReconciledEdit"), categoryId = c.OptStr("categoryId")
             }, Route.Of(("id", c.Str("transactionId")))), "Transfer updated."));
 
         yield return Tool("ledger_audit_list", "Ledger audit history",

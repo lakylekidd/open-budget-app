@@ -29,7 +29,7 @@ public static class LoanRules
 
     public static bool IsLoan(string? accountType) => accountType is not null && LoanTypes.Contains(accountType);
     public static bool IsContract(string? accountType) => accountType == Contract;
-    public static string Family(string accountType) => IsLoan(accountType) ? "loan" : CreditCardRules.IsCredit(accountType) ? "credit" : "cash";
+    public static string Family(string accountType) => IsLoan(accountType) ? "loan" : CreditCardRules.IsCredit(accountType) ? "credit" : LedgerRules.IsTracking(accountType) ? "tracking" : "cash";
     public static string AutoCategoryId(Guid accountId) => CategoryPrefix + accountId.ToString("D");
     public static bool IsRate(decimal rate) => rate is >= 0 and <= 100 && decimal.Round(rate, 3) == rate;
 
@@ -266,6 +266,8 @@ public static class LoanRules
                 if (!loanPairs.TryGetValue(leg.AccountId, out var pairing)) continue;
                 var other = pair.Single(t => t.Id != leg.Id);
                 if (loanPairs.ContainsKey(other.AccountId)) continue;
+                // A payment the user categorized explicitly is spending from that category (counted by the ledger activity), not the paired one.
+                if (other.CategoryId is not null) continue;
                 if (pairing.SeparateDevice && pairing.Contract is { IncludesDevice: true } contract)
                 {
                     var (service, device) = SplitContractPayment(leg.Amount, contract, leg.Date);

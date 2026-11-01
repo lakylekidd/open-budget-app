@@ -24,6 +24,7 @@
 .agent-tokens button:disabled{opacity:.55;cursor:wait}
 .agent-tokens .agent-token-primary{justify-self:start;background:#5c54ff;border-color:#5c54ff;font-weight:700}
 .agent-tokens .agent-token-danger{background:#3a1622;border-color:#7a2c40;color:#ffb3c1}
+.agent-token-warning{margin:0;padding:8px 10px;border:1px solid #7a5a1f;border-radius:6px;background:#2e2412;color:#ffd58a;font-size:12px;line-height:1.45}
 .agent-token-error{margin:0;padding:8px 10px;border-radius:6px;background:#3a1622;color:#ffb3c1;font-size:12px}
 .agent-token-created{display:grid;gap:8px;padding:12px;border:1px solid #5c54ff;border-radius:8px;background:#1b1c45}
 .agent-token-created code{display:block;padding:8px;border-radius:6px;background:#0c0d22;word-break:break-all;user-select:all}
