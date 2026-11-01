@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { loadCategoryBudget, parseMoney } from './api';
+import { budgetMonthPath, loadCategoryBudget, parseMoney } from './api';
 
 afterEach(()=>vi.unstubAllGlobals());
 it('loads group names and available balances from the requested transaction month including archive status',async()=>{
@@ -13,5 +13,16 @@ describe('money input', () => {
   });
   it.each(['', 'abc', '1.001', '1e3', '1.2.3', '1000000000', '--2'])('rejects %s without silently coercing it', value => {
     expect(parseMoney(value)).toBeNull();
+  });
+});
+
+describe('budgetMonthPath', () => {
+  afterEach(() => { document.cookie = 'openbudget.activeBudgetId=; Path=/; Max-Age=0'; });
+  it('uses the active budget so category pickers never read the default budget', () => {
+    document.cookie = 'openbudget.activeBudgetId=my-budget; Path=/';
+    expect(budgetMonthPath('2026-11')).toBe('/api/budgets/my-budget/months/2026-11');
+  });
+  it('falls back to the legacy route when no budget is selected', () => {
+    expect(budgetMonthPath('2026-11')).toBe('/api/budget/2026-11');
   });
 });
