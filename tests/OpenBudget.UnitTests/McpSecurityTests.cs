@@ -245,7 +245,7 @@ public class McpArgumentValidatorTests
     [Fact]
     public void Account_tools_expose_every_account_type_the_web_app_offers()
     {
-        string[] webAppTypes = ["checking", "savings", "cash", "creditCard", "lineOfCredit", "mortgage", "autoLoan", "studentLoan", "personalLoan", "medicalDebt", "otherDebt", "contract"];
+        string[] webAppTypes = ["checking", "savings", "cash", "creditCard", "lineOfCredit", "mortgage", "autoLoan", "studentLoan", "personalLoan", "medicalDebt", "otherDebt", "contract", "trackingAsset", "trackingLiability"];
         foreach (var name in new[] { "accounts_create", "accounts_update" })
         {
             var properties = McpToolCatalog.Find(name)!.InputSchema["properties"]!.AsObject();

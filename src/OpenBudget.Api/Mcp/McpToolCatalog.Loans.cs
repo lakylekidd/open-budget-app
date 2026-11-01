@@ -9,11 +9,12 @@ namespace OpenBudget.Api.Mcp;
 public static partial class McpToolCatalog
 {
     private static readonly string[] CashAccountTypes = ["checking", "savings", "cash"];
-    private static readonly string[] AccountTypes = [.. CashAccountTypes, .. CreditCardRules.CreditTypes, .. LoanRules.LoanTypes];
+    private static readonly string[] AccountTypes = [.. CashAccountTypes, .. CreditCardRules.CreditTypes, .. LoanRules.LoanTypes, .. LedgerRules.TrackingTypes];
 
     private static readonly string AccountTypeHelp =
         $"Cash: {string.Join(", ", CashAccountTypes)}. Credit: {string.Join(", ", CreditCardRules.CreditTypes)}. " +
-        $"Mortgages and loans (require 'loan'): {string.Join(", ", LoanRules.LoanTypes)}.";
+        $"Mortgages and loans (require 'loan'): {string.Join(", ", LoanRules.LoanTypes)}. " +
+        $"Tracking (outside the budget, no categories): {string.Join(", ", LedgerRules.TrackingTypes)}.";
 
     private static JsonObject NewPairedCategorySchema(string description) => Obj(description,
         R("name", Str("New category name.", LoanRules.MaxCategoryNameLength, 1)),

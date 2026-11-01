@@ -147,8 +147,8 @@ Every tool:
 | `transactions_set_flag` | Flag transaction | — | — | ✓ | write |
 | `transaction_images_list` | List a transaction's receipt images (metadata only) | ✓ | — | ✓ | read-only |
 | `transaction_images_delete` | Delete a receipt image | — | — | ✓ | destructive (confirm) |
-| `transfers_create` | Create transfer | — | — | ✓ | write |
-| `transfers_update` | Update transfer | — | — | ✓ | write |
+| `transfers_create` | Create transfer (optional `categoryId`: required between a tracking and a budget account, optional on a cash→loan payment) | — | — | ✓ | write |
+| `transfers_update` | Update transfer (same optional `categoryId`) | — | — | ✓ | write |
 | `ledger_audit_list` | Ledger audit history | ✓ | — | ✓ | read-only |
 | `payees_list` | List payees | ✓ | — | ✓ | read-only |
 | `payees_save` | Update payees | — | — | ✓ | write; destructive options need confirm |

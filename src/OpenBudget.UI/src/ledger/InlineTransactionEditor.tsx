@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { MoneyInput } from '../MoneyInput';
 import { createPortal } from 'react-dom';
-import { type Account, type CategoryOption, type Entry, type Split, loadCategoryBudget, parseMoney, today, isCreditAccount, isLoanAccount } from './api';
+import { type Account, type CategoryOption, type Entry, type Split, loadCategoryBudget, parseMoney, today, isCreditAccount, isLoanAccount, isTrackingAccount } from './api';
 import { type ViewOptions } from './ViewOptions';
 import { ClearedSymbol, RegisterIcon } from './AccountRegister';
 import { TransactionDatePicker } from './TransactionDatePicker';
@@ -19,8 +19,7 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
 }) {
   const formId=useId(); const [date,setDate]=useState(entry?.date??today());const [dateValid,setDateValid]=useState(true);const [repeat,setRepeat]=useState(initialRepeat);
   const [accountId,setAccountId]=useState(entry?.accountId??(selectedAccount||accounts.find(a=>!a.isClosed)?.id||''));
-  const initialTransfer=entry?.transferId?`${entry.amount<0?'Transfer to':'Transfer from'} ${accounts.find(a=>a.id===transferAccountId)?.name??entry.transferAccountName??''}`:entry?.payee??'';
-  const [payee,setPayee]=useState(initialTransfer);const [chosenTransfer,setChosenTransfer]=useState(transferAccountId);const [memo,setMemo]=useState(entry?.memo??'');const [categoryId,setCategory]=useState(entry?.categoryId??(entry&&entry.amount>0&&!entry.transferId&&!entry.isOpening&&!entry.splits.length?inflowCategoryId:''));
+  const [payee,setPayee]=useState(entry?.transferId?'':entry?.payee??'');const [chosenTransfer,setChosenTransfer]=useState(transferAccountId);const [memo,setMemo]=useState(entry?.memo??'');const [categoryId,setCategory]=useState(entry?.categoryId??(entry&&entry.amount>0&&!entry.transferId&&!entry.isOpening&&!entry.splits.length?inflowCategoryId:''));
   const [outflow,setOutflow]=useState(entry&&entry.amount<0?Math.abs(entry.amount).toFixed(2):'');const [inflow,setInflow]=useState(entry&&entry.amount>0?entry.amount.toFixed(2):'');
   const [status,setStatus]=useState(entry?.status==='cleared'||entry?.status==='reconciled'?'cleared':'uncleared');
   const [splits,setSplits]=useState<DraftSplit[]>((entry?.splits??[]).map(s=>({categoryId:s.categoryId,payee:s.payee??'',memo:s.memo??'',outflow:s.amount<0?Math.abs(s.amount).toFixed(2):'',inflow:s.amount>0?s.amount.toFixed(2):''})));const [categories,setCategories]=useState<CategoryOption[]>([]);
@@ -28,6 +27,17 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
   const [categoryState,setCategoryState]=useState('loading');const [error,setError]=useState('');const [confirmed,setConfirmed]=useState(false);const [onlyOnce,setOnlyOnce]=useState(false);
   useEffect(()=>{const controller=new AbortController();setCategoryState('loading');loadCategoryBudget(date,controller.signal).then(data=>{if(controller.signal.aborted)return;setCategories(data.categories);setReadyToAssign(data.readyToAssign);setCategoryState('ready');}).catch(err=>{if(err.name!=='AbortError')setCategoryState('error');});return()=>controller.abort();},[date,categoryRefresh]);
   const transfer=accounts.find(a=>a.id!==accountId&&a.id===chosenTransfer);
+  // Transfer rules: a cash account paying a loan/credit account is a "Payment" with the target's category; a tracking account
+  // against a budget account needs a category on the budget side; any other transfer needs none.
+  const own=accounts.find(a=>a.id===accountId);const isDebt=(a?:Account)=>isLoanAccount(a)||isCreditAccount(a);
+  const payingOut=!(inflow.trim()&&!outflow.trim());
+  const tracked=Boolean(transfer)&&isTrackingAccount(own)!==isTrackingAccount(transfer);
+  const paying=Boolean(transfer)&&payingOut&&!tracked&&!isDebt(own)&&isDebt(transfer);
+  const payingLoan=paying&&isLoanAccount(transfer);const payingCredit=paying&&isCreditAccount(transfer);
+  const defaultPaymentCategory=paying?transfer?.paymentCategoryId??'':'';
+  const categoryOverridden=payingLoan&&Boolean(categoryId)&&categoryId!==defaultPaymentCategory;
+  const transferPayee=!transfer?payee:categoryOverridden?'':paying?`Payment: ${transfer.name}`:`${payingOut?'To':'From'} ${transfer.name}`;
+  const shownCategory=splits.length?'__split':paying&&!categoryOverridden?defaultPaymentCategory:categoryId;
   // Wishlist link: new, unscheduled, unsplit, non-transfer, non-loan rows only. Linking fills Memo and Category, never Payee;
   // choosing another category (or splitting) drops the link because a Wishlist purchase must use its bucket's category.
   const [linked,setLinked]=useState<WishlistChoice|null>(null);
@@ -35,7 +45,7 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
   const link=canLink&&linked&&categoryId===linked.bucket.categoryId?linked:null;
   useEffect(()=>{if(linked&&categoryId!==linked.bucket.categoryId)setLinked(null);},[categoryId,linked]);
   function linkItem(next:WishlistChoice){const fill=wishlistLinkFill(next);setLinked(next);setMemo(fill.memo);setSplits([]);setCategory(fill.categoryId);setError('');}
-  const columns=9+Number(view.showFlags)+Number(view.showImages)+Number(view.showRunningBalance);
+  const columns=9-Number(isTrackingAccount(own))+Number(view.showFlags)+Number(view.showImages)+Number(view.showRunningBalance);
   const categoryProps={categories,readyToAssign,loading:categoryState==='loading',error:categoryState==='error',onOpen:()=>setCategoryRefresh(n=>n+1),onRetry:()=>setCategoryRefresh(n=>n+1)};
   function split(){setCategory('');setSplits([{categoryId:'',payee:'',memo:'',outflow:'',inflow:''},{categoryId:'',payee:'',memo:'',outflow:'',inflow:''}]);}
   async function save(another:boolean) {
@@ -44,6 +54,7 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
     if(!dateValid){setError('Enter a valid date as DD-MM-YYYY.');return false;}
     if(out===null||income===null||out<0||income<0||out>0&&income>0||out===0&&income===0&&!entry?.isOpening){setError('Enter one nonzero outflow or inflow with at most two decimal places.');return false;}
     const amount=income-out;const parsed=splits.map(s=>{const splitOut=s.outflow.trim()?parseRegisterMoney(s.outflow):0;const splitIn=s.inflow.trim()?parseRegisterMoney(s.inflow):0;return {categoryId:s.categoryId,payee:s.payee,memo:s.memo,amount:splitIn===null||splitOut===null||splitOut<0||splitIn<0||splitOut>0&&splitIn>0?null:splitIn-splitOut};});
+    if(tracked&&!categoryId){setError('Choose a category for money moving between a tracking account and a budget account.');return false;}
     if(!transfer&&(parsed.some(s=>!s.categoryId||s.amount===null||s.amount===0)||splits.length&&Math.round(parsed.reduce((sum,s)=>sum+(s.amount??0)*100,0))!==Math.round(amount*100))){setError('Split amounts must equal the signed transaction amount. Choose a category and one valid amount for every split.');return false;}
     if(!transfer&&!splits.length&&(!categoryId||categoryId===inflowCategoryId)&&!entry?.isOpening&&isCreditAccount(accounts.find(a=>a.id===accountId))){setError('Credit account transactions require a category.');return false;}
     if(link){
@@ -52,7 +63,7 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
       return onSave({accountId,date,amount:-out,payee,memo,categoryId:link.bucket.categoryId,splits:[],status,repeat:'never',toAccountId:null,confirmReconciledEdit:false,onlyOnce:false,wishlistItemId:link.item.id},another);
     }
     if(requiresConfirmation&&!confirmed){setError('Confirm the reconciled transaction warning before saving.');return false;}
-    return onSave({accountId,date,amount,payee:transfer?'':payee,memo,categoryId:transfer||splits.length||categoryId===inflowCategoryId?null:categoryId||null,splits:transfer?[]:parsed as Split[],status,repeat,toAccountId:transfer?.id??null,confirmReconciledEdit:confirmed,onlyOnce},another);
+    return onSave({accountId,date,amount,payee:transfer?'':payee,memo,categoryId:transfer?(tracked||categoryOverridden?categoryId||null:null):splits.length||categoryId===inflowCategoryId?null:categoryId||null,splits:transfer?[]:parsed as Split[],status,repeat,toAccountId:transfer?.id??null,confirmReconciledEdit:confirmed,onlyOnce},another);
   }
   const splitTotals=splits.reduce((totals,s)=>{const out=s.outflow.trim()?parseRegisterMoney(s.outflow):0;const income=s.inflow.trim()?parseRegisterMoney(s.inflow):0;return {out:totals.out+(out!==null&&out>0?out:0),income:totals.income+(income!==null&&income>0?income:0)};},{out:0,income:0});
   const parentOutflow=outflow.trim()?parseRegisterMoney(outflow):0;const parentInflow=inflow.trim()?parseRegisterMoney(inflow):0;
@@ -60,8 +71,8 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
   return <><tr className="register-inline-row" onKeyDown={e=>{if(e.key==='Escape'&&!busy)onCancel();}} aria-label={entry?'Edit transaction inline':'New transaction'}>
     <td className="register-check-cell"><input type="checkbox" aria-label="Editing transaction" checked readOnly/></td><td/>{view.showFlags&&<td className="register-decoration"><RegisterIcon name="flag" size={15}/></td>}{view.showImages&&<td className="register-decoration"><RegisterIcon name="image" size={15}/></td>}
     <td className="inline-date-cell"><TransactionDatePicker date={date} repeat={repeat} onDate={setDate} onRepeat={setRepeat} initiallyOpen={!entry} disabled={busy} onValid={setDateValid}/></td>
-    <td><PayeePicker paymentsRequest={paymentsRequest} form={formId} value={payee} disabled={busy||entry?.isOpening} accountId={accountId} accounts={accounts} categories={categories} onShowTransactions={onShowPayeeTransactions} onChanged={onPayeesChanged} onPendingChange={onPayeesPending} onChange={(name,id,suggested)=>{setPayee(name);setChosenTransfer(id);if(!categoryId&&!splits.length&&suggested&&categories.some(c=>c.id===suggested&&!c.isArchived))setCategory(suggested);}}/></td>
-    <td><CategoryPicker {...categoryProps} form={formId} value={splits.length?'__split':categoryId} notNeeded={!!transfer||entry?.isOpening} disabled={busy} onChange={id=>{setSplits([]);setCategory(id);}} onSplit={split} onTransfer={()=>setPaymentsRequest(n=>n+1)} onNewCategory={()=>setNewCategoryTarget('main')}/></td>
+    <td><PayeePicker paymentsRequest={paymentsRequest} form={formId} value={transferPayee} disabled={busy||entry?.isOpening||payingLoan||payingCredit} accountId={accountId} accounts={accounts} categories={categories} onShowTransactions={onShowPayeeTransactions} onChanged={onPayeesChanged} onPendingChange={onPayeesPending} onChange={(name,id,suggested)=>{setPayee(name);setChosenTransfer(id);if(id)setCategory('');if(!categoryId&&!splits.length&&suggested&&categories.some(c=>c.id===suggested&&!c.isArchived))setCategory(suggested);}}/></td>
+    <td className="register-category"><CategoryPicker {...categoryProps} form={formId} value={shownCategory} notNeeded={!!transfer&&!tracked&&!paying||entry?.isOpening} disabled={busy||payingCredit} onChange={id=>{setSplits([]);setCategory(id);}} onSplit={split} onTransfer={()=>setPaymentsRequest(n=>n+1)} onNewCategory={()=>setNewCategoryTarget('main')}/></td>
     <td>{canLink&&wishlist?<span className="memo-with-wishlist"><input form={formId} aria-label="Memo" disabled={busy} value={memo} maxLength={1000} placeholder="memo" onChange={e=>setMemo(e.target.value)}/><WishlistLinkButton form={formId} overview={wishlist.overview} linked={link} disabled={busy} onLink={linkItem} onUnlink={()=>setLinked(null)}/></span>
       :<input form={formId} aria-label="Memo" disabled={busy} value={memo} maxLength={1000} placeholder="memo" onChange={e=>setMemo(e.target.value)}/>}</td>
     <td><MoneyInput form={formId} aria-label="Outflow" disabled={busy} value={outflow} placeholder="outflow" onChange={raw => setOutflow(raw)}/></td><td><MoneyInput form={formId} aria-label="Inflow" disabled={busy} value={inflow} placeholder="inflow" onChange={raw => setInflow(raw)}/></td>

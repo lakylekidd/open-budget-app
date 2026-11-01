@@ -214,3 +214,6 @@
 .sidebar .account-section .account-type{padding-right:2px}
 /* Keep 10px between the amounts and the vertical scrollbar: amounts sit 2px inside the content edge, so pad 8px. */
 .sidebar .account-section{padding-right:8px}
+
+/* Tracking accounts sit outside the budget: their registers have no category column. */
+.register-table.hide-category th[aria-label="CATEGORY"],.register-table.hide-category td.register-category,.register-table.hide-category col.register-category-col{display:none}

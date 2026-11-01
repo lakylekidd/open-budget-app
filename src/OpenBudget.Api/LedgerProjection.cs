@@ -16,6 +16,7 @@ public sealed class LedgerProjection(BudgetDbContext db)
         var creditIds = creditAccounts.Select(a => a.Id).ToHashSet();
         var loans = await LoansAsync(budgetId, ct);
         var loanIds = loans.Select(x => x.Account.Id).ToHashSet();
+        var trackingIds = (await db.Accounts.IgnoreQueryFilters().Where(a => a.BudgetId == budgetId && LedgerRules.TrackingTypes.Contains(a.AccountType)).Select(a => a.Id).ToListAsync(ct)).ToHashSet();
         var loanPairs = loans.ToDictionary(x => x.Account.Id, x => new LoanRules.Pairing(x.Terms.PairedCategoryId,
             x.Terms.SeparateDeviceCategory, x.Terms.DevicePairedCategoryId, x.Terms.Contract));
         var autoPaired = loans.Where(x => x.Terms.PairedCategoryId == LoanRules.AutoCategoryId(x.Account.Id))
@@ -30,7 +31,7 @@ public sealed class LedgerProjection(BudgetDbContext db)
             var oldAvailable = month.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.Available);
             var oldCreditOverspending = month.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.CreditOverspending);
             var monthlyEntries = byMonth.GetValueOrDefault(month.Month) ?? [];
-            var activity = LedgerRules.Activity(monthlyEntries);
+            var activity = LedgerRules.Activity(monthlyEntries.Where(t => !trackingIds.Contains(t.AccountId)));
             var changed = rtaDelta != 0;
             if (previous is not null) changed |= BudgetCarryForward.Apply(month, rtaDelta, categoryDeltas, previous);
             changed |= CreditCardRules.EnsurePaymentCategories(month, creditAccounts);
@@ -39,13 +40,13 @@ public sealed class LedgerProjection(BudgetDbContext db)
             var loanFlows = LoanRules.Project(monthlyEntries, loanPairs, monthCategoryIds.Contains);
             // A credit account's starting balance is existing debt, not money to assign. Loan balances (opening debt,
             // interest, fees, corrections) never change Ready to Assign; unpaired loan payments do.
-            var income = monthlyEntries.Where(t => !(t.IsOpening && creditIds.Contains(t.AccountId)) && !loanIds.Contains(t.AccountId)).Sum(LedgerRules.Income)
+            var income = monthlyEntries.Where(t => !(t.IsOpening && creditIds.Contains(t.AccountId)) && !loanIds.Contains(t.AccountId) && !trackingIds.Contains(t.AccountId)).Sum(LedgerRules.Income)
                 + loanFlows.Income;
             changed |= income != month.LedgerIncome;
             month.LedgerIncome = income;
             var categories = month.Groups.SelectMany(g => g.Categories).ToList();
             var byId = categories.ToDictionary(c => c.Id, StringComparer.Ordinal);
-            var cashActivity = LedgerRules.Activity(monthlyEntries.Where(t => !creditIds.Contains(t.AccountId)));
+            var cashActivity = LedgerRules.Activity(monthlyEntries.Where(t => !creditIds.Contains(t.AccountId) && !trackingIds.Contains(t.AccountId)));
             var flows = CreditCardRules.Project(monthlyEntries, creditIds, id => byId.TryGetValue(id, out var c)
                 ? c.OpeningAvailable + c.Assigned + c.LegacyActivity + cashActivity.GetValueOrDefault(id) : 0);
             foreach (var category in categories)

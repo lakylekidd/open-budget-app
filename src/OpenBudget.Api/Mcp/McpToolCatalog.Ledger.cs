@@ -76,7 +76,7 @@ public static partial class McpToolCatalog
             "adjust the working balance (creates an adjustment transaction) or, for loan types, replace the loan terms and pairing ('loan'). Omitted fields keep their current values. " + AccountTypeHelp,
             McpPermissions.AdminOnly, Effect.Write,
             Obj(R("accountId", Uuid("Account ID.")), O("name", Str("New name.", 120, 1)), O("isClosed", Bool("Close (true) or reopen (false). Closing requires a zero balance.")),
-                O("accountType", Enum("New type within the same family (cash, credit or loan).", AccountTypes)), O("isFavorite", Bool("Favorite flag.")),
+                O("accountType", Enum("New type within the same family (cash, credit, tracking or loan).", AccountTypes)), O("isFavorite", Bool("Favorite flag.")),
                 O("notes", Str("Account notes.", 1000)), O("workingBalance", Money("Target working balance; the difference is recorded as an adjustment.")),
                 O("loan", LoanSchema(create: false)), LedgerVersionArg, CommandIdArg),
             async c =>
@@ -200,22 +200,22 @@ public static partial class McpToolCatalog
             McpPermissions.AdminOnly, Effect.Write,
             Obj(R("fromAccountId", Uuid("Source account.")), R("toAccountId", Uuid("Destination account.")), R("date", Date("Transfer date YYYY-MM-DD.")),
                 R("amount", Money("Positive amount.", 0.01m)), O("memo", Str("Memo.", 1000)), O("repeat", Enum("Also schedule repeats. Default never.", RecurrenceRules.Repeats)),
-                LedgerVersionArg, CommandIdArg),
+                O("categoryId", Id("Category for the budget side. Required between a tracking account and a budget account; optional on a cash account paying a loan (replaces the loan's paired category); not used otherwise.")), LedgerVersionArg, CommandIdArg),
             c => LedgerWriteAsync(c, version => c.Send("POST", "/api/transfers", new
             {
                 commandId = c.CommandId(), version, fromAccountId = c.Guid("fromAccountId"), toAccountId = c.Guid("toAccountId"), date = c.Str("date"),
-                amount = c.Money("amount"), memo = c.OptStr("memo"), repeat = c.OptStr("repeat") ?? "never"
+                amount = c.Money("amount"), memo = c.OptStr("memo"), repeat = c.OptStr("repeat") ?? "never", categoryId = c.OptStr("categoryId")
             }), "Transfer created."));
 
         yield return Tool("transfers_update", "Update transfer", "Replaces a transfer pair's accounts, date, amount and memo. Pass the ID of either transfer leg.",
             McpPermissions.AdminOnly, Effect.Write,
             Obj(R("transactionId", Uuid("ID of either transfer leg.")), R("fromAccountId", Uuid("Source account.")), R("toAccountId", Uuid("Destination account.")),
                 R("date", Date("Transfer date YYYY-MM-DD.")), R("amount", Money("Positive amount.", 0.01m)), O("memo", Str("Memo.", 1000)),
-                O("confirmReconciledEdit", Bool("Allow editing reconciled legs.")), LedgerVersionArg, CommandIdArg),
+                O("confirmReconciledEdit", Bool("Allow editing reconciled legs.")), O("categoryId", Id("Category for the budget side. Required between a tracking account and a budget account; optional on a cash account paying a loan (replaces the loan's paired category); not used otherwise.")), LedgerVersionArg, CommandIdArg),
             c => LedgerWriteAsync(c, version => c.Send("PUT", "/api/transfers/{id}", new
             {
                 commandId = c.CommandId(), version, fromAccountId = c.Guid("fromAccountId"), toAccountId = c.Guid("toAccountId"), date = c.Str("date"),
-                amount = c.Money("amount"), memo = c.OptStr("memo"), repeat = "never", confirmReconciledEdit = c.Bool("confirmReconciledEdit")
+                amount = c.Money("amount"), memo = c.OptStr("memo"), repeat = "never", confirmReconciledEdit = c.Bool("confirmReconciledEdit"), categoryId = c.OptStr("categoryId")
             }, Route.Of(("id", c.Str("transactionId")))), "Transfer updated."));
 
         yield return Tool("ledger_audit_list", "Ledger audit history",

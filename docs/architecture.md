@@ -111,6 +111,15 @@ Both Edit Account dialogs (cash/credit and loan) end with the shared `DeleteAcco
 Domain unit tests, disposable-PostgreSQL HTTP integration tests and React workflow tests cover this slice. See [testing](testing.md).
 
 
+Transfer labels are computed by the API (`PaymentPresentation`) for the register and scheduled-transaction lists, so the web app, API and MCP tools show the same text. Rules by destination:
+
+- **Cash ↔ cash:** `To <account>` / `From <account>`; no category (greyed out, "Category not needed").
+- **Cash → loan or contract:** `Payment: <loan>` (payee greyed out) with the loan's paired category. Choosing another category stores it on the cash leg, blanks the payee and spends from that category instead of the paired one; the transfer still reduces the loan.
+- **Cash → credit card or line of credit:** payee `Payment: <card>` with the card's Credit Card Payments category (locked). The credit account page has a **Record Payment** button that opens the same transfer.
+- **Tracking accounts** (`trackingAsset`, `trackingLiability`): outside the budget; their registers have no category column. A transfer between a tracking account and a budget account must carry a category (`categoryId` on the transfer request), stored on the budget-side leg; tracking-to-tracking transfers take none. Tracking accounts never affect Ready to Assign or "needs a category".
+
+Presentation of cash-to-debt payments does not store a category on the legs, so Plan projections are unchanged and existing transfers follow the rule without a migration.
+
 The register reuses `PayeePicker` and `ManagePayees` for grouped account/merchant choices and persisted payee policies, including payees on split entries (where transfer choices are unavailable). Popovers are portals so the scrollable register does not clip them; dialogs contain Escape without closing the surrounding inline draft. In the inline editor, selector chevrons and calendar controls remain clickable but are skipped by Tab, so Tab moves Date → Payee → Category → Memo. Payee and category lists open when their field gains focus, and choosing a calendar day, payee or category moves focus to the next field. Choosing Ready to Assign shows "Inflow: Ready to Assign" and saves no category; input focus does not add a second outline around the field. Payee dialog Undo/Redo is draft-local; committed financial history uses ledger audit/replay.
 
 

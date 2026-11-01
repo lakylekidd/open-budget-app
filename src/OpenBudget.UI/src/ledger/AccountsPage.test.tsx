@@ -462,6 +462,66 @@ it('tabs from the payee field to the next editable field and skips inline dropdo
  expect(screen.getByRole('button',{name:'Choose date and repeat'})).toHaveAttribute('tabindex','-1');
 });
 
+it('deletes a scheduled transaction by ending its schedule after confirmation',async()=>{
+ scheduledItems=[{id:'rule',occurrenceId:'occurrence',repeat:'monthly',startDate:'2036-10-25',isPaused:false,endDate:null,count:null,toAccountId:null,transaction:{...register.items[0],id:'occurrence',date:'2036-10-25',payee:'Employer',memo:'Next salary',amount:2500}}];
+ render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);await ready();await screen.findByRole('button',{name:'Edit Employer 2036-10-25'});
+ await userEvent.click(screen.getByText('Next salary'));await userEvent.click(screen.getByRole('button',{name:'More account actions'}));
+ await userEvent.click(screen.getByRole('button',{name:'Delete selected'}));expect(screen.getByText(/Delete this scheduled transaction/)).toBeInTheDocument();expect(mutations).toHaveLength(0);
+ await userEvent.click(screen.getByRole('button',{name:'Confirm deletion'}));await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0]).toMatchObject({path:'/api/schedules/rule/actions',body:{action:'end',occurrenceId:'occurrence'}});
+});
+
+const carLoan: Account = { id: 'loan', name: 'Car Loan', isClosed: false, balance: -5000, clearedBalance: -5000, unclearedBalance: 0, accountType:'autoLoan', paymentCategoryId:'bills-car', isFavorite:false, connectionStatus:'unlinked', lastReconciledAt:null, needsCategoryCount:0 };
+const card: Account = { id: 'card', name: 'Mastercard', isClosed: false, balance: -20, clearedBalance: 0, unclearedBalance: -20, accountType:'creditCard', paymentCategoryId:'ccp-card', isFavorite:false, connectionStatus:'unlinked', lastReconciledAt:null, needsCategoryCount:0 };
+const investments: Account = { id: 'invest', name: 'Investments', isClosed: false, balance: 0, clearedBalance: 0, unclearedBalance: 0, accountType:'trackingAsset', isFavorite:false, connectionStatus:'unlinked', lastReconciledAt:null, needsCategoryCount:0 };
+
+it('offers Record Payment on credit account pages only and opens a transfer into the card',async()=>{
+ register.accounts.accounts=[checking,savings,card];
+ const page=render(<AccountsPage selectedAccount="card" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);
+ await userEvent.click(await screen.findByRole('button',{name:'Record Payment'}));
+ expect(screen.getByLabelText('To account')).toHaveValue('card');
+ page.unmount();
+ render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);
+ await screen.findByRole('button',{name:'Add Transaction'});expect(screen.queryByRole('button',{name:'Record Payment'})).not.toBeInTheDocument();
+});
+
+it('hides the category column on tracking account registers',async()=>{
+ register.accounts.accounts=[checking,investments];
+ const page=render(<AccountsPage selectedAccount="invest" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);
+ await screen.findByRole('button',{name:'Add Transaction'});await waitFor(()=>expect(screen.getByRole('table',{name:'Transaction register'})).toHaveClass('hide-category'));
+ page.unmount();
+ render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);
+ await screen.findByRole('button',{name:'Add Transaction'});expect(screen.getByRole('table',{name:'Transaction register'})).not.toHaveClass('hide-category');
+});
+
+async function chooseTransfer(name:string){
+ await userEvent.click(screen.getByRole('button',{name:'Add Transaction'}));await userEvent.type(screen.getByRole('textbox',{name:'Outflow'}),'25');
+ const payee=screen.getByRole('combobox',{name:/Payee/});await userEvent.click(payee);await userEvent.type(payee,'Transfer to '+name);
+ await userEvent.click((await screen.findAllByRole('option',{name:'Transfer to '+name})).at(-1)!);
+}
+it('shows Payment: <loan> greyed out with the loans category, and blanks the payee when the category is changed',async()=>{
+ register.accounts.accounts=[checking,carLoan];
+ render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);await ready();
+ await chooseTransfer('Car Loan');
+ const payee=screen.getByRole('combobox',{name:/Payee/});expect(payee).toHaveValue('Payment: Car Loan');expect(payee).toBeDisabled();
+ expect(screen.getByRole('combobox',{name:'Category'})).not.toBeDisabled();
+});
+it('shows Payment: <card> with the cards category locked, and To <account> with a required category for tracking accounts',async()=>{
+ register.accounts.accounts=[checking,card,investments];
+ render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);await ready();
+ await chooseTransfer('Mastercard');
+ expect(screen.getByRole('combobox',{name:/Payee/})).toHaveValue('Payment: Mastercard');expect(screen.getByRole('combobox',{name:'Category'})).toBeDisabled();
+ await userEvent.click(screen.getByRole('button',{name:'Cancel'}));
+ await chooseTransfer('Investments');
+ expect(screen.getByRole('combobox',{name:/Payee/})).toHaveValue('To Investments');expect(screen.getByRole('combobox',{name:'Category'})).not.toBeDisabled();
+ await userEvent.click(screen.getByRole('button',{name:'Save'}));expect(await screen.findByRole('alert')).toHaveTextContent('Choose a category');expect(mutations).toHaveLength(0);
+});
+it('keeps the category not needed between two cash accounts',async()=>{
+ register.accounts.accounts=[checking,savings];
+ render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);await ready();
+ await chooseTransfer('Savings');
+ expect(screen.getByRole('combobox',{name:/Payee/})).toHaveValue('To Savings');expect(screen.getByRole('combobox',{name:'Category'})).toHaveValue('Category not needed');
+});
+
 it('expands scheduled rows, posts Enter Now explicitly, and keeps forecast actions separate',async()=>{
  scheduledItems=[{id:'rule',occurrenceId:'occurrence',repeat:'monthly',startDate:'2036-10-25',isPaused:false,endDate:null,count:null,toAccountId:null,transaction:{...register.items[0],id:'occurrence',date:'2036-10-25',payee:'Employer',memo:'Next salary',amount:2500}}];
  const page=render(<AccountsPage selectedAccount="checking" onSelectAccount={vi.fn()} onChanged={vi.fn()} onMenu={vi.fn()}/>);await ready();await screen.findByRole('button',{name:'Edit Employer 2036-10-25'});
