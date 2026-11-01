@@ -216,6 +216,34 @@ public sealed class LoanApiTests(PostgresFixture fixture) : IClassFixture<Postgr
     }
 
     [Fact]
+    public async Task Recording_interest_replaces_the_estimate_adds_to_the_debt_and_zero_removes_it()
+    {
+        await using var app = await fixture.CreateAppAsync(); var client = app.CreateClient();
+        var created = await Post<MutationDto>(client, "/api/accounts", new CreateAccountRequest(Guid.NewGuid(), await Version(client), "Car Loan", Date, -5_000m, "autoLoan", Mortgage));
+        var month = Date.ToString("yyyy-MM");
+        async Task<LoanDto> Load() => await Get<LoanDto>(client, $"/api/accounts/{created.Id}/loan");
+        Assert.Null((await Load()).Activity[0].Interest);
+
+        await Post<MutationDto>(client, $"/api/accounts/{created.Id}/loan/interest", new LoanInterestRequest(Guid.NewGuid(), await Version(client), month, 4.17m));
+        var recorded = (await Load()).Activity[0];
+        Assert.Equal(-4.17m, recorded.Interest!.Amount);
+        Assert.Equal(-5_004.17m, (await Load()).Balance);
+        Assert.DoesNotContain(recorded.Other, item => item.Kind != "opening");
+
+        await Post<MutationDto>(client, $"/api/accounts/{created.Id}/loan/interest", new LoanInterestRequest(Guid.NewGuid(), await Version(client), month, 5.25m));
+        Assert.Equal(-5_005.25m, (await Load()).Balance);
+
+        await Post<MutationDto>(client, $"/api/accounts/{created.Id}/loan/interest", new LoanInterestRequest(Guid.NewGuid(), await Version(client), month, 0m));
+        Assert.Null((await Load()).Activity[0].Interest);
+        Assert.Equal(-5_000m, (await Load()).Balance);
+
+        var bad = await client.PostAsJsonAsync($"/api/accounts/{created.Id}/loan/interest", new LoanInterestRequest(Guid.NewGuid(), await Version(client), "2026-13", 1m));
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, bad.StatusCode);
+        var negative = await client.PostAsJsonAsync($"/api/accounts/{created.Id}/loan/interest", new LoanInterestRequest(Guid.NewGuid(), await Version(client), month, -1m));
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, negative.StatusCode);
+    }
+
+    [Fact]
     public async Task Simulation_is_read_only_and_solves_payments_and_payoff_dates()
     {
         await using var app = await fixture.CreateAppAsync(); var client = app.CreateClient();

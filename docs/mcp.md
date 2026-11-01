@@ -149,6 +149,7 @@ Every tool:
 | `transaction_images_delete` | Delete a receipt image | — | — | ✓ | destructive (confirm) |
 | `transfers_create` | Create transfer (optional `categoryId`: required between a tracking and a budget account, optional on a cash→loan payment) | — | — | ✓ | write |
 | `transfers_update` | Update transfer (same optional `categoryId`) | — | — | ✓ | write |
+| `loans_record_interest` | Record a month's actual loan interest (0 removes it) | — | — | ✓ | write |
 | `ledger_audit_list` | Ledger audit history | ✓ | — | ✓ | read-only |
 | `payees_list` | List payees | ✓ | — | ✓ | read-only |
 | `payees_save` | Update payees | — | — | ✓ | write; destructive options need confirm |
@@ -227,6 +228,7 @@ Every user-facing capability of the web app and every API endpoint must be reach
 | Loan page: details, projection, activity, contract schedule (→ `/loan`) | `loans_get` |
 | Loan payoff simulator (→ `/loan/simulation`) | `loans_simulate` |
 | Loan "Update Balance" (→ `/loan/balance`) | `loans_confirm_balance` |
+| Loan "Edit Interest" (→ `/loan/interest`) | `loans_record_interest` |
 | Loan category pairing picker (→ `/api/loan-pairings`) | `loans_pairings_list` |
 | Credit card payment details (→ `/credit-summary`, `/credit-activity`) | `accounts_credit_summary`, `accounts_credit_activity` |
 | Credit payoff target (→ `/payoff-target`) | `credit_payoff_target_get`, `credit_payoff_target_save`, `credit_payoff_target_delete` |

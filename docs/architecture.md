@@ -111,6 +111,8 @@ Both Edit Account dialogs (cash/credit and loan) end with the shared `DeleteAcco
 Domain unit tests, disposable-PostgreSQL HTTP integration tests and React workflow tests cover this slice. See [testing](testing.md).
 
 
+Loan and mortgage Account Activity lists each month with its payments, interest and other activity. One payment shows inline (`⇄ €200.00 from Checking on November 1`); several are grouped under an expandable "Payments" row with the total. Rows are editable on hover: payments open **Edit Payment** (amount, from account, date, memo; changes both transfer legs; Delete Payment removes both), "Other Activity" opens **Edit Charge** (amount, date, memo; Delete Charge) and the interest row opens **Edit Interest**, which records the month's actual interest (`POST /api/accounts/{id}/loan/interest`) in place of the estimate; Delete Interest restores the estimate.
+
 Transfer labels are computed by the API (`PaymentPresentation`) for the register and scheduled-transaction lists, so the web app, API and MCP tools show the same text. Rules by destination:
 
 - **Cash ↔ cash:** `To <account>` / `From <account>`; no category (greyed out, "Category not needed").

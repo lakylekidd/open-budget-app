@@ -21,6 +21,8 @@ public sealed record LoanTermsRequest(decimal InterestRate, decimal MinimumPayme
 public sealed record SaveLoanTermsRequest(Guid CommandId, long Version, LoanTermsRequest Terms);
 // Without Balance the current balance is confirmed; with a different Balance an adjustment transaction is recorded too.
 public sealed record LoanBalanceRequest(Guid CommandId, long Version, decimal? Balance = null);
+// Records the month's actual interest charge (positive amount, replacing any earlier one); amount 0 removes it so the estimate shows again.
+public sealed record LoanInterestRequest(Guid CommandId, long Version, string Month, decimal Amount);
 
 public sealed record LoanPairedCategoryDto(string Id, string Name, string GroupName, decimal Available, bool IsArchived, bool IsAutomatic,
     string? TargetKind, decimal? TargetMoreNeeded);
@@ -28,10 +30,10 @@ public sealed record LoanPairedCategoryDto(string Id, string Name, string GroupN
 public sealed record LoanPairingDto(Guid AccountId, string AccountName, string CategoryId, string Slot);
 public sealed record LoanPairingsDto(List<LoanPairingDto> Items);
 public sealed record LoanBalancePointDto(string Month, decimal Balance);
-public sealed record LoanActivityItemDto(Guid Id, DateOnly Date, decimal Amount, string Kind, string Description, string? AccountName);
+public sealed record LoanActivityItemDto(Guid Id, DateOnly Date, decimal Amount, string Kind, string Description, string? AccountName, Guid? AccountId = null);
 // EndBalance is the ledger balance after the month (negative = debt). EstimatedInterest is the interest estimate on the
 // previous month's debt; it is shown as an estimate and never posted.
-public sealed record LoanActivityMonthDto(string Month, decimal EndBalance, decimal EstimatedInterest, List<LoanActivityItemDto> Payments, List<LoanActivityItemDto> Other);
+public sealed record LoanActivityMonthDto(string Month, decimal EndBalance, decimal EstimatedInterest, List<LoanActivityItemDto> Payments, List<LoanActivityItemDto> Other, LoanActivityItemDto? Interest = null);
 public sealed record LoanProjectionDto(decimal MonthlyPayment, int? PaymentsRemaining, string? PayoffMonth, decimal InterestRemaining,
     decimal PrincipalRemaining, decimal RemainingToPay, bool NeverPaidOff, List<LoanBalancePointDto> Track);
 public sealed record ContractScheduleItemDto(int Number, DateOnly DueDate, decimal Service, decimal Device, decimal Total, bool IsDiscounted, bool IsPast);

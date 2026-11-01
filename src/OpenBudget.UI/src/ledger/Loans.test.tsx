@@ -319,6 +319,62 @@ it('renders the loan page with stats, chart, paired category and monthly activit
   expect(within(page).queryByRole('button', { name: 'Try It Now' })).not.toBeInTheDocument();
 });
 
+const openMonth = (month: string) => ({ month, endBalance: -4804.17, estimatedInterest: 4.17, payments: [] as LoanDetails['activity'][number]['payments'], other: [] as LoanDetails['activity'][number]['other'] });
+
+it('shows a single payment inline, groups several payments by month and opens the matching edit dialogs', async () => {
+  const user = userEvent.setup();
+  loan.activity = [{ ...openMonth('2026-11'),
+    payments: [{ id: 'p1', date: '2026-11-01', amount: 200, kind: 'payment', description: 'Rent', accountName: 'ING', accountId: 'checking' }],
+    other: [{ id: 'o1', date: '2026-11-01', amount: -5000, kind: 'opening', description: 'Initial Balance', accountName: null }] }];
+  show();
+  const activity = within(await screen.findByRole('region', { name: 'Account Activity' }));
+  expect(activity.getByText('Payments')).toBeInTheDocument();
+  expect(activity.getByText('Other Activity')).toBeInTheDocument();
+  expect(activity.getByText(/-€5,000.00 Initial Balance on 1 November/)).toBeInTheDocument();
+  expect(activity.getByText('Estimated')).toBeInTheDocument();
+
+  await user.click(activity.getByRole('button', { name: 'Edit charge' }));
+  let dialog = within(screen.getByRole('dialog', { name: 'Edit Charge' }));
+  expect(dialog.getByLabelText('Amount')).toHaveValue('5000.00');
+  await user.clear(dialog.getByLabelText('Amount')); await user.type(dialog.getByLabelText('Amount'), '4900');
+  await user.click(dialog.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(mutations).toHaveLength(1));
+  expect(mutations[0]).toMatchObject({ path: '/api/transactions/o1', method: 'PUT', body: { accountId: 'mortgage', amount: -4900, date: '2026-11-01' } });
+});
+
+it('records, overrides and deletes the monthly interest, and edits or deletes a payment in both accounts', async () => {
+  const user = userEvent.setup();
+  loan.activity = [{ ...openMonth('2026-11'), payments: [
+    { id: 'p1', date: '2026-11-01', amount: 200, kind: 'payment', description: '', accountName: 'ING', accountId: 'checking' },
+    { id: 'p2', date: '2026-11-01', amount: 200, kind: 'payment', description: '', accountName: 'ING', accountId: 'checking' }] }];
+  show();
+  const activity = within(await screen.findByRole('region', { name: 'Account Activity' }));
+  expect(activity.getByText('From ING on 1 November')).toBeInTheDocument();
+  expect(activity.getByText('€400.00')).toBeInTheDocument();
+  expect(activity.queryByLabelText(/Edit payment of/)).not.toBeInTheDocument();
+  await user.click(activity.getByRole('button', { name: 'Payments' }));
+  await user.click(activity.getAllByRole('button', { name: /Edit payment of €200.00/ })[0]);
+  let dialog = within(screen.getByRole('dialog', { name: 'Edit Payment' }));
+  expect(dialog.getByLabelText('Payment Amount')).toHaveValue('200.00');
+  expect(dialog.getByLabelText('From Account')).toHaveValue('checking');
+  await user.click(dialog.getByRole('button', { name: 'Delete Payment' }));
+  await waitFor(() => expect(mutations).toHaveLength(1));
+  expect(mutations[0]).toMatchObject({ path: '/api/transactions/p1/delete', method: 'POST' });
+
+  await user.click(activity.getByRole('button', { name: 'Edit interest' }));
+  dialog = within(screen.getByRole('dialog', { name: 'Edit Interest' }));
+  expect(dialog.getByLabelText('Interest Amount')).toHaveValue('4.17');
+  await user.clear(dialog.getByLabelText('Interest Amount')); await user.type(dialog.getByLabelText('Interest Amount'), '5.25');
+  await user.click(dialog.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(mutations).toHaveLength(2));
+  expect(mutations[1]).toMatchObject({ path: '/api/accounts/mortgage/loan/interest', method: 'POST', body: { month: '2026-11', amount: 5.25 } });
+
+  await user.click(activity.getByRole('button', { name: 'Edit interest' }));
+  await user.click(within(screen.getByRole('dialog', { name: 'Edit Interest' })).getByRole('button', { name: 'Delete Interest' }));
+  await waitFor(() => expect(mutations).toHaveLength(3));
+  expect(mutations[2]).toMatchObject({ path: '/api/accounts/mortgage/loan/interest', body: { month: '2026-11', amount: 0 } });
+});
+
 it('runs the payoff simulator read-only: payment, payoff date, extra and never-paid-off', async () => {
   const user = userEvent.setup();
   show();

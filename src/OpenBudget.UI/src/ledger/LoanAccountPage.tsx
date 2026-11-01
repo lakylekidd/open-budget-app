@@ -3,9 +3,11 @@ import { MoneyInput } from '../MoneyInput';
 import { type Account, accountTypeLabel, formatMoney, parseMoney, requestJson } from './api';
 import { LedgerDialog } from './LedgerDialog';
 import { LoanChart } from './LoanChart';
+import { ActivityList, type ActivityTarget } from './LoanActivityList';
+import { EditChargeDialog, EditInterestDialog, EditPaymentDialog } from './LoanActivityDialogs';
 import { RegisterIcon } from './AccountRegister';
 import './loans.css';
-import { type LoanActivityMonth, type LoanDetails, type LoanSimulation, type PairedCategory, addMonths, dayLabel, durationLabel, monthLabel, monthShortName, percentLabel, shortMonthLabel } from './loans';
+import { type LoanDetails, type LoanSimulation, type PairedCategory, addMonths, durationLabel, monthShortName, percentLabel, shortMonthLabel } from './loans';
 
 type Mutate = (path: string, method: string, fields: object) => Promise<boolean>;
 
@@ -14,8 +16,8 @@ const readDismissed = () => { try { return window.localStorage.getItem(bannerKey
 
 // Loan, mortgage and contract account page (replaces the transaction register for these accounts). All numbers come
 // from GET /api/accounts/{id}/loan; the simulator only reads; balance updates and edits go through the ledger mutate path.
-export function LoanAccountPage({ account, refresh, disabled, onMenu, onEdit, onAddActivity, onMutate, onOpenCategory, onCreateTarget }: {
-  account: Account; refresh: number; disabled: boolean; onMenu: () => void; onEdit: () => void; onAddActivity: () => void;
+export function LoanAccountPage({ account, accounts, refresh, disabled, onMenu, onEdit, onAddActivity, onMutate, onOpenCategory, onCreateTarget }: {
+  account: Account; accounts: Account[]; refresh: number; disabled: boolean; onMenu: () => void; onEdit: () => void; onAddActivity: () => void;
   onMutate: Mutate; onOpenCategory: (categoryId: string) => void; onCreateTarget: (categoryId: string) => void;
 }) {
   const [details, setDetails] = useState<LoanDetails | null>(null);
@@ -26,6 +28,7 @@ export function LoanAccountPage({ account, refresh, disabled, onMenu, onEdit, on
   const [bannerDismissed, setBannerDismissed] = useState(readDismissed);
   const [progressOpen, setProgressOpen] = useState(true);
   const [categoryOpen, setCategoryOpen] = useState(true);
+  const [editing, setEditing] = useState<ActivityTarget | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     setError('');
@@ -78,11 +81,17 @@ export function LoanAccountPage({ account, refresh, disabled, onMenu, onEdit, on
         </div> : <div className="loan-card-body loan-category">{details.pairedCategory ? <PairedCategoryFields category={details.pairedCategory} onOpenCategory={onOpenCategory} onCreateTarget={onCreateTarget} />
           : <p>No category is paired. Payments into this account reduce Ready to Assign. Pair a category from Edit Account.</p>}</div>)}
       </section>
-      <ActivityList months={details.activity} contract={Boolean(contract)} />
+      <ActivityList months={details.activity} contract={Boolean(contract)} editable={!disabled && !account.isClosed} onEdit={setEditing} />
     </div>
     {simulatorOpen && <PayoffSimulator accountId={account.id} details={details} onClose={() => setSimulatorOpen(false)} onCreateTarget={onCreateTarget} />}
     {updateOpen && <UpdateBalanceDialog balance={details.balance} disabled={disabled} onClose={() => setUpdateOpen(false)}
       onSubmit={async fields => { if (await onMutate(`/api/accounts/${account.id}/loan/balance`, 'POST', fields)) { setUpdateOpen(false); setReload(n => n + 1); } }} />}
+    {editing && (() => {
+      const save = async (path: string, method: string, fields: object) => { if (await onMutate(path, method, fields)) { setEditing(null); setReload(n => n + 1); return true; } return false; };
+      if (editing.kind === 'charge') return <EditChargeDialog account={account} item={editing.item} busy={disabled} onClose={() => setEditing(null)} onSave={save} />;
+      if (editing.kind === 'payment') return <EditPaymentDialog account={account} accounts={accounts} item={editing.item} available={details.pairedCategory ? details.pairedCategory.available : null} busy={disabled} onClose={() => setEditing(null)} onSave={save} />;
+      return <EditInterestDialog account={account} month={editing.month.month} monthName={shortMonthLabel(editing.month.month)} estimate={editing.month.estimatedInterest} recorded={editing.month.interest} busy={disabled} onClose={() => setEditing(null)} onSave={save} />;
+    })()}
   </section>;
 }
 
@@ -128,37 +137,6 @@ function ContractSchedule({ contract }: { contract: NonNullable<LoanDetails['con
           <td>{item.number}</td><td>{new Date(`${item.dueDate}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}{item.isDiscounted && <small className="loan-discount-tag">Discount</small>}</td>
           <td>{formatMoney(item.service)}</td>{contract.includesDevice && <td>{formatMoney(item.device)}</td>}<td>{formatMoney(item.total)}</td></tr>)}</tbody>
     </table></div></section>;
-}
-
-function ActivityList({ months, contract }: { months: LoanActivityMonth[]; contract: boolean }) {
-  const currentYear = months[0]?.month.slice(0, 4);
-  const [open, setOpen] = useState<string[]>(() => months.length ? [months[0].month] : []);
-  const [years, setYears] = useState<string[]>([]);
-  const groups = months.reduce<{ year: string; months: LoanActivityMonth[] }[]>((list, month) => {
-    const year = month.month.slice(0, 4);
-    if (list.at(-1)?.year === year) list.at(-1)!.months.push(month); else list.push({ year, months: [month] });
-    return list;
-  }, []);
-  const toggle = (month: string) => setOpen(current => current.includes(month) ? current.filter(m => m !== month) : [...current, month]);
-  return <section className="loan-activity" aria-label="Account Activity"><h2>Account Activity</h2>
-    {groups.map(group => {
-      const expanded = group.year === currentYear || years.includes(group.year);
-      return <div key={group.year}>
-        {group.year !== currentYear && <button className="loan-year-divider" aria-expanded={expanded} onClick={() => setYears(current => expanded ? current.filter(y => y !== group.year) : [...current, group.year])}><span>{group.year}</span><Chevron open={expanded} /></button>}
-        {expanded && group.months.map(month => <article key={month.month} className="loan-month">
-          <button className="loan-month-heading" aria-expanded={open.includes(month.month)} onClick={() => toggle(month.month)}><span>{monthLabel(month.month)}<Chevron open={open.includes(month.month)} /></span><b>{formatMoney(month.endBalance)}</b></button>
-          {open.includes(month.month) && <div className="loan-month-body">
-            {month.payments.length > 0 && <div className="loan-month-row"><span className="loan-check" aria-hidden="true">✓</span><div><strong>Payments</strong>
-              {month.payments.map(item => <small key={item.id}>⇄ {formatMoney(item.amount)} from {item.accountName ?? 'another account'} on {dayLabel(item.date)}</small>)}</div>
-              <b className="positive">{formatMoney(month.payments.reduce((sum, item) => sum + item.amount, 0))}</b></div>}
-            {month.other.map(item => <div key={item.id} className="loan-month-row"><span /><div><strong>{item.kind === 'opening' ? 'Starting Balance' : item.kind === 'draw' ? `Transfer to ${item.accountName ?? 'another account'}` : item.description || 'Loan activity'}</strong><small>{dayLabel(item.date)}</small></div><b>{formatMoney(item.amount)}</b></div>)}
-            {!contract && <div className="loan-month-row"><span /><div><strong>Interest Charges This Month</strong><small>Estimated</small></div><b>{formatMoney(-month.estimatedInterest)}</b></div>}
-            {!month.payments.length && !month.other.length && contract && <p className="loan-help">No activity recorded this month.</p>}
-          </div>}
-        </article>)}
-      </div>;
-    })}
-  </section>;
 }
 
 export function UpdateBalanceDialog({ balance, disabled, onClose, onSubmit }: { balance: number; disabled: boolean; onClose: () => void; onSubmit: (fields: object) => Promise<void> }) {

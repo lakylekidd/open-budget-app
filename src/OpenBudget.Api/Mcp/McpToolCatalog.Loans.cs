@@ -163,6 +163,13 @@ public static partial class McpToolCatalog
             c => LedgerWriteAsync(c, version => c.Send("POST", "/api/accounts/{id}/loan/balance", new { commandId = c.CommandId(), version, balance = c.OptMoney("balance") },
                 Route.Of(("id", c.Str("accountId")))), "Loan balance confirmed."));
 
+        yield return Tool("loans_record_interest", "Record loan interest",
+            "Records the actual interest charge for a month on a loan or mortgage (positive amount; replaces the estimate and any earlier recorded charge, and adds to the debt). Amount 0 removes the recorded charge so the estimate shows again.",
+            McpPermissions.AdminOnly, Effect.Write,
+            Obj(R("accountId", Uuid("Loan or mortgage account ID.")), R("month", Month()), R("amount", Money("Interest charged for the month (positive, 0 removes it).")), LedgerVersionArg, CommandIdArg),
+            c => LedgerWriteAsync(c, version => c.Send("POST", "/api/accounts/{id}/loan/interest", new { commandId = c.CommandId(), version, month = c.Str("month"), amount = c.Money("amount") },
+                Route.Of(("id", c.Str("accountId")))), "Loan interest recorded."));
+
         yield return Tool("accounts_credit_activity", "Credit account monthly activity",
             "Reads a credit card's categorized activity for a month: spending, returns, funded spending, payments and total activity.",
             McpPermissions.Read, Effect.Read, Obj(R("accountId", Uuid("Credit account ID.")), R("month", Month())),

@@ -103,6 +103,32 @@ public sealed partial class LedgerService
             return new Change(id, before, new { balance = balance + difference, terms.BalanceConfirmedAt, adjustment = adjustment is null ? null : ToDto(adjustment) });
         }, ct);
 
+    public const string InterestPayee = "Interest Charge";
+
+    public Task<MutationDto> RecordLoanInterestAsync(Guid id, LoanInterestRequest request, CancellationToken ct) =>
+        ExecuteAsync(request.CommandId, request.Version, $"loan.interest/{id}/{request.Month}", request, async () =>
+        {
+            var account = await OpenAccountAsync(id, ct);
+            if (!LoanRules.IsLoan(account.AccountType) || LoanRules.IsContract(account.AccountType)) throw new LedgerException("Only loan and mortgage accounts record interest charges.");
+            if (!System.Text.RegularExpressions.Regex.IsMatch(request.Month ?? "", @"^\d{4}-(0[1-9]|1[0-2])$")) throw new LedgerException("Month must be YYYY-MM.");
+            if (!LedgerRules.IsMoney(request.Amount) || request.Amount < 0) throw new LedgerException("Interest must be zero or a positive amount with at most two decimal places.");
+            var existing = await db.Transactions.Include(t => t.Payee).Where(t => t.AccountId == id && !t.IsDeleted && !t.IsOpening && t.TransferId == null && t.Payee!.Name == InterestPayee).ToListAsync(ct);
+            existing = existing.Where(t => LoanRules.Month(t.Date) == request.Month).ToList();
+            foreach (var row in existing) EnsureEditable(row);
+            var before = existing.Select(ToDto).ToList();
+            foreach (var row in existing) row.IsDeleted = true;
+            TransactionEntity? added = null;
+            if (request.Amount > 0)
+            {
+                var first = DateOnly.ParseExact(request.Month + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+                var date = Today() is var today && LoanRules.Month(today) == request.Month ? today : first.AddMonths(1).AddDays(-1);
+                await budgets.GetMonthAsync(db.ActiveBudgetId, request.Month, ct);
+                added = new TransactionEntity { Id = Guid.NewGuid(), AccountId = id, Date = date, Amount = -request.Amount, Payee = await GetPayeeAsync(InterestPayee, ct), Memo = "", Status = "cleared" };
+                db.Transactions.Add(added);
+            }
+            return new Change(id, before, new { month = request.Month, interest = added is null ? null : ToDto(added) });
+        }, ct);
+
     private async Task<TransactionEntity> AddBalanceAdjustmentAsync(Guid accountId, decimal difference, string memo, CancellationToken ct)
     {
         var date = Today();
@@ -288,7 +314,7 @@ public sealed partial class LedgerService
     {
         var transferIds = entries.Where(t => t.TransferId is not null).Select(t => t.TransferId!.Value).ToList();
         var counterparts = await db.Transactions.AsNoTracking().Where(t => t.TransferId != null && transferIds.Contains(t.TransferId.Value) && !t.IsDeleted)
-            .Select(t => new { t.Id, t.TransferId, t.Account.Name }).ToListAsync(ct);
+            .Select(t => new { t.Id, t.TransferId, t.AccountId, t.Account.Name }).ToListAsync(ct);
         var ends = MonthEndBalances(entries, currentMonth);
         var result = new List<LoanActivityMonthDto>();
         for (var index = ends.Count - 1; index >= 0; index--)
@@ -299,15 +325,18 @@ public sealed partial class LedgerService
                 + entries.Where(t => string.CompareOrdinal(LoanRules.Month(t.Date), month) < 0).Sum(t => t.Amount) : ends[index - 1].Balance;
             var payments = new List<LoanActivityItemDto>();
             var other = new List<LoanActivityItemDto>();
+            LoanActivityItemDto? interest = null;
             foreach (var entry in entries.Where(t => LoanRules.Month(t.Date) == month).OrderByDescending(t => t.Date).ThenBy(t => t.Id))
             {
-                var counterpart = entry.TransferId is null ? null : counterparts.FirstOrDefault(c => c.TransferId == entry.TransferId && c.Id != entry.Id)?.Name;
-                if (entry.TransferId is not null && entry.Amount > 0) payments.Add(new(entry.Id, entry.Date, entry.Amount, "payment", entry.Memo, counterpart));
+                var other_ = entry.TransferId is null ? null : counterparts.FirstOrDefault(c => c.TransferId == entry.TransferId && c.Id != entry.Id);
+                var counterpart = other_?.Name;
+                if (entry.TransferId is null && !entry.IsOpening && entry.Payee?.Name == InterestPayee) { interest = new(entry.Id, entry.Date, entry.Amount, "interest", entry.Memo, null); continue; }
+                if (entry.TransferId is not null && entry.Amount > 0) payments.Add(new(entry.Id, entry.Date, entry.Amount, "payment", entry.Memo, counterpart, other_?.AccountId));
                 else other.Add(new(entry.Id, entry.Date, entry.Amount,
                     entry.IsOpening ? "opening" : entry.TransferId is not null ? "draw" : "transaction",
-                    entry.IsOpening ? "Starting balance" : entry.Payee?.Name is { Length: > 0 } payee ? payee : entry.Memo, counterpart));
+                    entry.IsOpening ? "Initial Balance" : entry.Payee?.Name is { Length: > 0 } payee ? payee : entry.Memo, counterpart, other_?.AccountId));
             }
-            result.Add(new(month, end, LoanRules.MonthlyInterest(Math.Max(-previous, 0), rate), payments, other));
+            result.Add(new(month, end, LoanRules.MonthlyInterest(Math.Max(-previous, 0), rate), payments, other, interest));
         }
         return result;
     }
