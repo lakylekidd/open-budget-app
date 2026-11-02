@@ -78,3 +78,30 @@ it('calculates arithmetic typed into an amount field', async () => {
   await user.click(screen.getByRole('button', { name: 'Save transaction' }));
   expect(submit).toHaveBeenCalledWith(expect.objectContaining({ amount: -19.75, categoryId: 'food' }));
 });
+
+it('offers the same budget categories for any transaction date and only the month balances differ', async () => {
+  // Categories are budget-wide: every month returns the same groups and categories (archived ones included and hidden).
+  const groups = (available: number) => [{ id: 'daily', name: 'Everyday', categories: [{ id: 'food', name: 'Food', available }, { id: 'pets', name: 'Pets', available: 0 }, { id: 'old', name: 'Old', isArchived: true, available: 0 }] }];
+  const requested: string[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (path: string) => {
+    requested.push(path);
+    if (path === '/api/payees') return new Response(JSON.stringify([]), { status: 200 });
+    return new Response(JSON.stringify({ readyToAssign: 0, groups: groups(path.endsWith('2025-01') ? 5 : 40) }), { status: 200 });
+  }));
+  const user = userEvent.setup();
+  render(<TransactionForm accounts={accounts} selectedAccount="cash" busy={false} onSubmit={vi.fn(async () => {})} />);
+  const names = async () => { await user.click(await screen.findByRole('combobox', { name: 'Category' })); const listbox = await screen.findByRole('listbox', { name: 'Budget categories' }); const result = within(listbox).getAllByRole('option').map(option => option.textContent); await user.keyboard('{Escape}'); return result; };
+  const current = await names();
+  fireDate('2025-01-15');
+  await waitFor(() => expect(requested.some(path => path.endsWith('/2025-01'))).toBe(true));
+  const past = await names();
+  expect(past.map(name => name?.replace(/€.*$/, ''))).toEqual(current.map(name => name?.replace(/€.*$/, '')));
+  expect(past.join(' ')).not.toContain('Old');
+});
+
+function fireDate(value: string) {
+  const input = screen.getByLabelText('Date') as HTMLInputElement;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+  setter.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
