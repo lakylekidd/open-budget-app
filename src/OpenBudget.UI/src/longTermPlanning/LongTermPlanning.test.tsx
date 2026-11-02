@@ -198,23 +198,25 @@ it('colors negative Available red and zero Available white and positive Availabl
   expect(availableLine(container.querySelector('.lt-group-row')!, 'planned')).toHaveClass('lt-available-negative');
 });
 
-it('colors planned expenses orange only when they are above zero', async () => {
+it('colors planned expenses orange only when the row available is below zero', async () => {
   const year = new Date().getFullYear();
   const plan = planFor(year);
-  plan.groups[0].categories[0].months[0].plannedExpenses = 80;
+  const [groceries, transport] = plan.groups[0].categories;
+  groceries.months[0].plannedExpenses = 80; groceries.months[0].plannedAvailable = -20;
+  groceries.months[1].plannedExpenses = 80; groceries.months[1].plannedAvailable = 30;
+  transport.months[0].plannedExpenses = 40; transport.months[0].plannedAvailable = 0;
   plans[year] = plan;
   const { container } = render(<LongTermPlanning />);
   await annualGrid(year);
 
   const categoryRows = Array.from(container.querySelectorAll('.lt-category-row'));
-  const groceries = categoryRows.find(row => row.textContent?.includes('Groceries'))!;
-  const transport = categoryRows.find(row => row.textContent?.includes('Transport'))!;
+  const groceriesRow = categoryRows.find(row => row.textContent?.includes('Groceries'))!;
+  const transportRow = categoryRows.find(row => row.textContent?.includes('Transport'))!;
   const expenseLine = (cell: Element) => cell.querySelector('[data-subrow="planned"] .lt-value-line:nth-child(2)');
 
-  expect(expenseLine(groceries.querySelector('.lt-month-values')!)).toHaveClass('lt-planned-expense-positive');
-  expect(expenseLine(groceries.querySelectorAll('.lt-month-values')[1])).not.toHaveClass('lt-planned-expense-positive');
-  expect(expenseLine(transport.querySelector('.lt-month-values')!)).not.toHaveClass('lt-planned-expense-positive');
-  expect(expenseLine(container.querySelector('.lt-group-row .lt-month-values')!)).toHaveClass('lt-planned-expense-positive');
+  expect(expenseLine(groceriesRow.querySelector('.lt-month-values')!)).toHaveClass('lt-planned-expense-positive');
+  expect(expenseLine(groceriesRow.querySelectorAll('.lt-month-values')[1])).not.toHaveClass('lt-planned-expense-positive');
+  expect(expenseLine(transportRow.querySelector('.lt-month-values')!)).not.toHaveClass('lt-planned-expense-positive');
 });
 
 it('slides group rows shut before removing them and slides them open from zero height', async () => {

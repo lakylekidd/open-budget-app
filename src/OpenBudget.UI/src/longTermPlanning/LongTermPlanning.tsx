@@ -73,11 +73,11 @@ function availableTone(metric: Metric, value: number | null | undefined) {
   return value < 0 ? 'lt-available-negative' : value > 0 ? 'lt-available-positive' : 'lt-available-zero';
 }
 
-// Expenses are orange when there is spending and the row's available is not zero, or when the row's available is negative; otherwise white.
-function expenseTone(metric: Metric, expenses: number | null | undefined, available: number | null | undefined) {
+// Expenses are orange only when the row's available is negative; otherwise white.
+function expenseTone(metric: Metric, available: number | null | undefined) {
   if (metric !== 'plannedExpenses' && metric !== 'actualExpenses') return '';
   const remaining = available ?? 0;
-  return remaining < 0 || ((expenses ?? 0) > 0 && remaining !== 0) ? 'lt-planned-expense-positive' : '';
+  return remaining < 0 ? 'lt-planned-expense-positive' : '';
 }
 
 // Group rows slide open/shut over a duration that grows gently with their height, so big groups don't snap.
@@ -345,7 +345,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
     if (metric === 'plannedExpenses' || metric === 'actualExpenses') {
       const kind = metric === 'plannedExpenses' ? 'plannedExpenses' : 'actualExpenses';
       const label = kind === 'plannedExpenses' ? 'planned' : 'actual';
-      return <div className={`lt-value-line ${kind === 'actualExpenses' ? 'lt-actual-value' : ''} ${expenseTone(metric, value?.[metric], value?.[kind === 'plannedExpenses' ? 'plannedAvailable' : 'actualAvailable'])}`} key={metric}>
+      return <div className={`lt-value-line ${kind === 'actualExpenses' ? 'lt-actual-value' : ''} ${expenseTone(metric, value?.[kind === 'plannedExpenses' ? 'plannedAvailable' : 'actualAvailable'])}`} key={metric}>
         <button type="button" className="lt-activity-value" aria-label={`View ${category.name} ${label} expenses in ${monthName(month.month)} ${year}`}
           onClick={event => void openActivity({ month: month.month, kind, subtitle: `${category.name} · ${label} expenses · ${monthName(month.month)} ${year}`, categoryIds: [category.id], anchor: event.currentTarget })}>
           {metricValue(category, monthIndex, metric)}
@@ -360,7 +360,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
   function renderGroupMetric(group: PlanningGroup, monthIndex: number, metric: Metric) {
     if (metric === 'plannedExpenses') {
       const month = displayedPlan!.months[monthIndex].month;
-      return <div className={`lt-value-line ${expenseTone(metric, total(group, monthIndex, metric), total(group, monthIndex, 'plannedAvailable'))}`} key={metric}><button type="button" className="lt-activity-value"
+      return <div className={`lt-value-line ${expenseTone(metric, total(group, monthIndex, 'plannedAvailable'))}`} key={metric}><button type="button" className="lt-activity-value"
         aria-label={`View ${group.name} planned expenses in ${monthName(month)} ${year}`}
         onClick={event => void openActivity({ month, kind: 'plannedExpenses', subtitle: `Combination (${group.categories.map(category => category.name).join(', ')}) · planned expenses · ${monthName(month)} ${year}`, categoryIds: group.categories.map(category => category.id), anchor: event.currentTarget })}>
         {groupValues(group, monthIndex, metric)}
