@@ -63,7 +63,12 @@ public sealed class LongTermPlanningApiTests(PostgresFixture fixture) : IClassFi
             julyActivity.Scheduled.Single(entry => entry.Amount == -800m).Id);
         using var invalidActivity = await client.GetAsync("/api/long-term-planning/2026/activity/2026-13");
         Assert.Equal(HttpStatusCode.BadRequest, invalidActivity.StatusCode);
-        foreach (var month in new[] { "2026-06", "2026-07" })
+        // A month's expected income is the previous month's scheduled income (paid on the 24th/25th for the next month).
+        // Schedules start on 1 June, so June has no income from May yet.
+        var juneSummary = plan.Months.Single(x => x.Month == "2026-06");
+        Assert.Equal(0m, juneSummary.ExpectedIncome);
+        Assert.Equal(-800m, juneSummary.Remaining);
+        foreach (var month in new[] { "2026-07", "2026-08" })
         {
             var summary = plan.Months.Single(x => x.Month == month);
             Assert.Equal(2500m, summary.ExpectedIncome);
@@ -73,7 +78,8 @@ public sealed class LongTermPlanningApiTests(PostgresFixture fixture) : IClassFi
             Assert.Equal(800m, CategoryMonth(plan, "rent", month).PlannedExpenses);
         }
         plan = await Read<LongTermPlanningDto>(Update(client, 2026, plan, "2026-06", "plannedBudgetOverride", "rent", 900m));
-        Assert.Equal(1600m, plan.Months.Single(x => x.Month == "2026-06").RemainingToBeAssigned);
+        Assert.Equal(-900m, plan.Months.Single(x => x.Month == "2026-06").RemainingToBeAssigned);
+        Assert.Equal(1600m, plan.Months.Single(x => x.Month == "2026-07").RemainingToBeAssigned);
         using var incomeEdit = await Update(client, 2026, plan, "2026-06", "expectedIncome", null, 3000m);
         using var expenseEdit = await Update(client, 2026, plan, "2026-06", "plannedExpenses", "rent", 900m);
         Assert.Equal(HttpStatusCode.BadRequest, incomeEdit.StatusCode);
@@ -129,6 +135,31 @@ public sealed class LongTermPlanningApiTests(PostgresFixture fixture) : IClassFi
         Assert.Equal(650m, CategoryMonth(reloaded, "groceries", "2026-09").PlannedBudget);
         Assert.Equivalent(budgetAfterAssignment, await Get<BudgetDto>(client, "/api/budget/2026-05"), strict: true);
         Assert.NotEqual(budgetBefore.Version, budgetAfterAssignment.Version);
+    }
+
+    [Fact]
+    public async Task Uncovered_expenses_from_the_previous_month_reduce_remaining_to_be_assigned()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        app.Clock.UtcNow = new DateTimeOffset(2026, 5, 15, 12, 0, 0, TimeSpan.Zero);
+        var client = app.CreateClient();
+        await Get<BudgetDto>(client, "/api/budget/2026-05");
+        var accounts = await Get<AccountsDto>(client, "/api/accounts");
+        var account = (await Read<MutationDto>(client.PostAsJsonAsync("/api/accounts",
+            new CreateAccountRequest(Guid.NewGuid(), accounts.Version, "Checking", new DateOnly(2026, 5, 1), 500m)))).Id;
+        accounts = await Get<AccountsDto>(client, "/api/accounts");
+        // Spend 10 in "utilities" with nothing assigned: its actual available is -10 at the end of May.
+        await Read<MutationDto>(client.PostAsJsonAsync("/api/transactions", new TransactionRequest(Guid.NewGuid(), accounts.Version,
+            account, new DateOnly(2026, 5, 10), -10m, "Payee", "Electricity", "utilities", "uncleared", [])));
+        await Get<BudgetDto>(client, "/api/budget/2026-06");
+
+        var plan = await Year(client, 2026);
+
+        Assert.Equal(0m, plan.Months.Single(x => x.Month == "2026-05").UncoveredExpenses);
+        Assert.Equal(10m, plan.Months.Single(x => x.Month == "2026-06").UncoveredExpenses);
+        Assert.Equal(-10m, plan.Months.Single(x => x.Month == "2026-06").RemainingToBeAssigned);
+        // July has no real month yet, so the shortfall does not snowball into projections.
+        Assert.Equal(0m, plan.Months.Single(x => x.Month == "2026-07").UncoveredExpenses);
     }
 
     [Fact]

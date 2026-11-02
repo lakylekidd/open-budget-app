@@ -15,6 +15,7 @@ public sealed record LongTermPlanningMonthDto(
     bool HasExpectedIncome,
     decimal ExpectedExpenses,
     decimal Remaining,
+    decimal UncoveredExpenses,
     decimal RemainingToBeAssigned,
     bool HasActualData);
 

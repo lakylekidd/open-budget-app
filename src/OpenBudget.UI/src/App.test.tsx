@@ -33,7 +33,7 @@ beforeEach(()=>{
     if(path.startsWith('/api/budgets/default/plan-actions')){const kind=new URL(`http://local${path}`).searchParams.get('kind');return response(kind?recentActions.filter(action=>kind==='assigned'?action.kind==='assigned'||action.kind==='removed':action.kind===kind):recentActions);}
     if(path.startsWith('/api/long-term-planning/')){
       const year=Number(path.split('/').at(-1));
-      return response(planningHistory[year]??{year,version:1,hasPlanningData:false,months:Array.from({length:12},(_,index)=>({month:`${year}-${String(index+1).padStart(2,'0')}`,expectedIncome:0,hasExpectedIncome:false,expectedExpenses:0,remaining:0,hasActualData:false})),groups:[]});
+      return response(planningHistory[year]??{year,version:1,hasPlanningData:false,months:Array.from({length:12},(_,index)=>({month:`${year}-${String(index+1).padStart(2,'0')}`,expectedIncome:0,hasExpectedIncome:false,expectedExpenses:0,remaining:0,uncoveredExpenses:0,hasActualData:false})),groups:[]});
     }
     if(path.startsWith('/api/schedules?'))return response({version:1,page:1,pageSize:100,total:scheduleRows.length,items:scheduleRows});
     if(path.startsWith('/api/register-views/'))return response({version:1,datePreset:'all',fromMonth:null,toMonth:null,showReconciled:false,showRunningBalance:false,showFlags:false,showImages:false,showScheduledTransactions:true});
