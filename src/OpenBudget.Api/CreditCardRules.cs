@@ -91,27 +91,26 @@ public static class CreditCardRules
         return new(payments, overspending, cards.ToDictionary(x => x.Key, x => new CardFlow(x.Value.Spending, x.Value.Returns, x.Value.Funded, x.Value.Payments)));
     }
 
-    // Keeps the payment group and one payment category per credit account present and named after the account.
-    public static bool EnsurePaymentCategories(BudgetEntity month, IReadOnlyList<AccountEntity> creditAccounts)
+    // Keeps the budget-wide payment group and one payment category per credit account present and named after the account.
+    public static bool EnsurePaymentCategories(CategoryCatalog catalog, IReadOnlyList<AccountEntity> creditAccounts)
     {
         if (creditAccounts.Count == 0) return false;
         var changed = false;
-        var group = month.Groups.SingleOrDefault(g => g.Id == PaymentGroupId);
+        var group = catalog.FindGroup(PaymentGroupId);
         if (group is null)
         {
-            foreach (var other in month.Groups) other.SortOrder++;
-            group = new CategoryGroupEntity { BudgetId = month.BudgetId, BudgetMonth = month.Month, Id = PaymentGroupId, Name = PaymentGroupName, SortOrder = 0 };
-            month.Groups.Add(group);
+            foreach (var other in catalog.Groups) other.SortOrder++;
+            group = catalog.AddGroup(PaymentGroupId, PaymentGroupName, 0);
             changed = true;
         }
         foreach (var account in creditAccounts)
         {
             var id = PaymentCategoryId(account.Id);
-            var category = month.Groups.SelectMany(g => g.Categories).SingleOrDefault(c => c.Id == id);
+            var category = catalog.Find(id);
             if (category is null)
             {
-                group.Categories.Add(new CategoryEntity { BudgetId = month.BudgetId, BudgetMonth = month.Month, GroupId = group.Id, Id = id,
-                    Name = account.Name, SortOrder = group.Categories.Count == 0 ? 0 : group.Categories.Max(c => c.SortOrder) + 1 });
+                var siblings = catalog.Categories.Where(c => c.GroupId == group.Id).ToList();
+                catalog.AddCategory(id, group.Id, account.Name, siblings.Count == 0 ? 0 : siblings.Max(c => c.SortOrder) + 1);
                 changed = true;
             }
             else if (category.Name != account.Name || category.Icon == LegacyPaymentIcon)

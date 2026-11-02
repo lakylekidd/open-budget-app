@@ -49,20 +49,15 @@ public sealed class LongTermPlanningService(BudgetDbContext db, TimeProvider tim
             .OrderBy(x => x.Month)
             .ThenBy(x => x.CategoryId)
             .ToListAsync(cancellationToken);
-        var latestBudget = await db.Budgets.AsNoTracking()
+        // Category structure is budget-wide; actual values come from each existing month's state (read only, no rows created).
+        var latestBudget = await db.LoadPlanMonthAsync(db.Budgets.AsNoTracking()
             .Where(x => x.BudgetId == db.ActiveBudgetId)
-            .Include(x => x.Groups).ThenInclude(x => x.Categories)
-            .OrderByDescending(x => x.Month)
-            .FirstOrDefaultAsync(cancellationToken);
-        var currentYearBudgets = await db.Budgets.AsNoTracking()
-            .Where(x => x.BudgetId == db.ActiveBudgetId && string.Compare(x.Month, startMonth) >= 0 && string.Compare(x.Month, endMonth) <= 0)
-            .Include(x => x.Groups).ThenInclude(x => x.Categories)
-            .ToListAsync(cancellationToken);
-        var priorBudget = await db.Budgets.AsNoTracking()
+            .OrderByDescending(x => x.Month).Take(1), cancellationToken);
+        var currentYearBudgets = await db.LoadPlanMonthsAsync(db.Budgets.AsNoTracking()
+            .Where(x => x.BudgetId == db.ActiveBudgetId && string.Compare(x.Month, startMonth) >= 0 && string.Compare(x.Month, endMonth) <= 0), cancellationToken);
+        var priorBudget = await db.LoadPlanMonthAsync(db.Budgets.AsNoTracking()
             .Where(x => x.BudgetId == db.ActiveBudgetId && string.Compare(x.Month, startMonth) < 0)
-            .Include(x => x.Groups).ThenInclude(x => x.Categories)
-            .OrderByDescending(x => x.Month)
-            .FirstOrDefaultAsync(cancellationToken);
+            .OrderByDescending(x => x.Month).Take(1), cancellationToken);
 
         var actualBudgets = currentYearBudgets.ToDictionary(x => x.Month, StringComparer.Ordinal);
         var actualMonthExists = actualBudgets.Keys.ToHashSet(StringComparer.Ordinal);
@@ -239,7 +234,7 @@ public sealed class LongTermPlanningService(BudgetDbContext db, TimeProvider tim
         }
         catch (DbUpdateConcurrencyException)
         {
-            db.ChangeTracker.Clear();
+            db.ChangeTracker.Clear(); db.ResetCatalogs();
             return LongTermPlanningUpdateResult.Conflict(await GetYearAsync(year, cancellationToken));
         }
     }
@@ -251,12 +246,11 @@ public sealed class LongTermPlanningService(BudgetDbContext db, TimeProvider tim
     {
         var category = await db.Categories.AsNoTracking()
             .Where(x => x.BudgetId == db.ActiveBudgetId && x.Id == categoryId)
-            .OrderByDescending(x => x.BudgetMonth)
-            .Select(x => new { x.BudgetMonth, x.GroupId, x.IsArchived })
+            .Select(x => new { x.GroupId, x.IsArchived })
             .FirstOrDefaultAsync(cancellationToken);
         return category is not null && !category.IsArchived &&
             await db.CategoryGroups.AsNoTracking().AnyAsync(x =>
-                x.BudgetId == db.ActiveBudgetId && x.BudgetMonth == category.BudgetMonth && x.Id == category.GroupId && !x.IsArchived, cancellationToken);
+                x.BudgetId == db.ActiveBudgetId && x.Id == category.GroupId && !x.IsArchived, cancellationToken);
     }
 
     private static bool IsSupportedYear(int year) => year is >= 1 and <= 9999;

@@ -211,7 +211,7 @@ public static partial class McpToolCatalog
             Obj(R("month", Month()), R("note", Str("Month note (empty clears it).", 1000)), O("version", Int("Expected Plan month version.", 1, long.MaxValue))),
             async c => await EditMonthAsync(c, month => { month["note"] = c.Str("note"); return null; }, $"Updated the {c.Str("month")} note.", []));
 
-        yield return Tool("category_groups_create", "Create category group", "Adds a category group to a Plan month (it carries forward to later months).",
+        yield return Tool("category_groups_create", "Create category group", "Adds a category group to the budget. Groups are budget-wide: it appears in every Plan month, past and future. The month only supplies the version used for optimistic concurrency.",
             McpPermissions.AdminOnly, Effect.Write,
             Obj(R("month", Month()), R("name", Str("Group name.", 120, 1)), O("version", Int("Expected Plan month version.", 1, long.MaxValue))),
             async c =>
@@ -228,7 +228,7 @@ public static partial class McpToolCatalog
                 return outcome with { Result = outcome.Response.IsSuccess ? ToElement(new { groupId = id, version = Number(outcome.Response.Body, "version") }) : null };
             });
 
-        yield return Tool("category_groups_update", "Update category group", "Renames, hides (archives) or unhides a category group in a Plan month.",
+        yield return Tool("category_groups_update", "Update category group", "Renames, hides (archives) or unhides a category group. Groups are budget-wide, so the change applies to every Plan month.",
             McpPermissions.AdminOnly, Effect.Write,
             Obj(R("month", Month()), R("groupId", Id("Category group ID.")), O("name", Str("New name.", 120, 1)), O("isArchived", Bool("True hides the group; false unhides it.")),
                 O("version", Int("Expected Plan month version.", 1, long.MaxValue))),
@@ -241,7 +241,7 @@ public static partial class McpToolCatalog
                 return null;
             }, $"Updated category group {c.Str("groupId")}.", []));
 
-        yield return Tool("categories_create", "Create category", "Adds a category to a category group in a Plan month (it carries forward to later months).",
+        yield return Tool("categories_create", "Create category", "Adds a category to a category group. Categories are budget-wide: it appears in every Plan month, past and future, with zero balances.",
             McpPermissions.AdminOnly, Effect.Write,
             Obj(R("month", Month()), R("groupId", Id("Category group ID.")), R("name", Str("Category name.", 160, 1)), O("version", Int("Expected Plan month version.", 1, long.MaxValue))),
             async c =>
@@ -264,7 +264,7 @@ public static partial class McpToolCatalog
                 return outcome with { Result = outcome.Response.IsSuccess ? ToElement(new { categoryId = id, version = Number(outcome.Response.Body, "version") }) : null };
             });
 
-        yield return Tool("categories_update", "Update category", "Renames a category, changes its icon, snoozes it, or hides (archives)/unhides it in a Plan month.",
+        yield return Tool("categories_update", "Update category", "Renames a category, changes its icon, hides (archives)/unhides it (budget-wide: all months), or snoozes it in the given Plan month (snooze is per month).",
             McpPermissions.AdminOnly, Effect.Write,
             Obj(R("month", Month()), R("categoryId", Id("Category ID.")), O("name", Str("New name.", 160, 1)), O("icon", Nullable(Str("Icon (emoji or short text); null clears.", 16))),
                 O("snoozed", Bool("Snooze target reminders for this category.")), O("isArchived", Bool("True hides the category; false unhides it.")),
@@ -279,6 +279,25 @@ public static partial class McpToolCatalog
                 if (c.OptBool("isArchived") is { } archived) category["isArchived"] = archived;
                 return null;
             }, $"Updated category {c.Str("categoryId")}.", [c.Str("categoryId")]));
+
+        yield return Tool("categories_delete_preview", "Preview category deletion",
+            "Shows what deleting a category would reassign: transaction and split counts, schedules, assigned amounts in every month, the remaining available amount, payee defaults, loan pairings, planning values and whether a target would be removed, plus the categories history can be reassigned to and the current ledger version.",
+            McpPermissions.Read, Effect.Read, Obj(R("categoryId", Id("Category ID."))),
+            async c =>
+            {
+                var response = await c.Get("/api/budgets/{id}/categories/{categoryId}/deletion", Route.Of(("id", c.BudgetId!), ("categoryId", c.Str("categoryId"))));
+                return Done(response, response.Body is { } body && body.TryGetProperty("requiresReassignment", out var requires) && requires.GetBoolean()
+                    ? $"Deleting this category reassigns {body.GetProperty("transactionCount")} transaction(s) and its assigned amounts; choose reassignToCategoryId."
+                    : "This category has no history and can be deleted without reassignment.");
+            });
+
+        yield return Tool("categories_delete", "Delete category",
+            "Deletes a category from every month. A category with history needs reassignToCategoryId (an active, non-system category from categories_delete_preview): its transactions, split lines, schedules, assigned amounts per month (added to the target's), remaining available, payee defaults, loan pairings and planning values move there in one atomic change; its target is removed. Credit card payment, loan and Wishlist categories cannot be deleted. Recorded in the ledger audit and Recent Moves.",
+            McpPermissions.AdminOnly, Effect.Destructive,
+            Obj(R("categoryId", Id("Category ID to delete.")), O("reassignToCategoryId", Id("Category that receives the history.")), LedgerVersionArg, CommandIdArg),
+            c => LedgerWriteAsync(c, version => c.Send("POST", "/api/budgets/{id}/categories/{categoryId}/delete",
+                new { commandId = c.CommandId(), version, reassignToCategoryId = c.OptStr("reassignToCategoryId") },
+                Route.Of(("id", c.BudgetId!), ("categoryId", c.Str("categoryId")))), "Category deleted."));
 
         yield return Tool("category_targets_get", "Get category target", "Reads a category's target and its progress for a Plan month.",
             McpPermissions.All, Effect.Read, Obj(R("categoryId", Id("Category ID.")), R("month", Month())),

@@ -43,6 +43,8 @@ beforeEach(()=>{
       const items=query.has('accountId')?focusRows:focusRows.filter(item=>{const entry=item as {categoryId?:string;splits?:{categoryId:string}[]};return entry.categoryId===query.get('categoryId')||entry.splits?.some(split=>split.categoryId===query.get('categoryId'));});
       return response({version:1,page:Number(query.get('page')??1),pageSize:Number(query.get('pageSize')??100),total:items.length,items,accounts:{version:1,accounts:focusAccounts}});
     }
+    if(path==='/api/budgets/default/categories/utilities/deletion')return response({categoryId:'utilities',name:'Electricity',groupName:'Home',requiresReassignment:true,transactionCount:3,splitLineCount:0,scheduleCount:0,assignedMonthCount:1,assignedTotal:50,remainingAvailable:15,remainingAvailableMonth:'2026-10',hasTarget:false,payeeDefaultCount:0,loanPairingCount:0,planningValueCount:0,ledgerVersion:4,reassignmentOptions:[{id:'rent',name:'Rent',groupId:'home',groupName:'Home'}]});
+    if(path==='/api/budgets/default/categories/utilities/delete'&&init?.method==='POST'){writes.push({path,...JSON.parse(String(init.body))});for(const key of Object.keys(months))months[key]={...months[key],version:months[key].version+1,groups:months[key].groups.map(group=>({...group,categories:group.categories.filter(category=>category.id!=='utilities')}))};return response({id:'6f9619ff-8b86-4011-b42d-00cf4fc964ff',version:5});}
     if(path.startsWith('/api/budgets/')&&path.includes('/months/')){
       const month=path.slice(path.lastIndexOf('/months/')+'/months/'.length);
       if(init?.method==='PUT'){
@@ -590,6 +592,35 @@ it('requires a subcategory to be selected before its rename popover opens',async
   await userEvent.click(within(dialog).getByRole('button',{name:'OK'}));
   await waitFor(()=>expect(writes).toHaveLength(1));
   expect(writes[0].groups).toMatchObject([{categories:[{name:'Power'}]}]);
+});
+
+it('deletes a saved subcategory from every month through the Delete Category dialog',async()=>{
+  render(<App/>);await saved();
+  const categoryName=screen.getByRole('button',{name:'Electricity'});
+  await userEvent.click(categoryName);await userEvent.click(categoryName);
+  const popover=screen.getByRole('dialog',{name:'Rename subcategory'});
+  await userEvent.click(within(popover).getByRole('button',{name:'Delete'}));
+  const dialog=await screen.findByRole('dialog',{name:'Delete Category'});
+  expect(await within(dialog).findByText(/Before you can delete the category/)).toHaveTextContent('Electricity');
+  expect(within(dialog).getByRole('button',{name:'Delete'})).toBeDisabled();
+  await userEvent.selectOptions(within(dialog).getByRole('combobox',{name:'Select category'}),'rent');
+  await userEvent.click(within(dialog).getByRole('button',{name:'Delete'}));
+  await screen.findByText('Category deleted');
+  expect(writes).toContainEqual(expect.objectContaining({path:'/api/budgets/default/categories/utilities/delete',version:4,reassignToCategoryId:'rent'}));
+  await waitFor(()=>expect(screen.queryByRole('button',{name:'Edit assigned for Electricity'})).not.toBeInTheDocument());
+  expect(screen.queryByRole('dialog',{name:'Delete Category'})).not.toBeInTheDocument();
+});
+
+it('offers Delete for an archived subcategory in the Archived view',async()=>{
+  months['2026-10'].groups[0].categories[0].isArchived=true;
+  render(<App/>);await saved();
+  await userEvent.click(screen.getByRole('tab',{name:/^Archived/}));
+  await userEvent.click(screen.getByRole('button',{name:'Delete category Electricity'}));
+  const dialog=await screen.findByRole('dialog',{name:'Delete Category'});
+  expect(await within(dialog).findByRole('combobox',{name:'Select category'})).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button',{name:'Cancel'}));
+  expect(screen.queryByRole('dialog',{name:'Delete Category'})).not.toBeInTheDocument();
+  expect(writes).toHaveLength(0);
 });
 
 it('expands Auto-Assign options and caps category assignments at Ready to Assign',async()=>{

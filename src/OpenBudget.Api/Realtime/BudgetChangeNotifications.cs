@@ -156,8 +156,10 @@ public sealed class BudgetChangeInterceptor(BudgetChangePublisher publisher, Tim
     private static BudgetChangeEvent? Describe(object entity, DateTimeOffset now) => entity switch
     {
         BudgetEntity month => new(month.BudgetId, BudgetChangeKinds.Plan, month.Month, month.Version, now),
-        CategoryGroupEntity group => new(group.BudgetId, BudgetChangeKinds.Plan, group.BudgetMonth, null, now),
-        CategoryEntity category => new(category.BudgetId, BudgetChangeKinds.Plan, category.BudgetMonth, null, now),
+        // Group and category definitions are budget-wide: month = null tells open sessions to reload whichever month they show.
+        CategoryGroupEntity group => new(group.BudgetId, BudgetChangeKinds.Plan, null, null, now),
+        CategoryEntity category => new(category.BudgetId, BudgetChangeKinds.Plan, null, null, now),
+        CategoryMonthEntity state => new(state.BudgetId, BudgetChangeKinds.Plan, state.BudgetMonth, null, now),
         CategoryTargetEntity target => new(target.BudgetId, BudgetChangeKinds.Targets, null, null, now),
         LedgerStateEntity state => new(state.BudgetId, BudgetChangeKinds.Ledger, null, state.Version, now),
         AccountEntity account => new(account.BudgetId, BudgetChangeKinds.Ledger, null, null, now),

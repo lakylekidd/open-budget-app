@@ -280,22 +280,17 @@ public static class LoanRules
         return new(activity, income);
     }
 
-    // Keeps the legacy Loans group and each legacy automatically paired loan category present in a month.
-    public static bool EnsureCategories(BudgetEntity month, IReadOnlyList<(AccountEntity Account, string CategoryId)> autoPaired)
+    // Keeps the legacy Loans group and each legacy automatically paired loan category present in the budget.
+    public static bool EnsureCategories(CategoryCatalog catalog, IReadOnlyList<(AccountEntity Account, string CategoryId)> autoPaired)
     {
         var changed = false;
         foreach (var (account, categoryId) in autoPaired)
         {
-            if (month.Groups.SelectMany(g => g.Categories).Any(c => c.Id == categoryId)) continue;
-            var group = month.Groups.SingleOrDefault(g => g.Id == PaymentGroupId);
-            if (group is null)
-            {
-                group = new CategoryGroupEntity { BudgetId = month.BudgetId, BudgetMonth = month.Month, Id = PaymentGroupId, Name = PaymentGroupName,
-                    SortOrder = month.Groups.Count == 0 ? 0 : month.Groups.Max(g => g.SortOrder) + 1 };
-                month.Groups.Add(group);
-            }
-            group.Categories.Add(new CategoryEntity { BudgetId = month.BudgetId, BudgetMonth = month.Month, GroupId = group.Id, Id = categoryId,
-                Name = account.Name, SortOrder = group.Categories.Count == 0 ? 0 : group.Categories.Max(c => c.SortOrder) + 1 });
+            if (catalog.Find(categoryId) is not null) continue;
+            var group = catalog.FindGroup(PaymentGroupId)
+                ?? catalog.AddGroup(PaymentGroupId, PaymentGroupName, catalog.Groups.Count == 0 ? 0 : catalog.Groups.Max(g => g.SortOrder) + 1);
+            var siblings = catalog.Categories.Where(c => c.GroupId == group.Id).ToList();
+            catalog.AddCategory(categoryId, group.Id, account.Name, siblings.Count == 0 ? 0 : siblings.Max(c => c.SortOrder) + 1);
             changed = true;
         }
         return changed;

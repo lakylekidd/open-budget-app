@@ -78,9 +78,9 @@ public sealed class LedgerRulesTests
     public void Ready_to_assign_includes_ledger_income_without_rounding_drift()
     {
         var budget = new BudgetEntity { OpeningReadyToAssign = 0.1m, FundsAdded = 0.2m, LedgerIncome = 10m,
-            Groups = [new() { Categories = [new() { Assigned = 0.3m }] }] };
+            CategoryStates = [new() { Assigned = 0.3m }] };
         for (var i = 0; i < 100; i++) Assert.Equal(10m, BudgetService.CalculateReadyToAssign(budget));
-        var category = new CategoryEntity { OpeningAvailable = 0.1m, Assigned = 0.2m, Activity = -0.3m };
+        var category = new CategoryMonthEntity { OpeningAvailable = 0.1m, Assigned = 0.2m, Activity = -0.3m };
         Assert.Equal(0m, category.Available);
     }
 

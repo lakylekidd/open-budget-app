@@ -16,8 +16,14 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
     public DbSet<LongTermPlanningIncomeEntity> LongTermPlanningIncomes => Set<LongTermPlanningIncomeEntity>();
     public DbSet<LongTermPlanningCategoryEntity> LongTermPlanningCategories => Set<LongTermPlanningCategoryEntity>();
     public DbSet<BudgetEntity> Budgets => Set<BudgetEntity>();
+    // Budget-wide category definitions (the same for every month) and the per-month category state; see docs/global-categories.md.
     public DbSet<CategoryGroupEntity> CategoryGroups => Set<CategoryGroupEntity>();
     public DbSet<CategoryEntity> Categories => Set<CategoryEntity>();
+    public DbSet<CategoryMonthEntity> CategoryMonths => Set<CategoryMonthEntity>();
+    // Per-request cache of loaded category catalogs, one per budget, so every month loaded by a request shares the same
+    // tracked definitions. Reset whenever the change tracker is cleared.
+    internal Dictionary<string, CategoryCatalog> Catalogs { get; } = new(StringComparer.Ordinal);
+    internal void ResetCatalogs() => Catalogs.Clear();
     public DbSet<FlagDefinitionEntity> FlagDefinitions => Set<FlagDefinitionEntity>();
     public DbSet<ScheduleEntity> Schedules => Set<ScheduleEntity>();
     public DbSet<ScheduleOccurrenceEntity> ScheduleOccurrences => Set<ScheduleOccurrenceEntity>();
@@ -169,30 +175,48 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
             entity.Property(x => x.LedgerIncome).HasPrecision(14, 2);
             entity.Property(x => x.OpeningReadyToAssign).HasPrecision(14, 2);
             entity.Property(x => x.Version).IsConcurrencyToken();
-            entity.HasMany(x => x.Groups).WithOne().HasForeignKey(x => new { x.BudgetId, x.BudgetMonth }).HasPrincipalKey(x => new { x.BudgetId, x.Month }).OnDelete(DeleteBehavior.Cascade);
+            entity.Ignore(x => x.Groups);
+            entity.Ignore(x => x.Catalog);
+            entity.HasMany(x => x.CategoryStates).WithOne().HasForeignKey(x => new { x.BudgetId, x.BudgetMonth }).HasPrincipalKey(x => new { x.BudgetId, x.Month }).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<CategoryGroupEntity>(entity =>
         {
-            entity.HasKey(x => new { x.BudgetId, x.BudgetMonth, x.Id });
+            entity.ToTable("BudgetCategoryGroups");
+            entity.HasKey(x => new { x.BudgetId, x.Id });
             entity.Property(x => x.BudgetId).HasMaxLength(100);
             entity.Property(x => x.Id).HasMaxLength(100);
             entity.Property(x => x.Name).HasMaxLength(120);
-            entity.HasMany(x => x.Categories).WithOne().HasForeignKey(x => new { x.BudgetId, x.BudgetMonth, x.GroupId }).HasPrincipalKey(x => new { x.BudgetId, x.BudgetMonth, x.Id }).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<BudgetPlanEntity>().WithMany().HasForeignKey(x => x.BudgetId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<CategoryEntity>(entity =>
         {
-            entity.HasKey(x => new { x.BudgetId, x.BudgetMonth, x.Id });
+            entity.ToTable("BudgetCategories");
+            entity.HasKey(x => new { x.BudgetId, x.Id });
             entity.Property(x => x.BudgetId).HasMaxLength(100);
             entity.Property(x => x.Id).HasMaxLength(100);
             entity.Property(x => x.GroupId).HasMaxLength(100);
             entity.Property(x => x.Name).HasMaxLength(160);
             entity.Property(x => x.Icon).HasMaxLength(24);
+            entity.HasIndex(x => new { x.BudgetId, x.GroupId });
+            entity.HasOne<BudgetPlanEntity>().WithMany().HasForeignKey(x => x.BudgetId).OnDelete(DeleteBehavior.Cascade);
+            // A group cannot be removed while categories still belong to it.
+            entity.HasOne<CategoryGroupEntity>().WithMany().HasForeignKey(x => new { x.BudgetId, x.GroupId }).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<CategoryMonthEntity>(entity =>
+        {
+            entity.HasKey(x => new { x.BudgetId, x.BudgetMonth, x.CategoryId });
+            entity.Property(x => x.BudgetId).HasMaxLength(100);
+            entity.Property(x => x.BudgetMonth).HasMaxLength(7);
+            entity.Property(x => x.CategoryId).HasMaxLength(100);
             entity.Property(x => x.OpeningAvailable).HasPrecision(14, 2);
             entity.Property(x => x.Assigned).HasPrecision(14, 2);
             entity.Property(x => x.Activity).HasPrecision(14, 2);
             entity.Property(x => x.LegacyActivity).HasPrecision(14, 2);
             entity.Property(x => x.CreditOverspending).HasPrecision(14, 2);
             entity.Property(x => x.Target).HasPrecision(14, 2);
+            entity.HasIndex(x => new { x.BudgetId, x.CategoryId });
+            // A category definition cannot be removed while month state still references it (delete moves money first).
+            entity.HasOne<CategoryEntity>().WithMany().HasForeignKey(x => new { x.BudgetId, x.CategoryId }).OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<AccountEntity>().HasQueryFilter(x => x.BudgetId == ActiveBudgetId);
@@ -315,6 +339,9 @@ public sealed class BudgetPlanEntity
     public bool IsArchived { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public long Version { get; set; } = 1;
+    // True once the budget's categories were initialized (starter template seeded or migrated). The starter template is
+    // seeded at most once per budget, never per month.
+    public bool CategoriesInitialized { get; set; }
     public List<BudgetEntity> Months { get; set; } = [];
 }
 
@@ -393,27 +420,47 @@ public sealed class BudgetEntity
     public decimal FundsAdded { get; set; }
     public decimal LedgerIncome { get; set; }
     public long Version { get; set; } = 1;
-    public List<CategoryGroupEntity> Groups { get; set; } = [];
+    // Per-month money state, one row per budget category (a missing row means an all-zero state).
+    public List<CategoryMonthEntity> CategoryStates { get; set; } = [];
+    // Budget-wide category definitions this month is composed with (not mapped).
+    public CategoryCatalog? Catalog { get; set; }
+    // Groups and categories of the budget, composed with this month's state. Structure is global; see CategoryCatalog.
+    public IReadOnlyList<PlanCategoryGroup> Groups => Catalog?.Compose(this) ?? [];
+
+    internal readonly Dictionary<string, PlanCategory> CategoryViews = new(StringComparer.Ordinal);
+    internal readonly Dictionary<string, PlanCategoryGroup> GroupViews = new(StringComparer.Ordinal);
+
+    public CategoryMonthEntity? State(string categoryId) => CategoryStates.FirstOrDefault(x => x.CategoryId == categoryId);
 }
 
+// Budget-wide category group definition: identical for every Plan month.
 public sealed class CategoryGroupEntity
 {
     public string BudgetId { get; set; } = "default";
-    public string BudgetMonth { get; set; } = "";
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public int SortOrder { get; set; }
     public bool IsArchived { get; set; }
-    public List<CategoryEntity> Categories { get; set; } = [];
 }
 
+// Budget-wide category definition: identical for every Plan month. Money lives in CategoryMonthEntity.
 public sealed class CategoryEntity
 {
     public string BudgetId { get; set; } = "default";
-    public string BudgetMonth { get; set; } = "";
-    public string GroupId { get; set; } = "";
     public string Id { get; set; } = "";
+    public string GroupId { get; set; } = "";
     public string Name { get; set; } = "";
+    public string? Icon { get; set; }
+    public int SortOrder { get; set; }
+    public bool IsArchived { get; set; }
+}
+
+// One category's state in one Plan month.
+public sealed class CategoryMonthEntity
+{
+    public string BudgetId { get; set; } = "default";
+    public string BudgetMonth { get; set; } = "";
+    public string CategoryId { get; set; } = "";
     public decimal OpeningAvailable { get; set; }
     public decimal Assigned { get; set; }
     public decimal LegacyActivity { get; set; }
@@ -422,11 +469,10 @@ public sealed class CategoryEntity
     // Server-owned portion of negative Available caused by unfunded credit-card spending. It becomes card
     // debt at rollover instead of reducing the next month's Ready to Assign.
     public decimal CreditOverspending { get; set; }
+    // Legacy manual target amount (per month, carried into new months).
     public decimal Target { get; set; }
-    public string? Icon { get; set; }
+    // Snooze is a per-month choice, carried into newly created months.
     public bool Snoozed { get; set; }
-    public int SortOrder { get; set; }
-    public bool IsArchived { get; set; }
 
     public decimal Available => decimal.Round(OpeningAvailable + Assigned + Activity, 2, MidpointRounding.ToEven);
 }

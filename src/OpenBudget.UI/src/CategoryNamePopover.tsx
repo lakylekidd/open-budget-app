@@ -20,7 +20,7 @@ export default function CategoryNamePopover({ name, label, maxLength, error, can
     <footer>
       <div className="category-name-popover-actions">
         <button type="button" onClick={onHide}>{hideLabel}</button>
-        <button type="button" className="danger" disabled={!canDelete} title={canDelete ? undefined : 'Saved categories are retained for budget history.'} onClick={onDelete}>Delete</button>
+        <button type="button" className="danger" disabled={!canDelete} title={canDelete ? undefined : 'Categories managed by an account or Wishlist bucket cannot be deleted here.'} onClick={onDelete}>Delete</button>
       </div>
       <div className="category-name-popover-actions">
         <button type="button" onClick={onCancel}>Cancel</button>

@@ -117,26 +117,29 @@ public sealed class WishlistRulesTests
     [Fact]
     public void Ensure_categories_creates_orders_renames_and_archives_bucket_categories()
     {
-        var month = new BudgetEntity { BudgetId = "b1", Month = "2026-10", Groups = [new CategoryGroupEntity { BudgetId = "b1", BudgetMonth = "2026-10", Id = "home", Name = "Home", SortOrder = 0 }] };
+        var catalog = new CategoryCatalog("b1", [], []);
+        catalog.AddGroup("home", "Home", 0);
+        var month = new BudgetEntity { BudgetId = "b1", Month = "2026-10" };
+        catalog.Attach(month);
         var games = new WishlistBucketEntity { Id = Guid.NewGuid(), Name = "Games", SortOrder = 1 };
         var tech = new WishlistBucketEntity { Id = Guid.NewGuid(), Name = "Electronics", SortOrder = 0 };
-        Assert.True(WishlistRules.EnsureCategories(month, [tech, games], enabled: true));
+        Assert.True(WishlistRules.EnsureCategories(catalog, [tech, games], enabled: true));
         var group = month.Groups.Single(g => g.Id == WishlistRules.GroupId);
         Assert.Equal(1, group.SortOrder);
         Assert.Equal([WishlistRules.CategoryId(tech.Id), WishlistRules.CategoryId(games.Id)], group.Categories.OrderBy(c => c.SortOrder).Select(c => c.Id));
-        Assert.False(WishlistRules.EnsureCategories(month, [tech, games], enabled: true));
+        Assert.False(WishlistRules.EnsureCategories(catalog, [tech, games], enabled: true));
 
         games.Name = "Video games";
         games.SortOrder = 0;
         tech.SortOrder = 1;
-        Assert.True(WishlistRules.EnsureCategories(month, [games, tech], enabled: true));
+        Assert.True(WishlistRules.EnsureCategories(catalog, [games, tech], enabled: true));
         Assert.Equal(["Video games", "Electronics"], group.Categories.OrderBy(c => c.SortOrder).Select(c => c.Name));
 
         tech.IsDeleted = true;
-        Assert.True(WishlistRules.EnsureCategories(month, [games, tech], enabled: true));
+        Assert.True(WishlistRules.EnsureCategories(catalog, [games, tech], enabled: true));
         Assert.True(group.Categories.Single(c => c.Id == WishlistRules.CategoryId(tech.Id)).IsArchived);
 
-        Assert.True(WishlistRules.EnsureCategories(month, [games, tech], enabled: false));
+        Assert.True(WishlistRules.EnsureCategories(catalog, [games, tech], enabled: false));
         Assert.True(group.IsArchived);
         Assert.False(group.Categories.Single(c => c.Id == WishlistRules.CategoryId(games.Id)).IsArchived);
     }
@@ -144,17 +147,19 @@ public sealed class WishlistRulesTests
     [Fact]
     public void Disabled_wishlist_does_not_create_a_group()
     {
-        var month = new BudgetEntity { BudgetId = "b1", Month = "2026-10" };
-        Assert.False(WishlistRules.EnsureCategories(month, [new WishlistBucketEntity { Id = Guid.NewGuid(), Name = "Games" }], enabled: false));
-        Assert.Empty(month.Groups);
+        var catalog = new CategoryCatalog("b1", [], []);
+        Assert.False(WishlistRules.EnsureCategories(catalog, [new WishlistBucketEntity { Id = Guid.NewGuid(), Name = "Games" }], enabled: false));
+        Assert.Empty(catalog.Groups);
     }
 
     [Fact]
     public void Plan_updates_cannot_restructure_the_wishlist_group()
     {
         var bucket = Guid.NewGuid();
+        var catalog = new CategoryCatalog("b1", [], []);
         var month = new BudgetEntity { BudgetId = "b1", Month = "2026-10" };
-        WishlistRules.EnsureCategories(month, [new WishlistBucketEntity { Id = bucket, Name = "Games" }], enabled: true);
+        catalog.Attach(month);
+        WishlistRules.EnsureCategories(catalog, [new WishlistBucketEntity { Id = bucket, Name = "Games" }], enabled: true);
         var id = WishlistRules.CategoryId(bucket);
         List<CategoryGroupUpdateDto> Request(string groupName = WishlistRules.GroupName, string categoryName = "Games", bool archived = false, string groupId = WishlistRules.GroupId, decimal assigned = 0) =>
             [new(groupId, groupName, 0, false, [new CategoryUpdateDto(id, categoryName, assigned, 0, WishlistRules.CategoryIcon, false, 0, archived)])];

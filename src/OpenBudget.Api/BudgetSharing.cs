@@ -13,7 +13,7 @@ public sealed record PlanActionDraft(string Kind, decimal? Amount, string? FromC
 
 public static class PlanActionRules
 {
-    public static IReadOnlyList<PlanActionDraft> Describe(IReadOnlyDictionary<string, (string Name, decimal Assigned)> previous, IEnumerable<CategoryEntity> current)
+    public static IReadOnlyList<PlanActionDraft> Describe(IReadOnlyDictionary<string, (string Name, decimal Assigned)> previous, IEnumerable<PlanCategory> current)
     {
         var changes = current.Where(category => previous.TryGetValue(category.Id, out var old) && old.Assigned != category.Assigned)
             .Select(category => new { Category = category, Delta = category.Assigned - previous[category.Id].Assigned }).ToList();

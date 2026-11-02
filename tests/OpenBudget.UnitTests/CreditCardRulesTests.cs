@@ -82,34 +82,41 @@ public sealed class CreditCardRulesTests
     [Fact]
     public void Payment_categories_are_created_first_and_follow_account_names()
     {
-        var month = new BudgetEntity { Month = "2026-10", Groups = [new() { Id = "home", Name = "Home", SortOrder = 0 }] };
+        var catalog = new CategoryCatalog("default", [], []);
+        catalog.AddGroup("home", "Home", 0);
+        var month = new BudgetEntity { Month = "2026-10" };
+        catalog.Attach(month);
         var account = new AccountEntity { Id = Card, Name = "Mastercard", AccountType = "creditCard" };
-        Assert.True(CreditCardRules.EnsurePaymentCategories(month, [account]));
+        Assert.True(CreditCardRules.EnsurePaymentCategories(catalog, [account]));
         var group = month.Groups.Single(g => g.Id == CreditCardRules.PaymentGroupId);
         Assert.Equal(0, group.SortOrder); Assert.Equal(1, month.Groups.Single(g => g.Id == "home").SortOrder);
         Assert.Equal("Mastercard", Assert.Single(group.Categories).Name);
         account.Name = "ICS Mastercard";
-        Assert.True(CreditCardRules.EnsurePaymentCategories(month, [account]));
-        Assert.Equal("ICS Mastercard", Assert.Single(group.Categories).Name);
-        Assert.False(CreditCardRules.EnsurePaymentCategories(month, [account]));
+        Assert.True(CreditCardRules.EnsurePaymentCategories(catalog, [account]));
+        Assert.Equal("ICS Mastercard", Assert.Single(month.Groups.Single(g => g.Id == CreditCardRules.PaymentGroupId).Categories).Name);
+        Assert.False(CreditCardRules.EnsurePaymentCategories(catalog, [account]));
+        // The month composed with the catalog got a state row for the new payment category.
+        Assert.NotNull(month.State(CreditCardRules.PaymentCategoryId(Card)));
     }
 
     [Fact]
     public void Payment_categories_get_no_automatic_icon_and_lose_the_legacy_one()
     {
+        var catalog = new CategoryCatalog("default", [], []);
         var month = new BudgetEntity { Month = "2026-10" };
+        catalog.Attach(month);
         var account = new AccountEntity { Id = Card, Name = "💳 Mastercard", AccountType = "creditCard" };
-        Assert.True(CreditCardRules.EnsurePaymentCategories(month, [account]));
+        Assert.True(CreditCardRules.EnsurePaymentCategories(catalog, [account]));
         var category = Assert.Single(month.Groups.Single(g => g.Id == CreditCardRules.PaymentGroupId).Categories);
         Assert.Null(category.Icon);
 
         category.Icon = CreditCardRules.LegacyPaymentIcon;
-        Assert.True(CreditCardRules.EnsurePaymentCategories(month, [account]));
+        Assert.True(CreditCardRules.EnsurePaymentCategories(catalog, [account]));
         Assert.Null(category.Icon);
         Assert.Equal("💳 Mastercard", category.Name);
 
         category.Icon = "★";
-        Assert.False(CreditCardRules.EnsurePaymentCategories(month, [account]));
+        Assert.False(CreditCardRules.EnsurePaymentCategories(catalog, [account]));
         Assert.Equal("★", category.Icon);
     }
 }

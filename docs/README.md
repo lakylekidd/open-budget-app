@@ -8,6 +8,7 @@ This documentation describes the current OpenBudget implementation and its plann
 - [Architecture and current status](architecture.md) — runtime topology, feature inventory, and implementation boundaries.
 - [API reference](api.md) — current HTTP endpoints and request/response behavior.
 - [Data model](data-model.md) — current PostgreSQL schema and the future domain model direction.
+- [Global categories](global-categories.md) — budget-wide categories with per-month state, category deletion with reassignment, and the migration.
 - [Testing and acceptance coverage](testing.md) — unit, HTTP/PostgreSQL integration and UI tests, commands, and the live smoke scenario.
 - [MCP server for personal AI agents](mcp.md) — agent tokens, client setup, tool permission matrix, security model and live updates.
 - [Coding conventions](conventions.md) — current implementation and testing patterns.

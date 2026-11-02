@@ -77,39 +77,31 @@ public static class WishlistRules
         return new WishlistProgressDto(next.Id, next.Name, next.Cost, available, remaining, available >= next.Cost, fraction);
     }
 
-    // Keeps one month's Wishlist group/categories aligned with the buckets. Buckets must be ordered by SortOrder.
-    // Returns whether anything changed so the caller can advance the month version.
-    public static bool EnsureCategories(BudgetEntity month, IReadOnlyList<WishlistBucketEntity> buckets, bool enabled)
+    // Keeps the budget's Wishlist group/categories aligned with the buckets. Buckets must be ordered by SortOrder.
+    // Returns whether anything changed so the caller can advance the month versions.
+    public static bool EnsureCategories(CategoryCatalog catalog, IReadOnlyList<WishlistBucketEntity> buckets, bool enabled)
     {
         var changed = false;
-        var group = month.Groups.SingleOrDefault(g => g.Id == GroupId);
+        var group = catalog.FindGroup(GroupId);
         if (group is null)
         {
             if (!enabled) return false;
-            group = new CategoryGroupEntity
-            {
-                BudgetId = month.BudgetId, BudgetMonth = month.Month, Id = GroupId, Name = GroupName,
-                SortOrder = month.Groups.Count == 0 ? 0 : month.Groups.Max(g => g.SortOrder) + 1
-            };
-            month.Groups.Add(group);
+            group = catalog.AddGroup(GroupId, GroupName, catalog.Groups.Count == 0 ? 0 : catalog.Groups.Max(g => g.SortOrder) + 1);
             changed = true;
         }
         if (group.Name != GroupName) { group.Name = GroupName; changed = true; }
         if (group.IsArchived == enabled) { group.IsArchived = !enabled; changed = true; }
 
-        var byId = group.Categories.ToDictionary(c => c.Id, StringComparer.Ordinal);
+        var inGroup = catalog.Categories.Where(c => c.GroupId == GroupId).ToList();
+        var byId = inGroup.ToDictionary(c => c.Id, StringComparer.Ordinal);
         var ordered = new List<CategoryEntity>();
         foreach (var bucket in buckets.Where(b => !b.IsDeleted))
         {
             var id = CategoryId(bucket.Id);
             if (!byId.TryGetValue(id, out var category))
             {
-                category = new CategoryEntity
-                {
-                    BudgetId = month.BudgetId, BudgetMonth = month.Month, GroupId = GroupId, Id = id, Name = bucket.Name,
-                    Icon = CategoryIcon, SortOrder = int.MaxValue
-                };
-                group.Categories.Add(category);
+                category = catalog.AddCategory(id, GroupId, bucket.Name, int.MaxValue, CategoryIcon);
+                inGroup.Add(category);
                 byId[id] = category;
                 changed = true;
             }
@@ -117,7 +109,7 @@ public static class WishlistRules
             ordered.Add(category);
         }
         var deleted = buckets.Where(b => b.IsDeleted).ToDictionary(b => CategoryId(b.Id), StringComparer.Ordinal);
-        foreach (var category in group.Categories.Where(c => !ordered.Contains(c)).OrderBy(c => c.SortOrder).ToList())
+        foreach (var category in inGroup.Where(c => !ordered.Contains(c)).OrderBy(c => c.SortOrder).ToList())
         {
             if (deleted.TryGetValue(category.Id, out var bucket)) changed |= Apply(category, bucket.Name, archived: true);
             ordered.Add(category);

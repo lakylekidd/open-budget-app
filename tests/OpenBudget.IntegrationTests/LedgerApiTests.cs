@@ -412,7 +412,7 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
         var category = Category(await Budget(client), "groceries");
         Assert.Equal(-35, category.Activity); Assert.Equal(85, category.Available);
         await using var check = app.CreateDb();
-        Assert.Equal(-30, (await check.Categories.SingleAsync()).LegacyActivity);
+        Assert.Equal(-30, (await check.CategoryMonths.SingleAsync()).LegacyActivity);
     }
 
     [Fact]
