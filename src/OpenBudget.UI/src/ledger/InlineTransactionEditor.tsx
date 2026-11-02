@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { MoneyInput } from '../MoneyInput';
 import { createPortal } from 'react-dom';
 import { type Account, type CategoryOption, type Entry, type Split, loadCategoryBudget, parseMoney, today, isCreditAccount, isLoanAccount, isTrackingAccount } from './api';
@@ -17,6 +17,13 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
   /** Entitled + enabled Wishlist for this budget; shows the "Link wishlist item" button beside Memo on new transactions. */
   wishlist?:WishlistContext|null;
 }) {
+  // Clicking anywhere outside the editor (and its pop-ups and dialogs) cancels it, like Escape.
+  const cancelRef=useRef(onCancel);cancelRef.current=onCancel;const busyRef=useRef(busy);busyRef.current=busy;
+  useEffect(()=>{
+    const inside='.register-inline-row,.register-inline-split-row,.register-inline-footer,.category-picker,.payee-picker,.wishlist-link-popup,.transaction-images-portal,.transaction-date-picker,.category-add-popover,.modal-backdrop,[role=dialog],[role=alertdialog],[role=listbox]';
+    function outside(event:MouseEvent){const target=event.target;if(busyRef.current||!(target instanceof Element)||!target.isConnected||target.closest(inside))return;cancelRef.current();}
+    document.addEventListener('mousedown',outside);return()=>document.removeEventListener('mousedown',outside);
+  },[]);
   const formId=useId(); const [date,setDate]=useState(entry?.date??today());const [dateValid,setDateValid]=useState(true);const [repeat,setRepeat]=useState(initialRepeat);
   const [accountId,setAccountId]=useState(entry?.accountId??(selectedAccount||accounts.find(a=>!a.isClosed)?.id||''));
   const [payee,setPayee]=useState(entry?.transferId?'':entry?.payee??'');const [chosenTransfer,setChosenTransfer]=useState(transferAccountId);const [memo,setMemo]=useState(entry?.memo??'');const [categoryId,setCategory]=useState(entry?.categoryId??(entry&&entry.amount>0&&!entry.transferId&&!entry.isOpening&&!entry.splits.length?inflowCategoryId:''));

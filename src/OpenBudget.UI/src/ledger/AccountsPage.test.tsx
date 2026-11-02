@@ -445,6 +445,19 @@ it('requires confirmation when editing a reconciled row and sends the explicit a
  await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0].body).toMatchObject({confirmReconciledEdit:true,status:'cleared'});
 });
 
+it('clicking outside a new or edited transaction cancels it, but clicking inside its pop-ups does not',async()=>{
+ show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Add Transaction'}));
+ const payee=screen.getByRole('combobox',{name:'Payee'});expect(payee).toBeInTheDocument();
+ await userEvent.click(payee);await userEvent.click(await screen.findByRole('listbox',{name:'Payees'}));
+ expect(screen.getByRole('combobox',{name:'Payee'})).toBeInTheDocument();
+ await userEvent.click(screen.getByRole('heading',{level:1}));
+ await waitFor(()=>expect(screen.queryByRole('combobox',{name:'Payee'})).not.toBeInTheDocument());
+ await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));
+ expect(screen.getByRole('combobox',{name:'Payee'})).toBeInTheDocument();
+ await userEvent.click(screen.getByRole('heading',{level:1}));
+ await waitFor(()=>expect(screen.queryByRole('combobox',{name:'Payee'})).not.toBeInTheDocument());
+});
+
 it('tabs from date to payee to category and opens each dropdown on focus',async()=>{
  show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));await userEvent.click(screen.getByRole('button',{name:'Edit Shop 2026-10-21'}));
  await userEvent.click(screen.getByRole('textbox',{name:'Date'}));
