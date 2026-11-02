@@ -17,7 +17,7 @@ public sealed record TransferRequest(Guid CommandId, long Version, Guid FromAcco
 public sealed record DeleteTransactionRequest(Guid CommandId, long Version);
 public sealed record DeleteAccountRequest(Guid CommandId, long Version);
 public sealed record StatusRequest(Guid CommandId, long Version, string Status);
-public sealed record ReconcileRequest(Guid CommandId, long Version, decimal StatementBalance);
+public sealed record ReconcileRequest(Guid CommandId, long Version, decimal StatementBalance, bool CreateAdjustment = false);
 public sealed record MutationDto(Guid Id, long Version);
 public sealed record CreditSummaryDto(Guid AccountId, string Month, decimal PriorBalance, decimal SpendingAndOutflows, decimal InterestCharges,
     decimal PaymentsAndInflows, decimal CurrentBalance);

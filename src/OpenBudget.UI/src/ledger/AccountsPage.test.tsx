@@ -269,17 +269,37 @@ it('keeps edits on conflict and requires a reload before resubmitting', async ()
   expect(mutations[1].body.commandId).not.toEqual(mutations[0].body.commandId);
 });
 
-it('only confirms reconciliation at zero difference', async () => {
+it('reconciles straight away when the cleared balance is confirmed with Yes', async () => {
   show('checking'); const user = userEvent.setup(); await ready();
   await user.click(screen.getByRole('button', { name: 'Reconcile' }));
-  const statement = screen.getByLabelText('Statement balance');
-  await user.type(statement, '90');
-  expect(screen.getByRole('button', { name: 'Confirm reconciliation' })).toBeDisabled();
-  expect(within(screen.getByRole('dialog')).getByRole('status')).toHaveTextContent('-€10.00');
-  await user.clear(statement); await user.type(statement, '100');
-  await user.click(screen.getByRole('button', { name: 'Confirm reconciliation' }));
+  expect(within(screen.getByRole('dialog', { name: 'Reconcile account' })).getByText('€100.00?')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Yes' }));
   await waitFor(() => expect(mutations).toHaveLength(1));
   expect(mutations[0]).toEqual({ path: '/api/accounts/checking/reconcile', body: expect.objectContaining({ statementBalance: 100 }) });
+  expect(mutations[0].body.createAdjustment).toBeUndefined();
+});
+
+it('asks for the bank balance on No, then verifies the adjustment before creating it', async () => {
+  show('checking'); const user = userEvent.setup(); await ready();
+  await user.click(screen.getByRole('button', { name: 'Reconcile' }));
+  await user.click(screen.getByRole('button', { name: 'No' }));
+  const bank = screen.getByLabelText('Current balance at your bank');
+  await user.clear(bank); await user.type(bank, '105');
+  await user.click(screen.getByRole('button', { name: 'Next' }));
+  expect(mutations).toHaveLength(0);
+  expect(screen.getByRole('status', { name: '' })).toHaveTextContent('€5.00 lower than your actual account');
+  await user.click(screen.getByRole('button', { name: 'Create Adjustment & Finish' }));
+  await waitFor(() => expect(mutations).toHaveLength(1));
+  expect(mutations[0]).toEqual({ path: '/api/accounts/checking/reconcile', body: expect.objectContaining({ statementBalance: 105, createAdjustment: true }) });
+});
+
+it('cancelling the adjustment banner does not reconcile', async () => {
+  show('checking'); const user = userEvent.setup(); await ready();
+  await user.click(screen.getByRole('button', { name: 'Reconcile' })); await user.click(screen.getByRole('button', { name: 'No' }));
+  const bank = screen.getByLabelText('Current balance at your bank'); await user.clear(bank); await user.type(bank, '95'); await user.click(screen.getByRole('button', { name: 'Next' }));
+  expect(screen.getByRole('status', { name: '' })).toHaveTextContent('€5.00 higher than your actual account');
+  await user.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.queryByText(/higher than your actual account/)).not.toBeInTheDocument(); expect(mutations).toHaveLength(0);
 });
 
 it('validates transfers and sends a paired transfer command', async () => {

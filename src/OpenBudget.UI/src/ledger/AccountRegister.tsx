@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ApprovalButton } from './ApprovalButton';
 import { FlagButton, defaultFlags, type Flag } from './Flags';
 import { TransactionImagesButton } from './TransactionImages';
@@ -46,8 +46,8 @@ export function reconciliationText(date: string | null, now = Date.now()) {
   return `Reconciled ${months === 1 ? 'a month' : `${months} months`} ago`;
 }
 
-export function AccountHeader({ current, accounts, disabled, loading = false, onEdit, onReconcile, onFavorite, onAddAccount, onMenu }: {
-  current?: Account; accounts: Account[]; disabled: boolean; onEdit: () => void; onReconcile: () => void;
+export function AccountHeader({ current, accounts, disabled, loading = false, onEdit, onReconcile, reconcilePopover, onFavorite, onAddAccount, onMenu }: {
+  current?: Account; accounts: Account[]; disabled: boolean; onEdit: () => void; onReconcile: () => void; reconcilePopover?: ReactNode;
   onFavorite: () => void; onAddAccount: () => void; onMenu: () => void; loading?: boolean;
 }) {
   const totals = balanceSummary(current ? [current] : accounts);
@@ -59,7 +59,7 @@ export function AccountHeader({ current, accounts, disabled, loading = false, on
           <span><RegisterIcon name="lock" size={12}/>{reconciliationText(current.lastReconciledAt)}</span></>}
       </div></div>
       <div className="account-register-controls"><button className="ledger-menu" aria-label="Open menu" onClick={onMenu}>☰</button>
-        {current ? <><button className="account-edit" aria-label="Edit account" title="Edit account" disabled={disabled} onClick={onEdit}><RegisterIcon name="edit" size={22}/></button><button className="button-primary" disabled={disabled || current.isClosed} onClick={onReconcile}>Reconcile</button></> : <button className="button-primary" disabled={disabled} onClick={onAddAccount}>Add account</button>}
+        {current ? <><button className="account-edit" aria-label="Edit account" title="Edit account" disabled={disabled} onClick={onEdit}><RegisterIcon name="edit" size={22}/></button><span className="reconcile-anchor"><button className="button-primary" disabled={disabled || current.isClosed} onClick={onReconcile}>Reconcile</button>{reconcilePopover}</span></> : <button className="button-primary" disabled={disabled} onClick={onAddAccount}>Add account</button>}
       </div>
     </header>
     <section className="account-balance-equation" aria-label="Account balance summary">
@@ -91,7 +91,7 @@ export function TransactionRow({ view = defaultView, entry, account, categories,
     {view.showFlags && <td className="register-decoration">{onFlag&&onRenameFlags?<FlagButton color={entry.flagColor} flags={flags} disabled={disabled} onSet={onFlag} onRename={onRenameFlags}/>:<RegisterIcon name="flag" size={15}/>}</td>}{view.showImages && <td className="register-decoration">{scheduled ? <RegisterIcon name="image" size={15}/> : <TransactionImagesButton entry={entry}/>}</td>}
     <td className="register-date">{entry.date.split('-').reverse().join('-')}{scheduled && <span className="schedule-repeat-icon" title="Scheduled transaction">↻</span>}</td>
     <td className="register-payee"><button disabled={locked} aria-label={`Edit ${entry.payee || (entry.transferId ? 'transfer' : 'transaction')} ${entry.date}`} onClick={() => selected ? onEdit() : (onRowSelect??onSelect)()} title={account?.name}>{name}{paused && <small className="schedule-paused">Paused</small>}</button></td>
-    <td className="register-category">{entry.transferId ? entry.isPayment ? <span className="transfer-category"><RegisterIcon name="transfer" size={13}/>{entry.categoryName ?? 'Ready to Assign'}</span> : <span className="transfer-category"><RegisterIcon name="transfer" size={13}/>Category not needed</span> : entry.splits.length ? <span className="split-summary"><button type="button" className="split-toggle" aria-label={`${splitsExpanded?'Collapse':'Expand'} split categories`} aria-expanded={splitsExpanded} onClick={()=>setSplitsExpanded(expanded=>!expanded)}><svg className={splitsExpanded?'split-chevron is-expanded':'split-chevron'} viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 6 6-6 6"/></svg></button><span>Split (Multiple Categories)...</span></span> : entry.categoryId ? entry.categoryName ?? categories.find(c => c.id === entry.categoryId)?.name ?? entry.categoryId : needsCategory ? <span className="needs-category">Needs category</span> : 'Inflow: Ready to Assign'}</td>
+    <td className="register-category">{entry.transferId ? entry.isPayment ? <span className="transfer-category"><RegisterIcon name="transfer" size={13}/>{entry.categoryName ?? 'Ready to Assign'}</span> : <span className="transfer-category"><RegisterIcon name="transfer" size={13}/>Category not needed</span> : entry.splits.length ? <span className="split-summary"><button type="button" className="split-toggle" aria-label={`${splitsExpanded?'Collapse':'Expand'} split categories`} aria-expanded={splitsExpanded} onClick={()=>setSplitsExpanded(expanded=>!expanded)}><svg className={splitsExpanded?'split-chevron is-expanded':'split-chevron'} viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 6 6-6 6"/></svg></button><span>Split (Multiple Categories)...</span></span> : entry.categoryId ? entry.categoryName ?? (()=>{const c=categories.find(x => x.id === entry.categoryId);return c ? (c.groupName ? c.groupName + ": " + c.name : c.name) : entry.categoryId;})() : needsCategory ? <span className="needs-category">Needs category</span> : 'Inflow: Ready to Assign'}</td>
     <td className="register-memo" title={entry.memo}>{entry.memo}</td>
     <td className="register-money">{entry.amount < 0 ? formatMoney(Math.abs(entry.amount)) : ''}</td><td className="register-money">{entry.amount > 0 ? formatMoney(entry.amount) : ''}</td>
     {view.showRunningBalance && <td className={`register-money register-running-balance ${(entry.runningBalance ?? 0) < 0 ? 'negative-balance' : ''}`}>{entry.runningBalance === null ? '—' : formatMoney(entry.runningBalance)}</td>}

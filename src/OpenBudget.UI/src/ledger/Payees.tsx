@@ -75,7 +75,8 @@ export function PayeePicker({ value, onChange, accountId, disabled, form, catego
         if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false); }
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); keyboard(e.key === 'ArrowDown' ? 1 : -1); }
         if (e.key === 'Enter' && open && active >= 0) { e.preventDefault(); choose(active); }
-        if (e.key === 'Tab') setOpen(false);
+        // Tab accepts the item highlighted with the arrow keys (choose() already moves focus to the next field).
+        if (e.key === 'Tab') { if (open && !e.shiftKey && active >= 0 && options[active] && !options[active].disabled) { e.preventDefault(); choose(active); } else setOpen(false); }
       }} /><button type="button" className="payee-open" aria-label="Choose payee" tabIndex={-1} disabled={disabled} onClick={() => { setOpen(v => !v); refocus(); }}>▾</button></span>
     {open && createPortal(<div ref={popup} className="payee-picker" style={position} onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); refocus(); } }}>
       <div id={form + '-payee-list'} role="listbox" aria-label="Payees" className="payee-options">

@@ -42,6 +42,14 @@ it('searches, navigates with the keyboard and Escape discards search without can
   await userEvent.click(input);await userEvent.clear(input);await userEvent.type(input,'missing');expect(screen.getByText('No matching categories.')).toBeInTheDocument();await userEvent.keyboard('{Escape}');expect(input).toHaveValue('Everyday: Groceries');expect(escape).not.toHaveBeenCalled();
 });
 
+it('Tab selects the item highlighted with the arrow keys and moves on; Tab without a highlight just closes',async()=>{
+  const change=vi.fn();render(<><CategoryPicker value="" categories={categories} onChange={change}/><input aria-label="Memo"/></>);const input=screen.getByRole('combobox',{name:'Category'});
+  await userEvent.click(input);await userEvent.keyboard('{ArrowDown}{ArrowDown}');
+  const highlighted=document.getElementById(input.getAttribute('aria-activedescendant')!)!.textContent!;await userEvent.keyboard('{Tab}');
+  expect(change).toHaveBeenCalledTimes(1);expect(highlighted).toContain(categories.find(c=>c.id===change.mock.calls[0][0])!.name);expect(screen.queryByRole('listbox')).not.toBeInTheDocument();expect(screen.getByRole('textbox',{name:'Memo'})).toHaveFocus();
+  change.mockClear();await userEvent.click(input);await userEvent.keyboard('{Tab}');expect(change).not.toHaveBeenCalled();expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+});
+
 it('Ready to Assign clears a category and unknown balances display a dash rather than invented zero',async()=>{
   const change=vi.fn();render(<CategoryPicker value="food" categories={[{id:'food',name:'Food'}]} onChange={change}/>);await userEvent.click(screen.getByRole('combobox',{name:'Category'}));
   expect(screen.getByLabelText('Ready to Assign available')).toHaveTextContent('—');await userEvent.click(screen.getByRole('option',{name:/Ready to Assign/}));expect(change).toHaveBeenCalledWith(inflowCategoryId);

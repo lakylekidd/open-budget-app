@@ -28,6 +28,12 @@ it('groups all accounts separately from saved payees, excludes hidden suggestion
   await userEvent.click(screen.getAllByRole('option',{name:'Transfer to Savings'})[1]);expect(select).toHaveBeenCalledWith('Transfer to Savings','three');expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
 });
 
+it('Tab selects the arrow-highlighted payee and moves on; Tab without a highlight keeps the typed text',async()=>{
+  render(<><Picker/><input aria-label="Memo"/></>);const input=screen.getByRole('combobox',{name:'Payee'});await userEvent.type(input,'Mar');await screen.findByRole('option',{name:'Market'});
+  await userEvent.keyboard('{ArrowDown}{Tab}');expect(input).toHaveValue('Market');expect(screen.queryByRole('listbox')).not.toBeInTheDocument();expect(screen.getByRole('textbox',{name:'Memo'})).toHaveFocus();
+  await userEvent.clear(input);await userEvent.type(input,'New shop');await userEvent.keyboard('{Tab}');expect(input).toHaveValue('New shop');expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+});
+
 it('filters merchant names and supports keyboard selection and Escape without changing the value',async()=>{
   render(<Picker/>);const input=screen.getByRole('combobox',{name:'Payee'});await userEvent.type(input,'Mar');await screen.findByRole('option',{name:'Market'});await userEvent.keyboard('{ArrowDown}{Enter}');expect(input).toHaveValue('Market');
   await userEvent.click(input);expect(screen.getByText('Selected')).toBeInTheDocument();await userEvent.keyboard('{Escape}');expect(input).toHaveValue('Market');expect(screen.queryByRole('listbox')).not.toBeInTheDocument();

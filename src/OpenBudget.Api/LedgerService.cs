@@ -323,13 +323,25 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             if (!LedgerRules.IsMoney(request.StatementBalance)) throw new LedgerException("Statement balance is invalid.");
             var entries = await Entries.Where(t => t.AccountId == id && !t.IsDeleted).ToListAsync(ct);
             var cleared = LedgerRules.Balance(entries, clearedOnly: true);
+            object? adjustmentDto = null;
+            if (cleared != request.StatementBalance && request.CreateAdjustment)
+            {
+                // The cleared balance differs from the bank: record the difference as a cleared adjustment, then reconcile it.
+                var date = DateOnly.FromDateTime(clock.GetLocalNow().DateTime);
+                await budgets.GetMonthAsync(db.ActiveBudgetId, Month(date), ct);
+                var adjustment = new TransactionEntity { Id = Guid.NewGuid(), AccountId = id, Date = date, Amount = request.StatementBalance - cleared, Payee = await GetPayeeAsync("Reconciliation Adjustment", ct), Memo = "Reconciliation balance adjustment", Status = "cleared" };
+                db.Transactions.Add(adjustment);
+                entries.Add(adjustment);
+                adjustmentDto = ToDto(adjustment);
+                cleared = LedgerRules.Balance(entries, clearedOnly: true);
+            }
             if (cleared != request.StatementBalance)
                 throw new LedgerException($"Reconciliation difference is {request.StatementBalance - cleared:0.00}. Correct or clear transactions before confirming a zero difference.");
             var before = entries.Where(t => t.Status == "cleared").Select(ToDto).ToList();
             foreach (var entry in entries.Where(t => t.Status == "cleared")) entry.Status = "reconciled";
             var snapshot = new ReconciliationEntity { Id = Guid.NewGuid(), AccountId = id, StatementBalance = cleared, CreatedAt = DateTimeOffset.UtcNow };
             db.Reconciliations.Add(snapshot);
-            return new Change(id, before, new { snapshot, entries = entries.Where(t => t.Status == "reconciled").Select(ToDto).ToList() });
+            return new Change(id, before, new { snapshot, adjustment = adjustmentDto, entries = entries.Where(t => t.Status == "reconciled").Select(ToDto).ToList() });
         }, ct);
 
     public Task<MutationDto> SetStatusAsync(Guid id, StatusRequest request, CancellationToken ct) =>

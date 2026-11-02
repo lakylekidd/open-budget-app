@@ -21,6 +21,14 @@
 .balance-term>span{font-size:12px;display:flex;align-items:center;gap:4px;color:#d0d1e2;white-space:nowrap}
 .cleared-total{color:#7fba00}.balance-term .negative-balance{color:#f2f2ff}.balance-operator{color:#c4c5d4;font-size:17px;align-self:center}
 .cleared-symbol,.uncleared-symbol{display:inline-block;flex:0 0 auto;vertical-align:middle;overflow:visible}
+.reconcile-anchor{position:relative;display:inline-block}
+.reconcile-popover{position:absolute;top:calc(100% + 10px);right:0;z-index:40;width:300px;padding:14px;border:1px solid #3a3c58;border-radius:10px;background:#1b1c37;box-shadow:0 12px 32px #0008;color:#f1f1ff;font-size:14px}
+.reconcile-balance-card{margin-bottom:14px;padding:16px;border-radius:8px;background:#2a2b47;text-align:center}.reconcile-balance-card p{margin:0 0 6px;color:#c4c5cf}.reconcile-balance-card strong{font-size:24px}
+.reconcile-help{display:block;margin:0 0 14px;padding:0;border:0;background:transparent;color:#a3acff;font:inherit;text-align:left;cursor:pointer}.reconcile-help:hover{text-decoration:underline}.reconcile-help-text{margin:-6px 0 12px;color:#c4c5cf;font-size:13px;line-height:1.4}
+.reconcile-popover input:not([type=checkbox]){width:100%;min-width:0;box-sizing:border-box;background:#0c0d22;color:#eeeefa;border:1px solid #555670;border-radius:5px;padding:10px;font:inherit;color-scheme:dark}.reconcile-popover input:focus{outline:none;border-color:#7583ff}
+.reconcile-label{display:grid;gap:8px;margin-bottom:10px;font-weight:600}.reconcile-label input{width:100%;box-sizing:border-box}
+.reconcile-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}.reconcile-actions-end{display:flex;justify-content:flex-end}
+.reconcile-banner{min-height:48px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:8px 16px;background:#2e2e70;font-size:15px}.reconcile-banner-actions{display:flex;gap:10px}.reconcile-banner-actions button{min-width:84px;padding:8px 14px;border:0;border-radius:6px;background:#43457a;color:inherit;cursor:pointer}.reconcile-banner-actions .button-primary{background:#6b6cf7}
 .account-attention-banner{min-height:48px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:8px 16px;background:#2e2e70;font-size:16px}
 .account-attention-banner>span{display:flex;align-items:center;gap:6px}.account-attention-banner .button-primary{min-width:84px}
 .transaction-info{display:inline-flex;width:14px;height:14px;align-items:center;justify-content:center;border-radius:50%;background:#aaa6ff;color:#14152b;font:700 italic 11px/1 Georgia,serif;flex-shrink:0}
