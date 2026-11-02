@@ -15,6 +15,7 @@ import { LoanAccountPage } from './LoanAccountPage';
 import { ManagePayees } from './Payees';
 import { TransactionSelectionBar } from './TransactionSelectionBar';
 import { wishlistPurchasePath, type WishlistContext } from './WishlistPurchase';
+import { ReconcileAdjustmentBanner, ReconcilePopover, type ReconcileStep } from './ReconcileFlow';
 import './ledger.css';
 
 type Dialog = { kind: 'account'; account?: Account; accountType?: AccountType } | { kind: 'transaction'; entry?: Entry; wishlistItemId?: string } | { kind: 'transfer'; entry?: Entry; from?: string; to?: string }
@@ -56,7 +57,7 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
   const [page, setPage] = useState(1); const [refresh, setRefresh] = useState(0);
   const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [conflict, setConflict] = useState(false);
   const [uncertain, setUncertain] = useState(false);
-  const [busy, setBusy] = useState(false); const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [busy, setBusy] = useState(false); const [dialog, setDialog] = useState<Dialog | null>(null); const [reconcile, setReconcile] = useState<ReconcileStep | null>(null);
   // The loan add/edit forms' optional "Pair a Category" step; it changes the dialog title and back button.
   const [pairingStep, setPairingStep] = useState(false);
   useEffect(() => setPairingStep(false), [dialog]);
@@ -319,8 +320,14 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
       {needsCategory > 0 && <div className="account-attention-banner"><span><span className="transaction-info">i</span> {needsCategory} new {needsCategory === 1 ? 'transaction' : 'transactions'} to approve or categorize.</span><button className="button-primary" onClick={() => { setReviewFilter(true);setCategory(''); setPage(1); }}>View</button></div>}
     <AccountHeader current={current} accounts={accounts.accounts} disabled={disabled} loading={loading && !register} onMenu={onMenu}
       onAddAccount={() => open({ kind: 'account' })} onEdit={() => current && open({ kind: 'account', account: current })}
-      onReconcile={() => current && open({ kind: 'reconcile', account: current })}
+      onReconcile={() => { if (current) { setError(''); setNotice(''); setViewOpen(false); setMoreOpen(false); setReconcile(reconcile ? null : { step: 'ask' }); } }}
+      reconcilePopover={current && reconcile && reconcile.step !== 'verify' ? <ReconcilePopover clearedBalance={current.clearedBalance} step={reconcile.step} busy={disabled}
+        onClose={() => setReconcile(null)} onNo={() => setReconcile({ step: 'input' })}
+        onYes={() => void mutate('/api/accounts/' + current.id + '/reconcile', 'POST', { statementBalance: current.clearedBalance }).then(ok => { if (ok) setReconcile(null); })}
+        onNext={statement => { const difference = Math.round((statement - current.clearedBalance) * 100) / 100; if (difference === 0) void mutate('/api/accounts/' + current.id + '/reconcile', 'POST', { statementBalance: statement }).then(ok => { if (ok) setReconcile(null); }); else setReconcile({ step: 'verify', statement }); }} /> : undefined}
       onFavorite={() => current && void mutate('/api/accounts/' + current.id, 'PUT', { name: current.name, isClosed: current.isClosed, isFavorite: !current.isFavorite })}/>
+    {current && reconcile?.step === 'verify' && <ReconcileAdjustmentBanner difference={Math.round((reconcile.statement - current.clearedBalance) * 100) / 100} busy={disabled} onCancel={() => setReconcile(null)}
+      onConfirm={() => void mutate('/api/accounts/' + current.id + '/reconcile', 'POST', { statementBalance: reconcile.statement, createAdjustment: true }).then(ok => { if (ok) setReconcile(null); })} />}
     {!dialog && feedback}{notice && <p className="sr-only" role="status">{notice}</p>}
     <div className="register-toolbar">
       <button aria-label="Add Transaction" className="register-add" disabled={disabled || !openAccounts.length} onClick={() => {setInline({key:crypto.randomUUID()});setSelectedIds([]);setViewOpen(false);setMoreOpen(false);}}><span className="register-plus">+</span>Add Transaction</button>

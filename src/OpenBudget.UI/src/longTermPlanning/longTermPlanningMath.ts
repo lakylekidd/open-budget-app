@@ -4,6 +4,7 @@ export type PlanningMonth = {
   hasExpectedIncome: boolean;
   expectedExpenses: number;
   remaining: number;
+  uncoveredExpenses: number;
   remainingToBeAssigned: number;
   hasActualData: boolean;
 };
@@ -93,7 +94,7 @@ export function previewPlanningChange(plan: LongTermPlanning, change: PlanningCh
   months.forEach((month, index) => {
     const assignedCents = groups.flatMap(group => group.categories)
       .reduce((sum, category) => sum + cents(category.months[index]?.plannedBudget ?? 0), 0);
-    month.remainingToBeAssigned = amountFromCents(cents(month.expectedIncome) - assignedCents);
+    month.remainingToBeAssigned = amountFromCents(cents(month.expectedIncome) - cents(month.uncoveredExpenses) - assignedCents);
   });
 
   return { ...plan, months, groups };

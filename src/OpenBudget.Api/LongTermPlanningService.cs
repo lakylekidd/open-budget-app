@@ -45,6 +45,13 @@ public sealed class LongTermPlanningService(BudgetDbContext db, TimeProvider tim
             .Where(x => x.Disposition == "pending")
             .ToListAsync(cancellationToken);
         var scheduledTotals = ScheduledPlanningTotals.ForYear(year, schedules, pendingOccurrences, out var categoryExpenses);
+        // Income arrives late in a month (24th/25th) and funds the next month, so a month's expected income is the previous month's scheduled income.
+        var previousYearTotals = year > 1
+            ? ScheduledPlanningTotals.ForYear(year - 1, schedules, pendingOccurrences, out _)
+            : new Dictionary<string, (decimal Income, decimal Expenses)>();
+        decimal IncomeFundingMonth(int monthNumber) => monthNumber == 1
+            ? previousYearTotals.GetValueOrDefault(FormatMonth(year - 1, 12)).Income
+            : scheduledTotals.GetValueOrDefault(FormatMonth(year, monthNumber - 1)).Income;
         var planningEntries = await db.LongTermPlanningCategories.AsNoTracking()
             .OrderBy(x => x.Month)
             .ThenBy(x => x.CategoryId)
@@ -64,7 +71,7 @@ public sealed class LongTermPlanningService(BudgetDbContext db, TimeProvider tim
         var resultMonths = Enumerable.Range(1, 12).Select(monthNumber =>
         {
             var month = FormatMonth(year, monthNumber);
-            var expectedIncome = scheduledTotals.GetValueOrDefault(month).Income;
+            var expectedIncome = IncomeFundingMonth(monthNumber);
             var expectedExpenses = scheduledTotals.GetValueOrDefault(month).Expenses;
             return new LongTermPlanningMonthDto(
                 month,
@@ -72,6 +79,7 @@ public sealed class LongTermPlanningService(BudgetDbContext db, TimeProvider tim
                 expectedIncome != 0m,
                 Money(expectedExpenses),
                 Money(expectedIncome - expectedExpenses),
+                0m,
                 0m,
                 actualMonthExists.Contains(month));
         }).ToList();
@@ -151,17 +159,33 @@ public sealed class LongTermPlanningService(BudgetDbContext db, TimeProvider tim
             }
         }
 
+        // Uncovered expenses: categories that ended the previous month with a negative actual available carry that shortfall
+        // into this month and reduce what is left to assign. Only real (existing) months count, never projections.
+        decimal UncoveredFromPreviousMonth(int monthIndex)
+        {
+            var categoriesNow = groups.SelectMany(x => x.Categories).ToList();
+            if (monthIndex > 0)
+                return actualMonthExists.Contains(FormatMonth(year, monthIndex))
+                    ? Money(categoriesNow.Sum(x => Math.Max(0m, -(x.Months[monthIndex - 1].ActualAvailable ?? 0m))))
+                    : 0m;
+            if (priorBudget is null || priorBudget.Month != FormatMonth(year - 1, 12)) return 0m;
+            var priorAvailable = priorBudget.Groups.SelectMany(x => x.Categories).ToDictionary(x => x.Id, x => x.Available);
+            return Money(categoriesNow.Sum(x => Math.Max(0m, -priorAvailable.GetValueOrDefault(x.Id))));
+        }
+
         for (var monthIndex = 0; monthIndex < resultMonths.Count; monthIndex++)
         {
             var assigned = groups.SelectMany(x => x.Categories)
                 .Sum(x => x.Months[monthIndex].PlannedBudget);
+            var uncovered = UncoveredFromPreviousMonth(monthIndex);
             resultMonths[monthIndex] = resultMonths[monthIndex] with
             {
-                RemainingToBeAssigned = Money(resultMonths[monthIndex].ExpectedIncome - assigned)
+                UncoveredExpenses = uncovered,
+                RemainingToBeAssigned = Money(resultMonths[monthIndex].ExpectedIncome - uncovered - assigned)
             };
         }
 
-        var hasPlanningData = scheduledTotals.Keys.Any(x => string.CompareOrdinal(x, startMonth) >= 0 && string.CompareOrdinal(x, endMonth) <= 0)
+        var hasPlanningData = IncomeFundingMonth(1) != 0m || scheduledTotals.Keys.Any(x => string.CompareOrdinal(x, startMonth) >= 0 && string.CompareOrdinal(x, endMonth) <= 0)
             || planningEntries.Any(x => x.PlannedBudgetOverride is not null && string.Compare(x.Month, endMonth) <= 0);
         return new LongTermPlanningDto(year, stateVersion, hasPlanningData, resultMonths, groups);
     }

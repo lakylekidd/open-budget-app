@@ -47,7 +47,8 @@ export function CategoryPicker({value,categories,readyToAssign,includeInflow=tru
   let index=Number(showSelected)+Number(showInflow);
   return <><span className="category-input-wrap"><input ref={input} form={form} role="combobox" onFocus={()=>{if(skipFocusOpen.current||disabled)return;if(!open){setQuery(null);setActive(-1);}show();}} aria-label={label} aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list" aria-activedescendant={open&&active>=0?`${id}-${active}`:undefined} autoComplete="off" disabled={disabled||notNeeded} value={query??title} placeholder="category" onClick={()=>{if(!open){setQuery(null);setActive(-1);input.current?.select();}show();}} onChange={e=>{setQuery(e.target.value);show();setActive(-1);}} onKeyDown={e=>{
     if(e.key==='Escape'&&open){e.stopPropagation();close();}
-    if(e.key==='Tab')close();
+    // Tab accepts the item highlighted with the arrow keys (choose() already moves focus to the next field).
+    if(e.key==='Tab'){if(open&&!e.shiftKey&&!loading&&!error&&active>=0&&choices[active]){e.preventDefault();choose(active);}else close();}
     if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();show();const direction=e.key==='ArrowDown'?1:-1;setActive(n=>choices.length?((n<0?(direction>0?-1:0):n)+direction+choices.length)%choices.length:-1);}
     if(e.key==='Enter'&&open){e.preventDefault();if(active>=0)choose(active);}
   }}/><button type="button" className="category-open" aria-label={`Choose ${label.toLowerCase()}`} tabIndex={-1} disabled={disabled||notNeeded} onClick={()=>{if(open)close();else show();setQuery(null);setActive(-1);refocus();}}>▾</button></span>

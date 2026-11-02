@@ -26,6 +26,15 @@ type LongTermPlanningProps = { onPendingChange?: (pending: boolean) => void; acc
 const plannedMetrics: Metric[] = ['plannedBudget', 'plannedExpenses', 'plannedAvailable'];
 const actualMetrics: Metric[] = ['actualAssigned', 'actualExpenses', 'actualAvailable'];
 
+function previousMonth(month: string) {
+  const [y, m] = month.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+
+function shortMonthName(month: string) {
+  return new Intl.DateTimeFormat('en-US', { month: 'short' }).format(new Date(`${month}-01T12:00:00`));
+}
+
 function monthName(month: string) {
   return new Intl.DateTimeFormat('en-GB', { month: 'long' }).format(new Date(`${month}-01T12:00:00`));
 }
@@ -49,17 +58,26 @@ function total(group: PlanningGroup, monthIndex: number, metric: Metric): number
   return sumNullable(values.map(value => value ?? 0));
 }
 
+// Every amount in this view shows a single dash when it is zero or has no value.
+function zeroDash(value: number | null | undefined) {
+  return value === null || value === undefined || value === 0 ? '-' : formatMoney(value);
+}
+
 function actualLabel(value: number | null | undefined) {
-  return value === null || value === undefined ? '—' : formatMoney(value);
+  return zeroDash(value);
+
 }
 
 function availableTone(metric: Metric, value: number | null | undefined) {
   if ((metric !== 'plannedAvailable' && metric !== 'actualAvailable') || value === null || value === undefined) return '';
-  return value < 0 ? 'lt-available-negative' : 'lt-available-positive';
+  return value < 0 ? 'lt-available-negative' : value > 0 ? 'lt-available-positive' : 'lt-available-zero';
 }
 
-function plannedExpenseTone(metric: Metric, value: number | null | undefined) {
-  return metric === 'plannedExpenses' && (value ?? 0) > 0 ? 'lt-planned-expense-positive' : '';
+// Expenses are orange only when the row's available is negative; otherwise white.
+function expenseTone(metric: Metric, available: number | null | undefined) {
+  if (metric !== 'plannedExpenses' && metric !== 'actualExpenses') return '';
+  const remaining = available ?? 0;
+  return remaining < 0 ? 'lt-planned-expense-positive' : '';
 }
 
 // Group rows slide open/shut over a duration that grows gently with their height, so big groups don't snap.
@@ -288,7 +306,8 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
 
   function metricValue(category: PlanningCategory, monthIndex: number, metric: Metric) {
     const value = category.months[monthIndex]?.[metric];
-    return metric.startsWith('actual') ? actualLabel(value) : formatMoney(value ?? 0);
+    if (metric.startsWith('actual')) return actualLabel(value);
+    return zeroDash(value);
   }
 
   function renderMetric(category: PlanningCategory, monthIndex: number, metric: Metric) {
@@ -320,20 +339,20 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
           title="Click to edit the planned assignment"
           disabled={locked}
           onClick={() => beginEdit(change, display)}
-        >{formatMoney(display)}</button>}
+        >{zeroDash(display)}</button>}
       </div>;
     }
     if (metric === 'plannedExpenses' || metric === 'actualExpenses') {
       const kind = metric === 'plannedExpenses' ? 'plannedExpenses' : 'actualExpenses';
       const label = kind === 'plannedExpenses' ? 'planned' : 'actual';
-      return <div className={`lt-value-line ${kind === 'actualExpenses' ? 'lt-actual-value' : ''} ${plannedExpenseTone(metric, value?.[metric])}`} key={metric}>
+      return <div className={`lt-value-line ${kind === 'actualExpenses' ? 'lt-actual-value' : ''} ${expenseTone(metric, value?.[kind === 'plannedExpenses' ? 'plannedAvailable' : 'actualAvailable'])}`} key={metric}>
         <button type="button" className="lt-activity-value" aria-label={`View ${category.name} ${label} expenses in ${monthName(month.month)} ${year}`}
           onClick={event => void openActivity({ month: month.month, kind, subtitle: `${category.name} · ${label} expenses · ${monthName(month.month)} ${year}`, categoryIds: [category.id], anchor: event.currentTarget })}>
           {metricValue(category, monthIndex, metric)}
         </button>
       </div>;
     }
-    return <div className={`lt-value-line ${metric.startsWith('actual') ? 'lt-actual-value' : ''} ${availableTone(metric, value?.[metric])}`} key={metric}>
+    return <div className={`lt-value-line ${metric.startsWith('actual') ? 'lt-actual-value' : ''} ${metric === 'actualAssigned' ? 'lt-actual-assigned' : ''} ${availableTone(metric, value?.[metric])}`} key={metric}>
       <span className="lt-readonly-value">{metricValue(category, monthIndex, metric)}</span>
     </div>;
   }
@@ -341,7 +360,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
   function renderGroupMetric(group: PlanningGroup, monthIndex: number, metric: Metric) {
     if (metric === 'plannedExpenses') {
       const month = displayedPlan!.months[monthIndex].month;
-      return <div className={`lt-value-line ${plannedExpenseTone(metric, total(group, monthIndex, metric))}`} key={metric}><button type="button" className="lt-activity-value"
+      return <div className={`lt-value-line ${expenseTone(metric, total(group, monthIndex, 'plannedAvailable'))}`} key={metric}><button type="button" className="lt-activity-value"
         aria-label={`View ${group.name} planned expenses in ${monthName(month)} ${year}`}
         onClick={event => void openActivity({ month, kind: 'plannedExpenses', subtitle: `Combination (${group.categories.map(category => category.name).join(', ')}) · planned expenses · ${monthName(month)} ${year}`, categoryIds: group.categories.map(category => category.id), anchor: event.currentTarget })}>
         {groupValues(group, monthIndex, metric)}
@@ -356,6 +375,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
   function groupValues(group: PlanningGroup, monthIndex: number, metric: Metric) {
     const value = total(group, monthIndex, metric);
     if (metric.startsWith('actual')) return actualLabel(value);
+    // Group rows always show the real amount, including zero.
     return formatMoney(value ?? 0);
   }
 
@@ -366,7 +386,9 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
       let entries: Entry[];
       const scheduled = selection.kind !== 'actualExpenses';
       if (scheduled) {
-        const result = await requestJson<{ scheduled: Entry[] }>(`/api/long-term-planning/${year}/activity/${selection.month}`);
+        // Income received late in a month funds the next one, so a month's income is listed from the previous month.
+        const activityMonth = selection.kind === 'income' ? previousMonth(selection.month) : selection.month;
+        const result = await requestJson<{ scheduled: Entry[] }>(`/api/long-term-planning/${activityMonth.slice(0, 4)}/activity/${activityMonth}`);
         entries = result.scheduled;
       } else {
         const [yearNumber, monthNumber] = selection.month.split('-').map(Number);
@@ -421,12 +443,13 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
                 const monthIndex = displayedPlan.months.indexOf(month);
                 return <div className={`lt-month-header ${state}`} role="columnheader" data-month={month.month} key={month.month}>
                   <h2>{monthName(month.month)}</h2>
-                  <button type="button" className="lt-summary-line lt-summary-action" aria-label={`View expected income in ${monthName(month.month)} ${year}`}
-                    onClick={event => void openActivity({ month: month.month, kind: 'income', subtitle: `Expected Income · ${monthName(month.month)} ${year}`, anchor: event.currentTarget })}><span>Expected Income</span><strong>{formatMoney(month.expectedIncome)}</strong></button>
+                  <button type="button" className="lt-summary-line lt-summary-action" aria-label={`View expected income (${shortMonthName(previousMonth(month.month))}) for ${monthName(month.month)} ${year}`}
+                    onClick={event => void openActivity({ month: month.month, kind: 'income', subtitle: `Expected Income (${shortMonthName(previousMonth(month.month))}) · ${monthName(month.month)} ${year}`, anchor: event.currentTarget })}><span>Expected Income ({shortMonthName(previousMonth(month.month))})</span><strong>{zeroDash(month.expectedIncome)}</strong></button>
+                  <div className="lt-summary-line lt-summary-uncovered"><span>Uncovered Expenses ({shortMonthName(previousMonth(month.month))})</span><strong className={month.uncoveredExpenses > 0 ? "lt-negative" : ""}>{zeroDash(-month.uncoveredExpenses)}</strong></div>
                   <button type="button" className="lt-summary-line lt-summary-action" aria-label={`View expected expenses in ${monthName(month.month)} ${year}`}
-                    onClick={event => void openActivity({ month: month.month, kind: 'expenses', subtitle: `Expected Expenses · ${monthName(month.month)} ${year}`, anchor: event.currentTarget })}><span>Expected Expenses</span><strong>{formatMoney(displayedPlan.months[monthIndex].expectedExpenses)}</strong></button>
-                  <div className="lt-summary-line"><span>Remaining to Be Assigned</span><strong>{formatMoney(displayedPlan.months[monthIndex].remainingToBeAssigned)}</strong></div>
-                  <div className="lt-summary-line lt-summary-remaining"><span>Remaining</span><strong>{formatMoney(displayedPlan.months[monthIndex].remaining)}</strong></div>
+                    onClick={event => void openActivity({ month: month.month, kind: 'expenses', subtitle: `Expected Expenses · ${monthName(month.month)} ${year}`, anchor: event.currentTarget })}><span>Expected Expenses</span><strong>{zeroDash(displayedPlan.months[monthIndex].expectedExpenses)}</strong></button>
+                  <div className="lt-summary-line"><span>Remaining to Be Assigned</span><strong className={displayedPlan.months[monthIndex].remainingToBeAssigned > 0 ? "lt-positive" : displayedPlan.months[monthIndex].remainingToBeAssigned < 0 ? "lt-negative" : ""}>{zeroDash(displayedPlan.months[monthIndex].remainingToBeAssigned)}</strong></div>
+                  <div className="lt-summary-line lt-summary-remaining"><span>Remaining</span><strong>{zeroDash(displayedPlan.months[monthIndex].remaining)}</strong></div>
                   <div className="lt-measure-head"><span>Assigned</span><span>Expenses</span><span>Available</span></div>
                 </div>;
               })}
@@ -441,7 +464,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
                       <DisclosureChevron open={!isCollapsed} className="lt-disclosure" /><strong>{group.name}</strong>
                     </button>
                   </div>
-                  {displayedPlan.months.map((month, monthIndex) => <div className={`lt-month-values ${month.month < currentMonth ? 'past' : month.month === currentMonth ? 'current' : 'future'}`} role="cell" key={month.month}>
+                  {displayedPlan.months.map((month, monthIndex) => <div className={`lt-month-values ${month.month < currentMonth ? 'past' : month.month === currentMonth ? 'current' : 'future'}${month.month >= currentMonth ? ' lt-editable' : ''}`} role="cell" key={month.month}>
                     <div className="lt-subrow lt-planned-subrow" data-subrow="planned">{plannedMetrics.map(metric => renderGroupMetric(group, monthIndex, metric))}</div>
                   </div>)}
                 </div>
@@ -452,7 +475,7 @@ export function LongTermPlanning({ onPendingChange, accounts = [], onSelectTrans
                     <strong title={category.name}>{category.name}</strong>
                     <div className="lt-pair-labels"><span>Planned</span><span>Actual</span></div>
                   </div>
-                  {displayedPlan.months.map((month, monthIndex) => <div className={`lt-month-values ${month.month < currentMonth ? 'past' : month.month === currentMonth ? 'current' : 'future'}`} role="cell" key={month.month}>
+                  {displayedPlan.months.map((month, monthIndex) => <div className={`lt-month-values ${month.month < currentMonth ? 'past' : month.month === currentMonth ? 'current' : 'future'}${month.month >= currentMonth ? ' lt-editable' : ''}`} role="cell" key={month.month}>
                     <div className="lt-subrow lt-planned-subrow" data-subrow="planned">{plannedMetrics.map(metric => renderMetric(category, monthIndex, metric))}</div>
                     <div className="lt-subrow lt-actual-subrow" data-subrow="actual">{actualMetrics.map(metric => renderMetric(category, monthIndex, metric))}</div>
                   </div>)}

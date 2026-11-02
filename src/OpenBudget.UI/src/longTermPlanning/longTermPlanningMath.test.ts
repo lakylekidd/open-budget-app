@@ -8,6 +8,7 @@ function plan(): LongTermPlanning {
     hasExpectedIncome: true,
     expectedExpenses: 0,
     remaining: 3000,
+    uncoveredExpenses: 0,
     remainingToBeAssigned: 2500,
     hasActualData: false,
   }));
@@ -54,6 +55,16 @@ it('previews a mid-year budget override only through the next explicit override'
   expect(values[11].plannedBudget).toBe(700);
   expect(result.months[5].remainingToBeAssigned).toBe(2350);
   expect(result.months[8].remainingToBeAssigned).toBe(2300);
+});
+
+it('subtracts uncovered expenses from the previous month when recalculating remaining to be assigned', () => {
+  const base = plan();
+  base.months[5].uncoveredExpenses = 40;
+  const result = previewPlanningChange(base, { month: '2027-06', categoryId: 'groceries', field: 'plannedBudgetOverride', amount: 650 });
+
+  // 3000 income - 40 uncovered - 650 assigned in June; other months have none.
+  expect(result.months[5].remainingToBeAssigned).toBe(2310);
+  expect(result.months[4].remainingToBeAssigned).toBe(2500);
 });
 
 it('removing an override restores the previous effective budget and recalculates carry-forward', () => {

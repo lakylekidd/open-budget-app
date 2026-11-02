@@ -275,6 +275,23 @@ public sealed class LedgerApiTests(PostgresFixture fixture) : IClassFixture<Post
     }
 
     [Fact]
+    public async Task Reconciliation_can_create_an_adjustment_for_the_difference_and_lock_it()
+    {
+        await using var app = await fixture.CreateAppAsync(); var client = app.CreateClient();
+        var account = await AddAccount(client, 100);
+        // Without the flag the difference is still refused.
+        var refused = await client.PostAsJsonAsync($"/api/accounts/{account}/reconcile", new ReconcileRequest(Guid.NewGuid(), (await Accounts(client)).Version, 105));
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+
+        await Post<MutationDto>(client, $"/api/accounts/{account}/reconcile", new ReconcileRequest(Guid.NewGuid(), (await Accounts(client)).Version, 105, true));
+
+        var items = (await Register(client)).Items;
+        var adjustment = Assert.Single(items, t => t.Amount == 5m);
+        Assert.Equal("reconciled", adjustment.Status);
+        Assert.Equal(105, (await Accounts(client)).Accounts.Single(a => a.Id == account).ClearedBalance);
+    }
+
+    [Fact]
     public async Task Reconciliation_requires_zero_difference_and_locks_history()
     {
         await using var app = await fixture.CreateAppAsync(); var client = app.CreateClient();

@@ -12,6 +12,7 @@ function planFor(year: number, hasPlanningData = true): PlanData {
     hasExpectedIncome: hasPlanningData,
     expectedExpenses: 0,
     remaining: hasPlanningData ? 2000 : 0,
+    uncoveredExpenses: 0,
     remainingToBeAssigned: hasPlanningData ? 1400 : 0,
     hasActualData: false,
   }));
@@ -108,7 +109,10 @@ it('opens forecast and actual expense activity and passes selected transactions 
   await user.click(screen.getByRole('button', { name: 'Next year' }));
   await annualGrid(year);
 
-  await user.click(screen.getByRole('button', { name: `View expected income in June ${year}` }));
+  // June's expected income is May's scheduled income (paid on the 24th/25th for the following month).
+  expect(screen.getAllByText('Expected Income (May)')).toHaveLength(1);
+  await user.click(screen.getByRole('button', { name: `View expected income (May) for June ${year}` }));
+  expect(await screen.findByRole('dialog', { name: 'Activity' })).toHaveTextContent(`Expected Income (May) · June ${year}`);
   expect(await screen.findByRole('button', { name: 'Open Salary in Main account' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Open Grocer in Main account' })).not.toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Close' }));
@@ -169,7 +173,7 @@ it('defaults to the current year and uses distinct past, current, and future mon
   expect(screen.queryByRole('textbox', { name: `Expected Income January ${year - 1}` })).not.toBeInTheDocument();
 });
 
-it('colors negative Available red and zero-or-positive Available green for planned and actual values', async () => {
+it('colors negative Available red and zero Available white and positive Available green for planned and actual values', async () => {
   const year = new Date().getFullYear();
   const plan = planFor(year);
   plan.groups[0].categories[0].months[0].plannedAvailable = -25;
@@ -189,28 +193,30 @@ it('colors negative Available red and zero-or-positive Available green for plann
 
   expect(availableLine(groceriesJanuary, 'planned')).toHaveClass('lt-available-negative');
   expect(availableLine(groceriesJanuary, 'actual')).toHaveClass('lt-available-negative');
-  expect(availableLine(transportJanuary, 'planned')).toHaveClass('lt-available-positive');
-  expect(availableLine(transportJanuary, 'actual')).toHaveClass('lt-available-positive');
+  expect(availableLine(transportJanuary, 'planned')).toHaveClass('lt-available-zero');
+  expect(availableLine(transportJanuary, 'actual')).toHaveClass('lt-available-zero');
   expect(availableLine(container.querySelector('.lt-group-row')!, 'planned')).toHaveClass('lt-available-negative');
 });
 
-it('colors planned expenses orange only when they are above zero', async () => {
+it('colors planned expenses orange only when the row available is below zero', async () => {
   const year = new Date().getFullYear();
   const plan = planFor(year);
-  plan.groups[0].categories[0].months[0].plannedExpenses = 80;
+  const [groceries, transport] = plan.groups[0].categories;
+  groceries.months[0].plannedExpenses = 80; groceries.months[0].plannedAvailable = -20;
+  groceries.months[1].plannedExpenses = 80; groceries.months[1].plannedAvailable = 30;
+  transport.months[0].plannedExpenses = 40; transport.months[0].plannedAvailable = 0;
   plans[year] = plan;
   const { container } = render(<LongTermPlanning />);
   await annualGrid(year);
 
   const categoryRows = Array.from(container.querySelectorAll('.lt-category-row'));
-  const groceries = categoryRows.find(row => row.textContent?.includes('Groceries'))!;
-  const transport = categoryRows.find(row => row.textContent?.includes('Transport'))!;
+  const groceriesRow = categoryRows.find(row => row.textContent?.includes('Groceries'))!;
+  const transportRow = categoryRows.find(row => row.textContent?.includes('Transport'))!;
   const expenseLine = (cell: Element) => cell.querySelector('[data-subrow="planned"] .lt-value-line:nth-child(2)');
 
-  expect(expenseLine(groceries.querySelector('.lt-month-values')!)).toHaveClass('lt-planned-expense-positive');
-  expect(expenseLine(groceries.querySelectorAll('.lt-month-values')[1])).not.toHaveClass('lt-planned-expense-positive');
-  expect(expenseLine(transport.querySelector('.lt-month-values')!)).not.toHaveClass('lt-planned-expense-positive');
-  expect(expenseLine(container.querySelector('.lt-group-row .lt-month-values')!)).toHaveClass('lt-planned-expense-positive');
+  expect(expenseLine(groceriesRow.querySelector('.lt-month-values')!)).toHaveClass('lt-planned-expense-positive');
+  expect(expenseLine(groceriesRow.querySelectorAll('.lt-month-values')[1])).not.toHaveClass('lt-planned-expense-positive');
+  expect(expenseLine(transportRow.querySelector('.lt-month-values')!)).not.toHaveClass('lt-planned-expense-positive');
 });
 
 it('slides group rows shut before removing them and slides them open from zero height', async () => {
@@ -288,8 +294,8 @@ it('navigates years, previews remaining to be assigned, and preserves later over
   expect(screen.queryByRole('button', { name: `Remove Groceries override for June ${year}` })).not.toBeInTheDocument();
 
   expect(screen.queryByRole('textbox', { name: `Groceries Planned Expenses June ${year}` })).not.toBeInTheDocument();
-  expect(juneHeader).toHaveTextContent('Expected Expenses');
-  expect(juneHeader).toHaveTextContent('€0.00');
+  // Zero amounts show a single dash everywhere in the long-term view.
+  expect(juneHeader).toHaveTextContent('Expected Expenses-');
 });
 
 it('keeps group totals for collapsed categories and aggregates every subcategory', async () => {

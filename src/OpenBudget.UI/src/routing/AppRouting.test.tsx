@@ -70,7 +70,7 @@ beforeEach(() => {
     if (path.includes('/plan-actions')) return json([]);
     if (path.startsWith('/api/long-term-planning/')) {
       const year = Number(path.split('/').at(-1));
-      return json({ year, version: 1, hasPlanningData: false, months: Array.from({ length: 12 }, (_, index) => ({ month: `${year}-${String(index + 1).padStart(2, '0')}`, expectedIncome: 0, hasExpectedIncome: false, expectedExpenses: 0, remaining: 0, hasActualData: false })), groups: [] });
+      return json({ year, version: 1, hasPlanningData: false, months: Array.from({ length: 12 }, (_, index) => ({ month: `${year}-${String(index + 1).padStart(2, '0')}`, expectedIncome: 0, hasExpectedIncome: false, expectedExpenses: 0, remaining: 0, uncoveredExpenses: 0, hasActualData: false })), groups: [] });
     }
     if (path.startsWith('/api/schedules?')) return json({ version: 1, page: 1, pageSize: 100, total: 0, items: [] });
     if (path.startsWith('/api/register-views/')) return json({ version: 1, datePreset: 'all', fromMonth: null, toMonth: null, showReconciled: false, showRunningBalance: false, showFlags: false, showImages: false, showScheduledTransactions: true });

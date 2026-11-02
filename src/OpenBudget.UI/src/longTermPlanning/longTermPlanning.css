@@ -33,6 +33,8 @@
 .lt-measure-head{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:auto;padding-top:6px;color:#aeadc1;font-size:10px;line-height:12px;font-weight:600;letter-spacing:.2px;text-align:right;text-transform:uppercase}
 .lt-money-input{box-sizing:border-box;min-width:0;width:100%;height:27px;padding:3px 4px;border:1px solid #42445c;border-radius:3px;background:#25283f;color:#f1f1ff;text-align:right;font-size:12px;line-height:17px;font-variant-numeric:tabular-nums}
 .lt-money-display{min-width:0;width:100%;padding:3px 4px;border:1px solid transparent;border-radius:3px;background:transparent;color:#f1f1ff;text-align:right;font-size:12px;line-height:17px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
+/* Match the editable input's 1px border + 4px padding so planned and actual Assigned line up on the right edge. */
+.lt-month-values.lt-editable .lt-actual-assigned .lt-readonly-value,.lt-group-row .lt-month-values.lt-editable .lt-value-line:first-child .lt-readonly-value{padding-right:5px;box-sizing:border-box}
 .lt-money-display:hover:not(:disabled){border-color:#42445c;background:#25283f}
 .lt-money-display:disabled{color:#aeadc1;cursor:default}
 .lt-money-input:focus{border-color:#7583ff;outline:1px solid #7583ff}
@@ -88,15 +90,16 @@
 /* Category rows: the Planned/Actual labels and the month values share one vertical rhythm
    (6px top, 21px name line, then two 30px subrows split by the same 1px rule), so the
    divider lines up across the row and sits midway between Planned and Actual. */
-.lt-category-row .lt-label-cell{justify-content:flex-start;padding-top:6px;padding-bottom:6px}
-.lt-category-row .lt-label-cell>strong{display:block;height:21px}
-.lt-category-row .lt-pair-labels{grid-template-rows:30px 31px;margin-top:0;line-height:30px}
+.lt-category-row .lt-label-cell{flex-direction:row;align-items:center;justify-content:flex-start;gap:10px;padding-top:6px;padding-bottom:6px}
+.lt-category-row .lt-label-cell>strong{display:block;flex:1 1 auto;min-width:0;height:auto}
+.lt-category-row .lt-pair-labels{flex:0 0 56px;grid-template-rows:30px 31px;margin-top:0;line-height:30px}
 .lt-category-row .lt-pair-labels span+span{top:0;border-top:1px solid #303248}
 .lt-category-row .lt-pair-labels span+span::before{content:none}
-.lt-category-row .lt-month-values{justify-content:flex-start;padding-top:27px;padding-bottom:6px}
+.lt-category-row .lt-month-values{justify-content:flex-start;padding-top:6px;padding-bottom:6px}
 .lt-category-row .lt-subrow{box-sizing:border-box;min-height:30px;height:30px}
 .lt-category-row .lt-actual-subrow{height:31px}
 .lt-planned-expense-positive .lt-activity-value{color:#f0a331}
+.lt-value-line:not(.lt-planned-expense-positive) .lt-activity-value{color:#f1f1ff}
 /* Collapsible group rows: JS animates this wrapper's height (Web Animations), pushing the rows below.
    overflow-y:clip (not hidden) so the sticky label column keeps sticking while scrolling sideways. */
 .lt-group-rows{display:flex;flex-direction:column;overflow-y:clip}
@@ -106,3 +109,8 @@
 .lt-collapse-controls button:hover:not(:disabled){background:#26284a;color:#fff}
 .lt-collapse-controls button:focus-visible{outline:2px solid #8f8bff;outline-offset:2px}
 .lt-collapse-controls button:disabled{opacity:.45;cursor:default}
+
+.lt-group-row .lt-readonly-value,.lt-group-row .lt-activity-value,.lt-group-row .lt-money-display{font-weight:700}
+.lt-summary-line strong.lt-negative{color:#ff697a}
+.lt-summary-line strong.lt-positive{color:#9dcc58}
+.lt-value-line.lt-available-zero .lt-readonly-value{color:#f1f1ff}
