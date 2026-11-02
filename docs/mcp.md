@@ -126,6 +126,8 @@ Every tool:
 | `categories_update` | Update category | — | — | ✓ | write |
 | `category_groups_move` | Reorder category group | — | — | ✓ | write |
 | `categories_move` | Reorder category / move to another group | — | — | ✓ | write |
+| `categories_delete_preview` | Preview category deletion | ✓ | — | ✓ | read-only |
+| `categories_delete` | Delete category (reassign its history) | — | — | ✓ | destructive (confirm) |
 | `category_targets_get` | Get category target | ✓ | ✓ | ✓ | read-only |
 | `category_targets_save` | Create or update category target | — | — | ✓ | write |
 | `category_targets_delete` | Delete category target | — | — | ✓ | destructive (confirm) |
@@ -215,7 +217,8 @@ Every user-facing capability of the web app and every API endpoint must be reach
 | Budget list, create, rename, archive, restore, delete (budget switcher, Budgets dialog → `/api/budgets`) | `budgets_list`, `budgets_create`, `budgets_rename`, `budgets_archive`, `budgets_restore`, `budgets_delete` |
 | Plan month read, assign, move money, note (Plan → `/api/budgets/{id}/months/{month}`) | `plan_get_month`, `plan_set_assigned`, `plan_move_money`, `plan_set_note` |
 | Recent Moves (→ `/plan-actions`) | `plan_recent_actions` |
-| Category groups and categories: create, rename, icon, snooze, hide/unhide | `category_groups_create`, `category_groups_update`, `categories_create`, `categories_update` |
+| Category groups and categories: create, rename, icon, snooze, hide/unhide (budget-wide except snooze) | `category_groups_create`, `category_groups_update`, `categories_create`, `categories_update` |
+| Delete category with history reassignment (Plan → Delete Category dialog → `/categories/{categoryId}/deletion`, `/delete`) | `categories_delete_preview`, `categories_delete` |
 | Drag-and-drop ordering of groups and categories, move category to another group | `category_groups_move`, `categories_move` |
 | Category targets (→ `/categories/{categoryId}/target`) | `category_targets_get`, `category_targets_save`, `category_targets_delete` |
 | Auto-Assign | Not exposed (browser-side calculation; see above) |
