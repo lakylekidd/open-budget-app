@@ -9,7 +9,7 @@ public sealed partial class LedgerService
         var today=DateOnly.FromDateTime(clock.GetLocalNow().DateTime);var blocked=new List<Guid>();var posted=0;
         while(posted<32)
         {
-            db.ChangeTracker.Clear();
+            db.ChangeTracker.Clear(); db.ResetCatalogs();
             var rule=await db.Schedules.AsNoTracking().Where(r=>!r.IsEnded&&!r.IsPaused&&r.NextDate<=today&&!blocked.Contains(r.Id)).OrderBy(r=>r.NextDate).ThenBy(r=>r.Id).FirstOrDefaultAsync(ct);
             if(rule is null)break;
             var occurrenceId=RecurrenceRules.OccurrenceId(rule.Id,rule.Sequence);
@@ -20,12 +20,12 @@ public sealed partial class LedgerService
             try { await ScheduleActionAsync(rule.Id,new(commandId,version,"post",occurrenceId,AutomaticallyPosted:true),ct);posted++; }
             catch(LedgerException error)
             {
-                db.ChangeTracker.Clear();blocked.Add(rule.Id);
+                db.ChangeTracker.Clear(); db.ResetCatalogs();blocked.Add(rule.Id);
                 if(error.StatusCode!=409 && error.StatusCode!=404)
                     await gate.RunAsync(async()=>{var current=await db.Schedules.SingleAsync(r=>r.Id==rule.Id,ct);if(current.Sequence==rule.Sequence&&!current.IsEnded&&!current.IsPaused&&(await db.LedgerStates.SingleAsync(ct)).Version==version){current.PostingError=error.Message;await db.SaveChangesAsync(ct);}return true;},ct);
             }
         }
-        db.ChangeTracker.Clear();return posted;
+        db.ChangeTracker.Clear(); db.ResetCatalogs();return posted;
     }
     public Task<MutationDto> ReviewTransactionAsync(Guid id, ReviewTransactionRequest request, CancellationToken ct) =>
         ExecuteAsync(request.CommandId,request.Version,$"transaction.{request.Action}/{id}",request,async()=>{

@@ -37,7 +37,7 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
         }
         catch (DbUpdateConcurrencyException)
         {
-            db.ChangeTracker.Clear();
+            db.ChangeTracker.Clear(); db.ResetCatalogs();
             var latest = await db.BudgetPlans.SingleAsync(x => x.Id == "default", cancellationToken);
             return BudgetPlanUpdateResult.Conflict(ToPlanDto(latest));
         }
@@ -47,43 +47,59 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
 
     public Task<BudgetEntity> GetMonthAsync(string month, CancellationToken cancellationToken) => GetMonthAsync("default", month, cancellationToken);
 
+    // Loads a month composed with the budget's categories, creating it lazily. Categories are budget-wide: a new month only
+    // gets per-month state (carried available, snooze and legacy target from the previous month; zero balances when it
+    // precedes every existing month). The starter template is seeded once per budget, when it has no categories yet.
     public async Task<BudgetEntity> GetMonthAsync(string budgetId, string month, CancellationToken cancellationToken)
     {
-        var existing = await QueryMonth(budgetId, month).SingleOrDefaultAsync(cancellationToken);
+        var existing = await db.LoadPlanMonthAsync(QueryMonth(budgetId, month), cancellationToken);
         if (existing is not null) return existing;
 
-        var previous = await db.Budgets
+        var plan = await db.BudgetPlans.SingleAsync(x => x.Id == budgetId, cancellationToken);
+        var catalog = await CategoryCatalog.LoadAsync(db, budgetId, cancellationToken);
+        if (!plan.CategoriesInitialized)
+        {
+            if (catalog.Groups.Count == 0 && catalog.Categories.Count == 0) SeedStarterCategories(catalog);
+            plan.CategoriesInitialized = true;
+        }
+
+        var previous = await db.LoadPlanMonthAsync(db.Budgets
             .Where(x => x.BudgetId == budgetId && string.Compare(x.Month, month) < 0)
-            .Include(x => x.Plan)
-            .Include(x => x.Groups).ThenInclude(x => x.Categories)
-            .OrderByDescending(x => x.Month)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        // A month before the budget's first one copies the nearest later month's groups and categories (balances start at zero)
-        // instead of seeding the starter template, which would add categories the user never created. Only a budget with no
-        // months at all starts from the template.
-        var later = previous is not null ? null : await db.Budgets
+            .OrderByDescending(x => x.Month).Take(1), cancellationToken);
+        // A month before the budget's first one has no balances; it keeps the nearest later month's snooze and legacy target.
+        var later = previous is not null ? null : await db.LoadPlanMonthAsync(db.Budgets
             .Where(x => x.BudgetId == budgetId && string.Compare(x.Month, month) > 0)
-            .Include(x => x.Plan)
-            .Include(x => x.Groups).ThenInclude(x => x.Categories)
-            .OrderBy(x => x.Month)
-            .FirstOrDefaultAsync(cancellationToken);
+            .OrderBy(x => x.Month).Take(1), cancellationToken);
 
-        var created = previous is not null ? CreateNextMonth(month, previous)
-            : later is not null ? CreateEarlierMonth(month, later)
-            : CreateStarterMonth(month, budgetId);
-        if (previous is null && later is null)
-            created.Plan = await db.BudgetPlans.SingleAsync(x => x.Id == budgetId, cancellationToken);
+        var created = new BudgetEntity
+        {
+            Month = month,
+            BudgetId = budgetId,
+            Plan = plan,
+            Note = "",
+            OpeningReadyToAssign = previous is null ? 0 : BudgetCarryForward.OpeningReadyToAssign(previous),
+            FundsAdded = 0,
+            Version = 1
+        };
+        catalog.Attach(created);
+        foreach (var state in created.CategoryStates)
+        {
+            var source = (previous ?? later)?.State(state.CategoryId);
+            if (source is null) continue;
+            state.Target = source.Target;
+            state.Snoozed = source.Snoozed;
+            if (previous is not null) state.OpeningAvailable = BudgetCarryForward.OpeningAvailable(source.Available);
+        }
         db.Budgets.Add(created);
         try
         {
             await db.SaveChangesAsync(cancellationToken);
-            return await QueryMonth(budgetId, month).SingleAsync(cancellationToken);
+            return created;
         }
         catch (DbUpdateException)
         {
-            db.ChangeTracker.Clear();
-            var concurrent = await QueryMonth(budgetId, month).SingleOrDefaultAsync(cancellationToken);
+            db.ChangeTracker.Clear(); db.ResetCatalogs();
+            var concurrent = await db.LoadPlanMonthAsync(QueryMonth(budgetId, month), cancellationToken);
             if (concurrent is not null) return concurrent;
             throw;
         }
@@ -94,6 +110,9 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
     public Task<BudgetUpdateResult> UpdateMonthAsync(string budgetId, BudgetUpdateDto request, CancellationToken cancellationToken) =>
         UpdateMonthAsync(budgetId, request, null, cancellationToken);
 
+    // Saves one month. Assigned amounts, snooze and the legacy target are this month's; names, groups, order, icons and
+    // archive state are budget-wide and apply to every month. Any structural change advances every month's version so a
+    // session holding another month reloads instead of overwriting the new structure with a stale copy.
     public async Task<BudgetUpdateResult> UpdateMonthAsync(string budgetId, BudgetUpdateDto request, string? actorUserId, CancellationToken cancellationToken)
     {
         var validation = Validate(request);
@@ -105,12 +124,13 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
         if (budget.FundsAdded != request.FundsAdded)
             return BudgetUpdateResult.Invalid("Funds added is a preserved legacy baseline. Record new income through a cash account transaction.");
 
-        var currentGroups = budget.Groups.ToDictionary(x => x.Id, StringComparer.Ordinal);
-        var currentCategories = budget.Groups.SelectMany(g => g.Categories)
-            .ToDictionary(x => x.Id, StringComparer.Ordinal);
+        var catalog = budget.Catalog!;
+        var currentGroups = catalog.Groups.ToDictionary(x => x.Id, StringComparer.Ordinal);
+        var currentCategories = catalog.Categories.ToDictionary(x => x.Id, StringComparer.Ordinal);
         var requestedCategoryIds = request.Groups.SelectMany(g => g.Categories.Select(c => c.Id)).ToHashSet(StringComparer.Ordinal);
 
-        // Preserve historical category records; archive them instead of deleting their month state.
+        // A month save can only archive groups and categories. Deleting a category goes through the reassign flow
+        // (POST /api/budgets/{id}/categories/{categoryId}/delete), which moves its history first.
         if (currentGroups.Keys.Any(id => request.Groups.All(g => g.Id != id)) ||
             currentCategories.Keys.Any(id => !requestedCategoryIds.Contains(id)))
             return BudgetUpdateResult.Invalid("Existing groups and categories must be archived instead of removed.");
@@ -118,27 +138,27 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
             return BudgetUpdateResult.Invalid(wishlistError);
 
         var previousReadyToAssign = CalculateReadyToAssign(budget);
-        var previousAvailable = budget.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.Available);
-        var previousCreditOverspending = budget.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.CreditOverspending);
+        var previousAvailable = BudgetCarryForward.AvailableById(budget);
+        var previousCreditOverspending = BudgetCarryForward.CreditOverspendingById(budget);
         var previousCategories = budget.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => (c.Name, c.Assigned));
-        var orderingChanged = false;
+        var structureChanged = false;
 
         foreach (var groupRequest in request.Groups)
         {
+            var name = groupRequest.Name.Trim();
             if (!currentGroups.TryGetValue(groupRequest.Id, out var group))
             {
-                group = new CategoryGroupEntity { BudgetId = budgetId, BudgetMonth = request.Month, Id = groupRequest.Id };
-                budget.Groups.Add(group);
+                group = catalog.AddGroup(groupRequest.Id, name, groupRequest.SortOrder, groupRequest.IsArchived);
                 currentGroups.Add(group.Id, group);
-                orderingChanged = true;
+                structureChanged = true;
             }
-            else if (group.SortOrder != groupRequest.SortOrder)
+            else if (group.Name != name || group.SortOrder != groupRequest.SortOrder || group.IsArchived != groupRequest.IsArchived)
             {
-                orderingChanged = true;
+                group.Name = name;
+                group.SortOrder = groupRequest.SortOrder;
+                group.IsArchived = groupRequest.IsArchived;
+                structureChanged = true;
             }
-            group.Name = groupRequest.Name.Trim();
-            group.SortOrder = groupRequest.SortOrder;
-            group.IsArchived = groupRequest.IsArchived;
 
             foreach (var categoryRequest in groupRequest.Categories)
             {
@@ -152,10 +172,9 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
                         return BudgetUpdateResult.Invalid("Loan categories are created with their loan account.");
                     if (categoryRequest.Assigned != 0)
                         return BudgetUpdateResult.Invalid("A new category must start with zero assigned.");
-                    category = new CategoryEntity { BudgetId = budgetId, BudgetMonth = request.Month, GroupId = groupRequest.Id, Id = categoryRequest.Id };
-                    group.Categories.Add(category);
+                    category = catalog.AddCategory(categoryRequest.Id, groupRequest.Id, categoryRequest.Name.Trim(), categoryRequest.SortOrder, categoryRequest.Icon, categoryRequest.IsArchived);
                     currentCategories.Add(category.Id, category);
-                    orderingChanged = true;
+                    structureChanged = true;
                 }
                 else if (category.GroupId != groupRequest.Id)
                 {
@@ -163,37 +182,33 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
                     if (previousGroup.IsArchived || group.IsArchived || category.IsArchived)
                         return BudgetUpdateResult.Invalid("An archived category cannot be moved until it is restored.");
                     category.GroupId = groupRequest.Id;
-                    orderingChanged = true;
+                    structureChanged = true;
                 }
-                else if ((group.IsArchived || category.IsArchived) && categoryRequest.Assigned != category.Assigned)
+                else if ((group.IsArchived || category.IsArchived) && categoryRequest.Assigned != catalog.EnsureState(budget, category.Id).Assigned)
                 {
                     return BudgetUpdateResult.Invalid("An archived category cannot be assigned until it is restored.");
                 }
 
-                if (category.SortOrder != categoryRequest.SortOrder)
-                    orderingChanged = true;
-
-                category.Name = categoryRequest.Name.Trim();
-                category.Assigned = categoryRequest.Assigned;
-                category.Target = categoryRequest.Target;
-                category.Icon = categoryRequest.Icon;
-                category.Snoozed = categoryRequest.Snoozed;
-                category.SortOrder = categoryRequest.SortOrder;
-                category.IsArchived = categoryRequest.IsArchived;
+                var categoryName = categoryRequest.Name.Trim();
+                if (category.Name != categoryName || category.Icon != categoryRequest.Icon || category.SortOrder != categoryRequest.SortOrder || category.IsArchived != categoryRequest.IsArchived)
+                {
+                    category.Name = categoryName;
+                    category.Icon = categoryRequest.Icon;
+                    category.SortOrder = categoryRequest.SortOrder;
+                    category.IsArchived = categoryRequest.IsArchived;
+                    structureChanged = true;
+                }
+                var state = catalog.EnsureState(budget, category.Id);
+                state.Assigned = categoryRequest.Assigned;
+                state.Target = categoryRequest.Target;
+                state.Snoozed = categoryRequest.Snoozed;
             }
         }
 
-        if (orderingChanged)
+        if (structureChanged)
         {
-            var otherMonths = await db.Budgets
-                .Where(b => b.BudgetId == budgetId && b.Month != budget.Month)
-                .Include(b => b.Groups).ThenInclude(g => g.Categories)
-                .ToListAsync(cancellationToken);
-            foreach (var otherMonth in otherMonths)
-            {
-                if (ApplySharedOrdering(otherMonth, request.Groups))
-                    otherMonth.Version++;
-            }
+            foreach (var otherMonth in await db.Budgets.Where(b => b.BudgetId == budgetId && b.Month != budget.Month).ToListAsync(cancellationToken))
+                otherMonth.Version++;
         }
 
         budget.Note = request.Note.Trim();
@@ -204,26 +219,24 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
             previousReadyToAssign,
             CalculateReadyToAssign(budget),
             previousAvailable,
-            budget.Groups.SelectMany(g => g.Categories),
+            budget.CategoryStates,
             previousCreditOverspending);
         if (carryChanges.HasChanges)
         {
-            var laterMonths = await db.Budgets.Where(b => b.BudgetId == budgetId && string.Compare(b.Month, budget.Month) > 0)
-                .Include(b => b.Groups).ThenInclude(g => g.Categories).OrderBy(b => b.Month).ToListAsync(cancellationToken);
-            var source = budget;
+            var laterMonths = (await db.LoadPlanMonthsAsync(db.Budgets.Where(b => b.BudgetId == budgetId && string.Compare(b.Month, budget.Month) > 0), cancellationToken))
+                .OrderBy(b => b.Month, StringComparer.Ordinal).ToList();
             foreach (var later in laterMonths)
             {
                 var oldReadyToAssign = CalculateReadyToAssign(later);
-                var oldAvailable = later.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.Available);
-                var oldCreditOverspending = later.Groups.SelectMany(g => g.Categories).ToDictionary(c => c.Id, c => c.CreditOverspending);
-                if (BudgetCarryForward.Apply(later, carryChanges.ReadyToAssignDelta, carryChanges.AvailableDeltas, source)) later.Version++;
+                var oldAvailable = BudgetCarryForward.AvailableById(later);
+                var oldCreditOverspending = BudgetCarryForward.CreditOverspendingById(later);
+                if (BudgetCarryForward.Apply(later, carryChanges.ReadyToAssignDelta, carryChanges.AvailableDeltas)) later.Version++;
                 carryChanges = BudgetCarryForward.CalculateChanges(
                     oldReadyToAssign,
                     CalculateReadyToAssign(later),
                     oldAvailable,
-                    later.Groups.SelectMany(g => g.Categories),
+                    later.CategoryStates,
                     oldCreditOverspending);
-                source = later;
             }
         }
 
@@ -242,9 +255,9 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
         }
         catch (DbUpdateConcurrencyException)
         {
-            db.ChangeTracker.Clear();
-            var latest = await QueryMonth(budgetId, request.Month).SingleAsync(cancellationToken);
-            return BudgetUpdateResult.Conflict(await ToDtoAsync(latest, cancellationToken));
+            db.ChangeTracker.Clear(); db.ResetCatalogs();
+            var latest = await db.LoadPlanMonthAsync(QueryMonth(budgetId, request.Month), cancellationToken);
+            return BudgetUpdateResult.Conflict(await ToDtoAsync(latest!, cancellationToken));
         }
     }
 
@@ -268,7 +281,7 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
             await WishlistService.AttachPlanProgressAsync(db, budget, BudgetDto.From(budget, result), cancellationToken), cancellationToken);
     }
 
-    public static CategoryTargetProgressDto CalculateTarget(CategoryTargetEntity target, string month, CategoryEntity category,
+    public static CategoryTargetProgressDto CalculateTarget(CategoryTargetEntity target, string month, PlanCategory category,
         IReadOnlyDictionary<string, Dictionary<string, decimal>> history) =>
         CategoryTargetRules.Calculate(target.ToDefinition(), month, category.Assigned, category.Available,
             history.TryGetValue(target.CategoryId, out var prior) ? prior : null);
@@ -281,69 +294,15 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
         if (dated.Count == 0) return new Dictionary<string, Dictionary<string, decimal>>();
         var ids = dated.Select(x => x.CategoryId).ToList();
         var from = dated.Min(x => x.StartMonth) ?? month;
-        var rows = await db.Categories.AsNoTracking()
-            .Where(c => c.BudgetId == budgetId && ids.Contains(c.Id) && string.Compare(c.BudgetMonth, from) >= 0 && string.Compare(c.BudgetMonth, month) < 0)
-            .Select(c => new { c.Id, c.BudgetMonth, c.Assigned }).ToListAsync(cancellationToken);
+        var rows = await db.CategoryMonths.AsNoTracking()
+            .Where(c => c.BudgetId == budgetId && ids.Contains(c.CategoryId) && string.Compare(c.BudgetMonth, from) >= 0 && string.Compare(c.BudgetMonth, month) < 0)
+            .Select(c => new { Id = c.CategoryId, c.BudgetMonth, c.Assigned }).ToListAsync(cancellationToken);
         return rows.GroupBy(x => x.Id, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.ToDictionary(x => x.BudgetMonth, x => x.Assigned, StringComparer.Ordinal), StringComparer.Ordinal);
     }
 
     public static decimal CalculateReadyToAssign(BudgetEntity budget) =>
-        decimal.Round(budget.OpeningReadyToAssign + budget.FundsAdded + budget.LedgerIncome - budget.Groups.SelectMany(x => x.Categories).Sum(x => x.Assigned), 2, MidpointRounding.ToEven);
-
-    private static bool ApplySharedOrdering(BudgetEntity target, IReadOnlyList<CategoryGroupUpdateDto> sourceGroups)
-    {
-        var targetGroups = target.Groups.ToDictionary(group => group.Id, StringComparer.Ordinal);
-        var targetCategories = target.Groups.SelectMany(group => group.Categories).ToDictionary(category => category.Id, StringComparer.Ordinal);
-        var changed = false;
-
-        var orderedGroups = sourceGroups.OrderBy(group => group.SortOrder)
-            .Where(group => targetGroups.ContainsKey(group.Id))
-            .Select(group => targetGroups[group.Id])
-            .Concat(target.Groups.OrderBy(group => group.SortOrder).Where(group => !sourceGroups.Any(source => source.Id == group.Id)))
-            .ToList();
-        for (var index = 0; index < orderedGroups.Count; index++)
-        {
-            if (orderedGroups[index].SortOrder != index) changed = true;
-            orderedGroups[index].SortOrder = index;
-        }
-
-        foreach (var sourceGroup in sourceGroups)
-        {
-            if (!targetGroups.ContainsKey(sourceGroup.Id)) continue;
-            foreach (var sourceCategory in sourceGroup.Categories)
-            {
-                if (targetCategories.TryGetValue(sourceCategory.Id, out var targetCategory) && targetCategory.GroupId != sourceGroup.Id)
-                {
-                    targetCategory.GroupId = sourceGroup.Id;
-                    changed = true;
-                }
-            }
-        }
-
-        foreach (var targetGroup in target.Groups)
-        {
-            var categoriesInGroup = targetCategories.Values.Where(category => category.GroupId == targetGroup.Id).ToList();
-            var sourceCategoryIds = sourceGroups.Where(group => group.Id == targetGroup.Id)
-                .SelectMany(group => group.Categories.OrderBy(category => category.SortOrder).Select(category => category.Id))
-                .Where(targetCategories.ContainsKey)
-                .ToHashSet(StringComparer.Ordinal);
-            var orderedCategories = sourceGroups.Where(group => group.Id == targetGroup.Id)
-                .SelectMany(group => group.Categories.OrderBy(category => category.SortOrder))
-                .Where(category => targetCategories.ContainsKey(category.Id) && targetCategories[category.Id].GroupId == targetGroup.Id)
-                .Select(category => targetCategories[category.Id])
-                .Concat(categoriesInGroup.Where(category => !sourceCategoryIds.Contains(category.Id)).OrderBy(category => category.SortOrder))
-                .ToList();
-
-            for (var index = 0; index < orderedCategories.Count; index++)
-            {
-                if (orderedCategories[index].SortOrder != index) changed = true;
-                orderedCategories[index].SortOrder = index;
-            }
-        }
-
-        return changed;
-    }
+        decimal.Round(budget.OpeningReadyToAssign + budget.FundsAdded + budget.LedgerIncome - budget.CategoryStates.Sum(x => x.Assigned), 2, MidpointRounding.ToEven);
 
     private void RecordPlanActions(BudgetEntity budget, string actorUserId, IReadOnlyDictionary<string, (string Name, decimal Assigned)> previousCategories)
     {
@@ -360,84 +319,10 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
 
     private IQueryable<BudgetEntity> QueryMonth(string budgetId, string month) => db.Budgets
         .Include(x => x.Plan)
-        .Include(x => x.Groups).ThenInclude(x => x.Categories)
         .Where(x => x.BudgetId == budgetId && x.Month == month);
 
-    private static BudgetEntity CreateNextMonth(string month, BudgetEntity previous) => new()
-    {
-        Month = month,
-        BudgetId = previous.BudgetId,
-        Plan = previous.Plan,
-        Note = "",
-        OpeningReadyToAssign = BudgetCarryForward.OpeningReadyToAssign(previous),
-        FundsAdded = 0,
-        Version = 1,
-        Groups = previous.Groups.OrderBy(x => x.SortOrder).Select(group => new CategoryGroupEntity
-        {
-            BudgetId = previous.BudgetId,
-            BudgetMonth = month,
-            Id = group.Id,
-            Name = group.Name,
-            SortOrder = group.SortOrder,
-            IsArchived = group.IsArchived,
-            Categories = group.Categories.OrderBy(x => x.SortOrder).Select(category => new CategoryEntity
-            {
-                BudgetId = previous.BudgetId,
-                BudgetMonth = month,
-                GroupId = group.Id,
-                Id = category.Id,
-                Name = category.Name,
-                OpeningAvailable = BudgetCarryForward.OpeningAvailable(category.Available),
-                Assigned = 0,
-                Activity = 0,
-                Target = category.Target,
-                Icon = category.Icon,
-                Snoozed = category.Snoozed,
-                SortOrder = category.SortOrder,
-                IsArchived = category.IsArchived
-            }).ToList()
-        }).ToList()
-    };
-
-    // Structure-only copy used for a month that precedes every existing month: same groups, categories, targets and order,
-    // but no assigned, activity or carried-over amounts.
-    private static BudgetEntity CreateEarlierMonth(string month, BudgetEntity later) => new()
-    {
-        Month = month,
-        BudgetId = later.BudgetId,
-        Plan = later.Plan,
-        Note = "",
-        OpeningReadyToAssign = 0,
-        FundsAdded = 0,
-        Version = 1,
-        Groups = later.Groups.OrderBy(x => x.SortOrder).Select(group => new CategoryGroupEntity
-        {
-            BudgetId = later.BudgetId,
-            BudgetMonth = month,
-            Id = group.Id,
-            Name = group.Name,
-            SortOrder = group.SortOrder,
-            IsArchived = group.IsArchived,
-            Categories = group.Categories.OrderBy(x => x.SortOrder).Select(category => new CategoryEntity
-            {
-                BudgetId = later.BudgetId,
-                BudgetMonth = month,
-                GroupId = group.Id,
-                Id = category.Id,
-                Name = category.Name,
-                OpeningAvailable = 0,
-                Assigned = 0,
-                Activity = 0,
-                Target = category.Target,
-                Icon = category.Icon,
-                Snoozed = category.Snoozed,
-                SortOrder = category.SortOrder,
-                IsArchived = category.IsArchived
-            }).ToList()
-        }).ToList()
-    };
-
-    private static BudgetEntity CreateStarterMonth(string month, string budgetId)
+    // The starter template, seeded once into a budget that has no categories yet (never per month).
+    public static void SeedStarterCategories(CategoryCatalog catalog)
     {
         var groups = new (string Id, string Name, (string Id, string Name, string Icon)[] Categories)[]
         {
@@ -447,32 +332,12 @@ public sealed class BudgetService(BudgetDbContext db, LedgerProjection projectio
             ("future", "True expenses", [("annual", "Annual bills", "◷"), ("home-repair", "Home maintenance", "⌁"), ("travel", "Next trip", "✈")]),
             ("savings", "Savings goals", [("buffer", "Emergency fund", "◉"), ("gifts", "Gifts", "◇")])
         };
-
-        return new BudgetEntity
+        foreach (var (group, groupOrder) in groups.Select((group, index) => (group, index)))
         {
-            Month = month,
-            BudgetId = budgetId,
-            Note = "",
-            Version = 1,
-            Groups = groups.Select((group, groupOrder) => new CategoryGroupEntity
-            {
-                BudgetId = budgetId,
-                BudgetMonth = month,
-                Id = group.Id,
-                Name = group.Name,
-                SortOrder = groupOrder,
-                Categories = group.Categories.Select((category, categoryOrder) => new CategoryEntity
-                {
-                    BudgetId = budgetId,
-                    BudgetMonth = month,
-                    GroupId = group.Id,
-                    Id = category.Id,
-                    Name = category.Name,
-                    Icon = category.Icon,
-                    SortOrder = categoryOrder
-                }).ToList()
-            }).ToList()
-        };
+            catalog.AddGroup(group.Id, group.Name, groupOrder);
+            foreach (var (category, categoryOrder) in group.Categories.Select((category, index) => (category, index)))
+                catalog.AddCategory(category.Id, group.Id, category.Name, categoryOrder, category.Icon);
+        }
     }
 
     private static string? Validate(BudgetUpdateDto request)

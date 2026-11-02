@@ -169,6 +169,7 @@ app.MapAuthenticationEndpoints();
 EntitlementService.MapEndpoints(app);
 BudgetOwnershipService.MapEndpoints(app);
 CategoryTargetService.MapEndpoints(app);
+LedgerService.MapCategoryDeletionEndpoints(app);
 BudgetSharingService.MapEndpoints(app);
 WishlistService.MapEndpoints(app);
 UserPreferenceService.MapEndpoints(app);

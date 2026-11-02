@@ -108,7 +108,7 @@ public sealed class BudgetCarryForwardApiTests(PostgresFixture fixture) : IClass
     }
 
     [Fact]
-    public async Task Historical_new_categories_carry_through_missing_later_rows_without_changing_later_archive_metadata()
+    public async Task Historical_new_categories_carry_through_later_months_and_archive_metadata_is_budget_wide()
     {
         await using var app=await fixture.CreateAppAsync();var c=app.CreateClient();var account=await Account(c);
         foreach(var month in new[]{September,"2026-11","2027-01"})await Month(c,month);
@@ -116,9 +116,16 @@ public sealed class BudgetCarryForwardApiTests(PostgresFixture fixture) : IClass
         await Put<BudgetDto>(c,"/api/budget/"+August,edit);await Assign(c,August,50,"retro-energy");await Spend(c,account,new(2026,8,15),-35,"retro-energy");
         foreach(var month in new[]{September,"2026-11","2027-01"})await AssertAvailable(c,month,15,0,"retro-energy");
         var november=await Assign(c,"2026-11",5,"retro-energy");edit=Editable(november);edit=edit with{Groups=edit.Groups.Select(g=>g.Id=="energy"?g with{Name="Later energy label",Categories=g.Categories.Select(cat=>cat with{IsArchived=true}).ToList()}:g).ToList()};
-        await Put<BudgetDto>(c,"/api/budget/2026-11",edit);await Assign(c,August,80,"retro-energy");
-        november=await Month(c,"2026-11");Assert.Equal(50,Electricity(november,"retro-energy").Available);Assert.True(Electricity(november,"retro-energy").IsArchived);Assert.Equal("Later energy label",november.Groups.Single(g=>g.Id=="energy").Name);
-        await AssertAvailable(c,October,45,0,"retro-energy");await Assign(c,October,2,"retro-energy");await AssertAvailable(c,"2027-01",52,0,"retro-energy");
+        await Put<BudgetDto>(c,"/api/budget/2026-11",edit);
+        // Names and archive state are budget-wide: August shows the November rename and archive, so it refuses new assignments.
+        var august=await Month(c,August);Assert.True(Electricity(august,"retro-energy").IsArchived);Assert.Equal("Later energy label",august.Groups.Single(g=>g.Id=="energy").Name);
+        var refused=await c.PutAsJsonAsync("/api/budget/"+August,WithAssignment(august,80,"retro-energy"));Assert.Equal(HttpStatusCode.BadRequest,refused.StatusCode);
+        november=await Month(c,"2026-11");Assert.Equal(20,Electricity(november,"retro-energy").Available);Assert.True(Electricity(november,"retro-energy").IsArchived);
+        // Restoring in another month restores it everywhere; carried money still flows through the months created later.
+        edit=Editable(await Month(c,October));edit=edit with{Groups=edit.Groups.Select(g=>g.Id=="energy"?g with{Categories=g.Categories.Select(cat=>cat with{IsArchived=false}).ToList()}:g).ToList()};
+        await Put<BudgetDto>(c,"/api/budget/"+October,edit);
+        await AssertAvailable(c,October,15,0,"retro-energy");await Assign(c,October,2,"retro-energy");await AssertAvailable(c,"2027-01",22,0,"retro-energy");
+        Assert.False(Electricity(await Month(c,"2027-01"),"retro-energy").IsArchived);
     }
 
     [Fact]

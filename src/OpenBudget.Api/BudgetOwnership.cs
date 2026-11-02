@@ -122,8 +122,11 @@ public sealed class BudgetOwnershipService(BudgetDbContext db, BudgetRequestCont
         db.Accounts.RemoveRange(await db.Accounts.ToListAsync(cancellationToken));
         db.Payees.RemoveRange(await db.Payees.ToListAsync(cancellationToken));
         var months = await db.Budgets.Where(x => x.BudgetId == budgetId)
-            .Include(x => x.Groups).ThenInclude(x => x.Categories).ToListAsync(cancellationToken);
+            .Include(x => x.CategoryStates).ToListAsync(cancellationToken);
         db.Budgets.RemoveRange(months);
+        db.CategoryMonths.RemoveRange(months.SelectMany(x => x.CategoryStates));
+        db.Categories.RemoveRange(await db.Categories.Where(x => x.BudgetId == budgetId).ToListAsync(cancellationToken));
+        db.CategoryGroups.RemoveRange(await db.CategoryGroups.Where(x => x.BudgetId == budgetId).ToListAsync(cancellationToken));
         db.BudgetPlans.Remove(plan);
         try
         {

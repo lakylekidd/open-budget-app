@@ -236,37 +236,29 @@ public sealed partial class LedgerService
             throw new LedgerException("This category group already has a category with that name.");
         if (existing.Count >= maxCategoriesPerGroup) throw new LedgerException("That category group already has the maximum number of categories.");
         var categoryId = $"category-{Guid.NewGuid():D}";
-        var months = await db.Budgets.Where(b => b.BudgetId == db.ActiveBudgetId).Include(b => b.Groups).ThenInclude(g => g.Categories).ToListAsync(ct);
-        foreach (var month in months)
-        {
-            var group = month.Groups.SingleOrDefault(g => g.Id == groupId);
-            if (group is null)
-            {
-                group = new CategoryGroupEntity { BudgetId = month.BudgetId, BudgetMonth = month.Month, Id = groupId, Name = groupName,
-                    SortOrder = month.Groups.Count == 0 ? 0 : month.Groups.Max(g => g.SortOrder) + 1 };
-                month.Groups.Add(group);
-            }
-            group.Categories.Add(new CategoryEntity { BudgetId = month.BudgetId, BudgetMonth = month.Month, GroupId = groupId, Id = categoryId, Name = name,
-                SortOrder = group.Categories.Count == 0 ? 0 : group.Categories.Max(c => c.SortOrder) + 1 });
-            month.Version++;
-        }
+        // Categories are budget-wide: the new category (and group) appears in every month, past and future.
+        var catalog = current.Catalog!;
+        if (catalog.FindGroup(groupId) is null)
+            catalog.AddGroup(groupId, groupName, catalog.Groups.Count == 0 ? 0 : catalog.Groups.Max(g => g.SortOrder) + 1);
+        var siblings = catalog.Categories.Where(c => c.GroupId == groupId).ToList();
+        catalog.AddCategory(categoryId, groupId, name, siblings.Count == 0 ? 0 : siblings.Max(c => c.SortOrder) + 1);
+        foreach (var month in await db.Budgets.Where(b => b.BudgetId == db.ActiveBudgetId).ToListAsync(ct)) month.Version++;
         created.Add(new(slot, categoryId, name, groupId, groupName, newGroup));
         return categoryId;
     }
 
-    // Re-pairing the account's own category restores it (and the Loans group) from the current month on.
+    // Re-pairing the account's own category restores it (and the Loans group). Categories are budget-wide, so the restore
+    // applies to every month.
     private async Task RestoreAutoCategoryAsync(string categoryId, string currentMonth, CancellationToken ct)
     {
-        var months = await db.Budgets.Where(b => b.BudgetId == db.ActiveBudgetId && string.Compare(b.Month, currentMonth) >= 0)
-            .Include(b => b.Groups).ThenInclude(g => g.Categories).ToListAsync(ct);
-        foreach (var month in months)
-        {
-            var changed = false;
-            foreach (var group in month.Groups)
-                foreach (var category in group.Categories.Where(c => c.Id == categoryId && (c.IsArchived || group.IsArchived)))
-                { category.IsArchived = false; group.IsArchived = false; changed = true; }
-            if (changed) month.Version++;
-        }
+        var catalog = await CategoryCatalog.LoadAsync(db, db.ActiveBudgetId, ct);
+        var category = catalog.Find(categoryId);
+        if (category is null) return;
+        var group = catalog.FindGroup(category.GroupId)!;
+        if (!category.IsArchived && !group.IsArchived) return;
+        category.IsArchived = false;
+        group.IsArchived = false;
+        foreach (var month in await db.Budgets.Where(b => b.BudgetId == db.ActiveBudgetId).ToListAsync(ct)) month.Version++;
     }
 
     private async Task<(AccountEntity Account, LoanTermsEntity Terms)> LoanAccountAsync(Guid id, CancellationToken ct)

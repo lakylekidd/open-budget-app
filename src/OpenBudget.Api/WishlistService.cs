@@ -80,8 +80,8 @@ public sealed class WishlistService(BudgetDbContext db, BudgetService budgets, T
             if (bucket is null) return WishlistResult.Fail("Bucket not found.", 404);
             var categoryId = WishlistRules.CategoryId(bucketId);
             var current = CurrentMonth();
-            var balances = await db.Categories.AsNoTracking()
-                .Where(c => c.BudgetId == budgetId && c.Id == categoryId)
+            var balances = await db.CategoryMonths.AsNoTracking()
+                .Where(c => c.BudgetId == budgetId && c.CategoryId == categoryId)
                 .Select(c => new { c.BudgetMonth, c.OpeningAvailable, c.Assigned, c.Activity }).ToListAsync(ct);
             var latest = balances.OrderByDescending(x => x.BudgetMonth, StringComparer.Ordinal).FirstOrDefault()?.BudgetMonth;
             var blocking = balances
@@ -212,7 +212,7 @@ public sealed class WishlistService(BudgetDbContext db, BudgetService budgets, T
         }
         catch (DbUpdateConcurrencyException)
         {
-            db.ChangeTracker.Clear();
+            db.ChangeTracker.Clear(); db.ResetCatalogs();
             return WishlistResult.Conflict(await OverviewAsync(budgetId, await LoadAsync(budgetId, ct), null, ct));
         }
         return WishlistResult.Success(await OverviewAsync(budgetId, state, null, ct));
@@ -221,13 +221,10 @@ public sealed class WishlistService(BudgetDbContext db, BudgetService budgets, T
     // Applies the Wishlist structure to every initialized month, advancing the version of each changed month.
     private async Task SyncPlanAsync(string budgetId, WishlistState state, CancellationToken ct)
     {
-        var months = await db.Budgets.Where(b => b.BudgetId == budgetId)
-            .Include(b => b.Groups).ThenInclude(g => g.Categories).OrderBy(b => b.Month).ToListAsync(ct);
-        var ordered = OrderedBuckets(state);
-        foreach (var month in months)
-        {
-            if (WishlistRules.EnsureCategories(month, ordered, state.Settings.IsEnabled)) month.Version++;
-        }
+        var catalog = await CategoryCatalog.LoadAsync(db, budgetId, ct);
+        if (!WishlistRules.EnsureCategories(catalog, OrderedBuckets(state), state.Settings.IsEnabled)) return;
+        // The Wishlist group is budget-wide: a structural change versions every month.
+        foreach (var month in await db.Budgets.Where(b => b.BudgetId == budgetId).ToListAsync(ct)) month.Version++;
     }
 
     private async Task<WishlistOverviewDto> OverviewAsync(string budgetId, WishlistState state, string? requestedMonth, CancellationToken ct)
@@ -241,10 +238,10 @@ public sealed class WishlistService(BudgetDbContext db, BudgetService budgets, T
         if (state.Settings.IsEnabled)
         {
             var snapshot = await budgets.GetMonthAsync(budgetId, month, ct);
-            // A month created before the earliest initialized month starts from the default structure; restore Wishlist.
-            if (WishlistRules.EnsureCategories(snapshot, OrderedBuckets(state), enabled: true))
+            // Restores the Wishlist structure if it is missing (for example after it was disabled and enabled again).
+            if (WishlistRules.EnsureCategories(snapshot.Catalog!, OrderedBuckets(state), enabled: true))
             {
-                snapshot.Version++;
+                foreach (var initialized in await db.Budgets.Where(b => b.BudgetId == budgetId).ToListAsync(ct)) initialized.Version++;
                 await db.SaveChangesAsync(ct);
             }
             foreach (var category in snapshot.Groups.SelectMany(g => g.Categories)) available[category.Id] = category.Available;

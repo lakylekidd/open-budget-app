@@ -4,15 +4,17 @@ namespace OpenBudget.UnitTests;
 
 public class BudgetCarryForwardTests
 {
-    private static BudgetEntity Month(string month, decimal assigned=0, decimal activity=0, decimal opening=0) => new() {
-        Month=month,OpeningReadyToAssign=500,Groups=[new(){Id="home",Name="Home",BudgetMonth=month,
-            Categories=[new(){Id="utilities",Name="Electricity",GroupId="home",BudgetMonth=month,Assigned=assigned,Activity=activity,OpeningAvailable=opening}]}] };
-    private static CategoryEntity Electricity(BudgetEntity month)=>month.Groups.SelectMany(g=>g.Categories).Single(c=>c.Id=="utilities");
-    private static BudgetCarryForward.Changes Change(BudgetEntity source,Action mutate){
-        var ready=BudgetService.CalculateReadyToAssign(source);var available=source.Groups.SelectMany(g=>g.Categories).ToDictionary(c=>c.Id,c=>c.Available);
-        mutate();return BudgetCarryForward.CalculateChanges(ready,BudgetService.CalculateReadyToAssign(source),available,source.Groups.SelectMany(g=>g.Categories));
+    private static BudgetEntity Month(string month, decimal assigned=0, decimal activity=0, decimal opening=0){
+        var catalog=new CategoryCatalog("default",[],[]);catalog.AddGroup("home","Home",0);catalog.AddCategory("utilities","home","Electricity",0);
+        var budget=new BudgetEntity{Month=month,OpeningReadyToAssign=500};catalog.Attach(budget);
+        var state=budget.State("utilities")!;state.Assigned=assigned;state.Activity=activity;state.OpeningAvailable=opening;return budget;
     }
-    private static void Carry(BudgetEntity source,BudgetEntity target,Action mutate){var change=Change(source,mutate);BudgetCarryForward.Apply(target,change.ReadyToAssignDelta,change.AvailableDeltas,source);}
+    private static PlanCategory Electricity(BudgetEntity month)=>month.Groups.SelectMany(g=>g.Categories).Single(c=>c.Id=="utilities");
+    private static BudgetCarryForward.Changes Change(BudgetEntity source,Action mutate){
+        var ready=BudgetService.CalculateReadyToAssign(source);var available=BudgetCarryForward.AvailableById(source);
+        mutate();return BudgetCarryForward.CalculateChanges(ready,BudgetService.CalculateReadyToAssign(source),available,source.CategoryStates);
+    }
+    private static void Carry(BudgetEntity source,BudgetEntity target,Action mutate){var change=Change(source,mutate);BudgetCarryForward.Apply(target,change.ReadyToAssignDelta,change.AvailableDeltas);}
 
     [Fact]
     public void Fifty_assigned_minus_thirty_five_spent_then_fifty_more_is_sixty_five()
@@ -58,26 +60,34 @@ public class BudgetCarryForwardTests
     public void Later_explicit_assignments_activity_metadata_and_legacy_openings_are_preserved()
     {
         var source=Month("2026-08");var target=Month("2026-09",30,-7,12);target.Note="Keep this";Electricity(target).Name="Later name";Electricity(target).IsArchived=true;
-        BudgetCarryForward.Apply(target,-10,new Dictionary<string,decimal>{{"utilities",10}},source);
+        BudgetCarryForward.Apply(target,-10,new Dictionary<string,decimal>{{"utilities",10}});
         Assert.Equal(45,Electricity(target).Available);Assert.Equal(30,Electricity(target).Assigned);Assert.Equal(-7,Electricity(target).Activity);
         Assert.Equal("Later name",Electricity(target).Name);Assert.True(Electricity(target).IsArchived);Assert.Equal("Keep this",target.Note);
     }
 
     [Fact]
-    public void Missing_category_and_group_are_cloned_for_carry_without_copying_source_assignment_or_activity()
+    public void A_month_without_a_state_row_gets_one_for_carried_money_without_copying_assignment_or_activity()
     {
-        var source=Month("2026-08",50,-35);Electricity(source).Target=80;
-        var target=new BudgetEntity{Month="2026-09",Groups=[new(){Id="other",Name="Other",SortOrder=0}]};
-        BudgetCarryForward.Apply(target,-50,new Dictionary<string,decimal>{{"utilities",15}},source);
-        var clone=Electricity(target);Assert.Equal(15,clone.OpeningAvailable);Assert.Equal(0,clone.Assigned);Assert.Equal(0,clone.Activity);
-        Assert.Equal(80,clone.Target);Assert.Equal("2026-09",clone.BudgetMonth);Assert.NotSame(Electricity(source),clone);Assert.Equal(2,target.Groups.Select(g=>g.SortOrder).Distinct().Count());
+        var target=new BudgetEntity{BudgetId="b1",Month="2026-09"};
+        Assert.True(BudgetCarryForward.Apply(target,-50,new Dictionary<string,decimal>{{"utilities",15}}));
+        var state=Assert.Single(target.CategoryStates);
+        Assert.Equal(("utilities","2026-09","b1"),(state.CategoryId,state.BudgetMonth,state.BudgetId));
+        Assert.Equal(15,state.OpeningAvailable);Assert.Equal(0,state.Assigned);Assert.Equal(0,state.Activity);Assert.Equal(-50,target.OpeningReadyToAssign);
+    }
+
+    [Fact]
+    public void A_month_composed_with_the_catalog_carries_into_its_existing_state_row()
+    {
+        var source=Month("2026-08",50,-35);var catalog=source.Catalog!;var target=new BudgetEntity{Month="2026-09"};catalog.Attach(target);
+        BudgetCarryForward.Apply(target,0,new Dictionary<string,decimal>{{"utilities",15}});
+        Assert.Single(target.CategoryStates);Assert.Equal(15,Electricity(target).Available);Assert.Same(Electricity(source).Definition,Electricity(target).Definition);
     }
 
     [Fact]
     public void Zero_delta_is_a_noop_and_does_not_create_absent_categories()
     {
-        var source=Month("2026-08");var target=new BudgetEntity{Month="2026-09"};
-        Assert.False(BudgetCarryForward.Apply(target,0,new Dictionary<string,decimal>{{"utilities",0}},source));Assert.Empty(target.Groups);
+        var target=new BudgetEntity{Month="2026-09"};
+        Assert.False(BudgetCarryForward.Apply(target,0,new Dictionary<string,decimal>{{"utilities",0}}));Assert.Empty(target.CategoryStates);
     }
 
     [Fact]
@@ -86,7 +96,7 @@ public class BudgetCarryForwardTests
         var source=Month("2026-08");var targets=Enumerable.Range(1,24).Select(i=>Month(new DateOnly(2026,8,1).AddMonths(i).ToString("yyyy-MM"),i,-i/10m)).ToArray();
         for(var i=0;i<1000;i++){
             var delta=((i*37)%199-99)/100m;var change=Change(source,()=>Electricity(source).Activity+=delta);
-            foreach(var target in targets)BudgetCarryForward.Apply(target,change.ReadyToAssignDelta,change.AvailableDeltas,source);
+            foreach(var target in targets)BudgetCarryForward.Apply(target,change.ReadyToAssignDelta,change.AvailableDeltas);
         }
         var carried=Math.Max(Electricity(source).Available,0);var withheld=Math.Min(Electricity(source).Available,0);
         for(var i=0;i<targets.Length;i++){Assert.Equal(carried+(i+1)-(i+1)/10m,Electricity(targets[i]).Available);Assert.Equal(500+withheld-(i+1),BudgetService.CalculateReadyToAssign(targets[i]));}

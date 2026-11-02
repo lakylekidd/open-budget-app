@@ -51,7 +51,7 @@ public sealed partial class LedgerService
         if (CreditCardRules.IsPaymentCategory(categoryId)) throw new LedgerException("Credit card payment categories are funded automatically. Record a card payment as a transfer.");
         var month = await budgets.GetMonthAsync(db.ActiveBudgetId, Month(request.Date), ct);
         if (!month.Groups.Any(g => !g.IsArchived && g.Categories.Any(c => c.Id == categoryId && !c.IsArchived)))
-            throw new LedgerException("Choose an active category for the transfer's month.");
+            throw new LedgerException("Choose an active category.");
         return categoryId;
     }
 

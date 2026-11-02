@@ -90,7 +90,7 @@ public sealed class CategoryTargetService(BudgetDbContext db, BudgetService budg
         return CategoryTargetCommandResult.Success(new CategoryTargetResultDto(categoryId, request.Month, null, null));
     }
 
-    private async Task<(BudgetEntity? Month, (CategoryGroupEntity Group, CategoryEntity Category)? Row, CategoryTargetCommandResult? Error)> LoadCategoryAsync(
+    private async Task<(BudgetEntity? Month, (PlanCategoryGroup Group, PlanCategory Category)? Row, CategoryTargetCommandResult? Error)> LoadCategoryAsync(
         string budgetId, string categoryId, string month, bool requireActive, CancellationToken ct)
     {
         if (!CategoryTargetRules.TryParseMonth(month, out _)) return (null, null, CategoryTargetCommandResult.Fail("Month must use YYYY-MM format."));
@@ -106,7 +106,7 @@ public sealed class CategoryTargetService(BudgetDbContext db, BudgetService budg
     }
 
     private async Task<CategoryTargetResultDto> ToResultAsync(string budgetId, string categoryId, string month, CategoryTargetEntity? target,
-        (CategoryGroupEntity Group, CategoryEntity Category) row, CancellationToken ct)
+        (PlanCategoryGroup Group, PlanCategory Category) row, CancellationToken ct)
     {
         if (target is null) return new CategoryTargetResultDto(categoryId, month, null, null);
         var active = !row.Category.IsArchived && !row.Group.IsArchived;

@@ -71,11 +71,11 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
         var legs = await db.Transactions.Where(t => !t.IsDeleted && t.TransferId != null && transferIds.Contains(t.TransferId.Value))
             .Select(t => new { t.Id, t.TransferId, t.AccountId, t.Status, t.Account.Name, t.Account.IsClosed }).ToListAsync(ct);
         var paymentTargets = await PaymentTargetsAsync(ct);
-        var months = items.Select(t => Month(t.Date)).Distinct().ToArray();
-        var labels = await db.Categories.Where(c => c.BudgetId == db.ActiveBudgetId && months.Contains(c.BudgetMonth))
-            .Join(db.CategoryGroups.Where(g => g.BudgetId == db.ActiveBudgetId), c => new { c.BudgetId, c.BudgetMonth, Id = c.GroupId }, g => new { g.BudgetId, g.BudgetMonth, g.Id },
-                (c, g) => new { c.BudgetMonth, c.Id, Name = g.Name + ": " + c.Name })
-            .ToDictionaryAsync(c => (c.BudgetMonth, c.Id), c => c.Name, ct);
+        // Categories are budget-wide, so a label does not depend on the transaction's month.
+        var labels = await db.Categories.Where(c => c.BudgetId == db.ActiveBudgetId)
+            .Join(db.CategoryGroups.Where(g => g.BudgetId == db.ActiveBudgetId), c => new { c.BudgetId, Id = c.GroupId }, g => new { g.BudgetId, g.Id },
+                (c, g) => new { c.Id, Name = g.Name + ": " + c.Name })
+            .ToDictionaryAsync(c => c.Id, c => c.Name, ct);
         return new(accounts.Version, page, pageSize, total, items.Select(entry =>
         {
             var other = entry.TransferId is null ? null : legs.SingleOrDefault(t => t.TransferId == entry.TransferId && t.Id != entry.Id);
@@ -87,7 +87,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             return ToDto(entry) with { RunningBalance = running.GetValueOrDefault(entry.Id), TransferAccountName = other?.Name, ImageCount = imageCounts.GetValueOrDefault(entry.Id),
                 Payee = overridden ? "" : payment is not null ? PaymentPresentation.Payee(payment.AccountName)
                     : other is null ? ToDto(entry).Payee : PaymentPresentation.CashTransferPayee(ownAccount.AccountType, entry.Amount, accounts.Accounts.Single(a => a.Id == other.AccountId).AccountType, other.Name) ?? ToDto(entry).Payee, IsPayment = payment is not null && !overridden, 
-                CategoryName = categoryId is null ? null : labels.GetValueOrDefault((Month(entry.Date), categoryId)),
+                CategoryName = categoryId is null ? null : labels.GetValueOrDefault(categoryId),
                 CanEdit = !accounts.Accounts.Single(a => a.Id == entry.AccountId).IsClosed && other?.IsClosed != true,
                 IsLocked = entry.Status == "reconciled" || accounts.Accounts.Single(a => a.Id == entry.AccountId).IsClosed || other?.Status == "reconciled" || other?.IsClosed == true };
         }).ToList(), accounts);
@@ -225,7 +225,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
                 throw new LedgerException("Credit account transactions require a category.");
             foreach (var categoryId in categoryIds)
                 if (!month.Groups.Any(g => !g.IsArchived && g.Categories.Any(c => c.Id == categoryId && !c.IsArchived)))
-                    throw new LedgerException("Choose an active category belonging to the transaction month.");
+                    throw new LedgerException("Choose an active category.");
 
             var entry = id is null ? new TransactionEntity { Id = Guid.NewGuid() } : await FindEntryAsync(id.Value, ct);
             if (id is not null)
@@ -370,8 +370,8 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
         var creditIds = (await db.Accounts.AsNoTracking().Where(a => CreditCardRules.CreditTypes.Contains(a.AccountType)).Select(a => a.Id).ToListAsync(ct)).ToHashSet();
         var entries = await db.Transactions.AsNoTracking().Include(t => t.Splits).Where(t => !t.IsDeleted && t.Date >= start && t.Date < end).ToListAsync(ct);
         var categories = (await db.Budgets.AsNoTracking().Where(b => b.BudgetId == db.ActiveBudgetId && b.Month == month)
-            .Include(b => b.Groups).ThenInclude(g => g.Categories).SingleOrDefaultAsync(ct))?.Groups.SelectMany(g => g.Categories)
-            .ToDictionary(c => c.Id, StringComparer.Ordinal) ?? [];
+            .Include(b => b.CategoryStates).SingleOrDefaultAsync(ct))?.CategoryStates
+            .ToDictionary(c => c.CategoryId, StringComparer.Ordinal) ?? [];
         var trackingIds = (await db.Accounts.AsNoTracking().Where(a => LedgerRules.TrackingTypes.Contains(a.AccountType)).Select(a => a.Id).ToListAsync(ct)).ToHashSet();
         var cashActivity = LedgerRules.Activity(entries.Where(t => !creditIds.Contains(t.AccountId) && !trackingIds.Contains(t.AccountId)));
         var flows = CreditCardRules.Project(entries, creditIds, categoryId => categories.TryGetValue(categoryId, out var c)

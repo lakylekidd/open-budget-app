@@ -36,12 +36,11 @@ public sealed partial class LedgerService
         var rows = await query.OrderByDescending(x => x.Date).ThenBy(x => x.Rule.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
         var accounts = (await GetAccountsAsync(ct)).Accounts.ToDictionary(a => a.Id);
         var paymentTargets = await PaymentTargetsAsync(ct);
-        // Payment categories are labelled from the latest month that has them: a future occurrence's month may not exist yet.
+        // Payment categories are budget-wide, so a future occurrence is labelled even when its month does not exist yet.
         var paymentCategoryIds = paymentTargets.Values.Select(t => t.CategoryId).OfType<string>().ToArray();
-        var labelRows = await db.Categories.Where(c => c.BudgetId == db.ActiveBudgetId && paymentCategoryIds.Contains(c.Id))
-            .Join(db.CategoryGroups.Where(g => g.BudgetId == db.ActiveBudgetId), c => new { c.BudgetId, c.BudgetMonth, Id = c.GroupId }, g => new { g.BudgetId, g.BudgetMonth, g.Id },
-                (c, g) => new { c.BudgetMonth, c.Id, Name = g.Name + ": " + c.Name }).ToListAsync(ct);
-        var labels = labelRows.GroupBy(c => c.Id).ToDictionary(g => g.Key, g => g.OrderByDescending(c => c.BudgetMonth, StringComparer.Ordinal).First().Name);
+        var labels = await db.Categories.Where(c => c.BudgetId == db.ActiveBudgetId && paymentCategoryIds.Contains(c.Id))
+            .Join(db.CategoryGroups.Where(g => g.BudgetId == db.ActiveBudgetId), c => new { c.BudgetId, Id = c.GroupId }, g => new { g.BudgetId, g.Id },
+                (c, g) => new { c.Id, Name = g.Name + ": " + c.Name }).ToDictionaryAsync(c => c.Id, c => c.Name, ct);
         var result = rows.Select(x => {
             var rule = x.Rule; var data = Template(rule, x.Occurrence);
             var incoming = accountId is not null && rule.ToAccountId == accountId;
@@ -83,7 +82,7 @@ public sealed partial class LedgerService
         var ids = (template.Splits ?? []).Select(s => s.CategoryId).Concat(template.CategoryId is null ? [] : [template.CategoryId]);
         foreach (var id in ids)
             if (!month.Groups.Any(g => !g.IsArchived && g.Categories.Any(c => c.Id == id && !c.IsArchived)))
-                throw new LedgerException("Choose an active category for this occurrence month before entering it.");
+                throw new LedgerException("Choose an active category.");
     }
 
     public Task<MutationDto> SaveScheduleAsync(Guid? id, ScheduleRequest request, CancellationToken ct) =>

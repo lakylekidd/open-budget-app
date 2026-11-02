@@ -4,7 +4,7 @@ namespace OpenBudget.UnitTests;
 
 public sealed class PlanActionRulesTests
 {
-    private static CategoryEntity Category(string id,string name,decimal assigned)=>new(){Id=id,Name=name,Assigned=assigned};
+    private static PlanCategory Category(string id,string name,decimal assigned)=>new(new CategoryEntity{Id=id,Name=name},new CategoryMonthEntity{CategoryId=id,Assigned=assigned});
 
     [Fact]
     public void Equal_opposite_assignment_changes_are_one_move()
