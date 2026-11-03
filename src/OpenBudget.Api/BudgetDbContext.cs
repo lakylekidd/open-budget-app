@@ -54,6 +54,15 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        modelBuilder.Entity<Microsoft.AspNetCore.Identity.IdentityUserPasskey<string>>(entity =>
+        {
+            entity.HasKey(passkey => passkey.CredentialId);
+            entity.ToTable("AspNetUserPasskeys");
+            entity.Property(passkey => passkey.CredentialId).HasMaxLength(1024);
+            entity.OwnsOne(passkey => passkey.Data).ToJson();
+        });
+        modelBuilder.Entity<OpenBudgetUser>().HasMany<Microsoft.AspNetCore.Identity.IdentityUserPasskey<string>>()
+            .WithOne().HasForeignKey(passkey => passkey.UserId).IsRequired();
         LedgerModel.Configure(modelBuilder);
         WishlistModel.Configure(modelBuilder);
         TransactionImageModel.Configure(modelBuilder);

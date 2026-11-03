@@ -9,12 +9,15 @@ it('updates the username and validates password confirmation before changing cre
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === '/api/auth/profile' && !init?.method) return Response.json({ id: 'u1', userName: 'alice', email: 'alice@example.test', isAdministrator: false });
+    if (url === '/api/auth/passkeys') return Response.json([]);
     if (url === '/api/auth/profile' && init?.method === 'PUT') return Response.json({ id: 'u1', userName: 'alice-renamed', email: 'alice@example.test', isAdministrator: false });
     if (url === '/api/auth/change-password') return new Response(null, { status: 204 });
     return new Response(null, { status: 404 });
   });
   vi.stubGlobal('fetch', fetchMock);
   render(<ProfileSettings onClose={vi.fn()} />);
+  expect(await screen.findByRole('heading', { name: 'Passkeys' })).toBeInTheDocument();
+  expect(screen.getByText('No passkeys added.')).toBeInTheDocument();
   const user = userEvent.setup();
   await user.clear(await screen.findByLabelText('Username'));
   await user.type(screen.getByLabelText('Username'), 'alice-renamed');

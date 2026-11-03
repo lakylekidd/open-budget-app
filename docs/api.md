@@ -13,10 +13,14 @@ Outside the Testing environment, API requests require an authenticated Identity 
 | Method/path | Behavior |
 |---|---|
 | `POST /api/auth/login` | Accepts `{ "userNameOrEmail", "password", "rememberMe" }`; returns the signed-in user's ID, username, email and administrator flag. |
+| `POST /api/auth/passkeys/sign-in/options` / `POST /api/auth/passkeys/sign-in` | Starts and verifies a username-less WebAuthn sign-in, then creates the same Identity cookie session as password login. The assertion request accepts `{ "credentialJson" }`; failures return a generic 401. |
 | `GET /api/auth/session` | Returns the current session identity or 401. |
 | `POST /api/auth/logout` | Invalidates the current cookie session. |
 | `GET /api/auth/profile` | Returns the signed-in user's profile summary. |
 | `PUT /api/auth/profile` | Accepts `{ "userName": "new-name" }`, updates the signed-in user's unique username, refreshes the session cookie and records a profile audit event. Email remains unchanged and must use its verification flow. |
+| `GET /api/auth/passkeys` | Lists the signed-in user's passkeys by opaque ID, display name and creation time. |
+| `POST /api/auth/passkeys/registration-options` / `POST /api/auth/passkeys` | Creates WebAuthn registration options and verifies/stores `{ "credentialJson", "name" }` for the signed-in user. Up to 10 named passkeys (1–60 characters each) are allowed. |
+| `DELETE /api/auth/passkeys/{credentialId}` | Removes one passkey belonging to the signed-in user. Unknown or malformed IDs return 404. Password login and recovery remain available. |
 | `POST /api/auth/change-password` | Accepts current and new passwords; updates the password, audits the action without credential data, and invalidates all sessions using the prior security stamp. |
 | `GET /api/auth/registration-mode` | Publicly reports Disabled, ApprovalRequired, or Open. Defaults to Disabled. |
 | `POST /api/auth/register` | Creates an account only when registration is enabled and SMTP is configured; sends a two-hour email-verification link. |
@@ -43,6 +47,8 @@ Outside the Testing environment, API requests require an authenticated Identity 
 | `GET /api/admin/audit` | Administrator-only; returns the latest 100 administration audit events. |
 
 The Identity cookie is HttpOnly, SameSite=Strict and Secure in shared environments. State-changing requests with an Origin or Referer must match the forwarded request scheme and host; authenticated state-changing requests in production require one of those headers. The API processes forwarded scheme/host headers from the private Compose proxy boundary so HTTPS termination is reflected in cookie and CSRF checks. Registration and reset email delivery require SMTP configuration; shared environments also require the trusted `AccountEmail__PublicOrigin` HTTPS setting. Administrators can either configure SMTP in the admin panel or retain the runtime `Smtp__*` configuration fallback. Stored SMTP passwords are encrypted with ASP.NET Data Protection, never returned by the API, and require persisted production Data Protection keys. Registration and recovery email requests are limited to five per minute per client IP. Identity verification and password reset tokens expire after two hours. Registration mode changes and user lifecycle actions commit together with their audit entry. The `/admin` UI supports user search, approval/rejection, password reset, suspension/reactivation, unlock, registration and email-delivery settings, and recent audit history. Verification, invitation, reset, and test messages include both branded HTML and plain-text content.
+
+Passkeys use ASP.NET Core Identity's WebAuthn implementation and PostgreSQL-backed Identity credentials. Users add or remove them from **Account Settings → Passkeys**; passwords and email recovery remain enabled. Registration requires an authenticated session and verifies that the resulting credential belongs to that session. Login challenges and responses use Identity's protected, single-use ceremony state and are rate-limited with login attempts. The browser must support WebAuthn and the application must be served from a secure context (HTTPS in shared environments; localhost is permitted for development). Configure `Passkeys__ServerDomain` to the relying-party domain for deployments; it must match the domain used when credentials are registered. Passkey credential management and authentication are excluded from MCP because they change or exercise account authentication.
 
 The `/admin` UI also supports email invitations, membership assignment and per-user account history. Invitees verify their email, then use Forgot password to choose their initial password.
 

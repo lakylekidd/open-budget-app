@@ -223,6 +223,34 @@ public sealed class AuthenticationApiTests(PostgresFixture fixture) : IClassFixt
     }
 
     [Fact]
+    public async Task Passkey_setup_is_optional_authenticated_and_audited_after_a_valid_registration()
+    {
+        await using var app = await fixture.CreateAppAsync();
+        using (var scope = app.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<OpenBudgetUser>>();
+            var create = await users.CreateAsync(new OpenBudgetUser { UserName = "passkey-user", Email = "passkey@example.test", EmailConfirmed = true }, "Strong-pass1!");
+            Assert.True(create.Succeeded, string.Join(",", create.Errors.Select(error => error.Code)));
+        }
+
+        using var client = app.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = true, BaseAddress = new Uri("https://localhost") });
+        client.DefaultRequestHeaders.Add("Origin", "https://localhost");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/auth/passkeys")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("passkey-user", "Strong-pass1!"))).StatusCode);
+        Assert.Empty(await client.GetFromJsonAsync<PasskeyDto[]>("/api/auth/passkeys") ?? []);
+
+        var options = await client.PostAsync("/api/auth/passkeys/registration-options", null);
+        Assert.Equal(HttpStatusCode.OK, options.StatusCode);
+        Assert.Contains("challenge", await options.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+
+        var invalidRegistration = await client.PostAsJsonAsync("/api/auth/passkeys", new PasskeyCredentialRequest("{}", "My laptop"));
+        Assert.Equal(HttpStatusCode.BadRequest, invalidRegistration.StatusCode);
+        Assert.Empty(await client.GetFromJsonAsync<PasskeyDto[]>("/api/auth/passkeys") ?? []);
+        await using var db = app.CreateDb();
+        Assert.DoesNotContain(await db.AdminAuditLogs.ToListAsync(), entry => entry.Action == "user.passkey.add");
+    }
+
+    [Fact]
     public async Task Admin_password_reset_sends_expiring_link_without_disclosing_token_or_existing_password()
     {
         await using var app = await fixture.CreateAppAsync();
