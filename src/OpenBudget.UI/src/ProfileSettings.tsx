@@ -19,6 +19,7 @@ export function ProfileSettings({ onClose }: { onClose: () => void }) {
   const [theme, setTheme] = useState<ThemeKey>(currentTheme);
   const [themeError, setThemeError] = useState('');
   const [passkeys, setPasskeys] = useState<Passkey[]>([]);
+  const [passkeyLoadError, setPasskeyLoadError] = useState('');
   const [passkeyName, setPasskeyName] = useState('This device');
   const themeRequest = useRef(0);
 
@@ -33,7 +34,7 @@ export function ProfileSettings({ onClose }: { onClose: () => void }) {
       if (!response.ok) throw new Error('Passkeys could not be loaded.');
       const value = await response.json() as Passkey[];
       if (active) setPasskeys(value);
-    }).catch(() => { if (active) setError('Passkeys could not be loaded. Retry by closing and reopening this panel.'); });
+    }).catch(() => { if (active) setPasskeyLoadError('Passkeys could not be loaded. Retry by closing and reopening this panel.'); });
     return () => { active = false; };
   }, []);
 
@@ -109,7 +110,7 @@ export function ProfileSettings({ onClose }: { onClose: () => void }) {
       {!profile && !error ? <p aria-busy="true">Loading profile…</p> : <>
         <form className="profile-form" onSubmit={saveProfile}><h3>Profile</h3><label>Username<input aria-label="Username" required maxLength={64} value={userName} onChange={event => setUserName(event.target.value)} /></label><label>Email<input aria-label="Email" value={profile?.email ?? ''} disabled /></label><button type="submit" disabled={!profile || busy !== ''}>Save profile</button></form>
         <form className="profile-form" onSubmit={changePassword}><h3>Change password</h3><label>Current password<input aria-label="Current password" type="password" autoComplete="current-password" required value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} /></label><label>New password<input aria-label="New password" type="password" autoComplete="new-password" required value={newPassword} onChange={event => setNewPassword(event.target.value)} /></label><label>Confirm new password<input aria-label="Confirm new password" type="password" autoComplete="new-password" required value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} /></label><button type="submit" disabled={busy !== ''}>Change password</button></form>
-        <section className="profile-form" aria-labelledby="passkeys-title"><h3 id="passkeys-title">Passkeys</h3><p>Add an optional passkey for passwordless sign-in. Your password and recovery options continue to work.</p>{passkeys.length > 0 ? <ul>{passkeys.map(passkey => <li key={passkey.id}>{passkey.name} <button type="button" onClick={() => void removePasskey(passkey)} disabled={busy !== ''}>Remove</button></li>)}</ul> : <p>No passkeys added.</p>}<label>Passkey name<input aria-label="Passkey name" maxLength={60} value={passkeyName} onChange={event => setPasskeyName(event.target.value)} /></label><button type="button" onClick={() => void addPasskey()} disabled={!profile || busy !== '' || passkeys.length >= 10}>Add passkey</button></section>
+        <section className="profile-form" aria-labelledby="passkeys-title"><h3 id="passkeys-title">Passkeys</h3><p>Add an optional passkey for passwordless sign-in. Your password and recovery options continue to work.</p>{passkeyLoadError && <p className="profile-error" role="status">{passkeyLoadError}</p>}{passkeys.length > 0 ? <ul>{passkeys.map(passkey => <li key={passkey.id}>{passkey.name} <button type="button" onClick={() => void removePasskey(passkey)} disabled={busy !== ''}>Remove</button></li>)}</ul> : <p>No passkeys added.</p>}<label>Passkey name<input aria-label="Passkey name" maxLength={60} value={passkeyName} onChange={event => setPasskeyName(event.target.value)} /></label><button type="button" onClick={() => void addPasskey()} disabled={!profile || busy !== '' || passkeys.length >= 10}>Add passkey</button></section>
         {profile && <AgentTokens isAdministrator={profile.isAdministrator} />}
       </>}
     </section>

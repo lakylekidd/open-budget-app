@@ -5,6 +5,17 @@ import { ProfileSettings } from './ProfileSettings';
 
 afterEach(() => vi.unstubAllGlobals());
 
+it('keeps a passkey-list loading failure within the Passkeys section', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    if (String(input) === '/api/auth/profile') return Response.json({ id: 'u1', userName: 'alice', email: 'alice@example.test', isAdministrator: false });
+    return new Response(null, { status: 500 });
+  }));
+  render(<ProfileSettings onClose={vi.fn()} />);
+  expect(await screen.findByRole('heading', { name: 'Passkeys' })).toBeInTheDocument();
+  expect(await screen.findByRole('status')).toHaveTextContent('Passkeys could not be loaded');
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
 it('updates the username and validates password confirmation before changing credentials', async () => {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
