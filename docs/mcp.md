@@ -228,6 +228,7 @@ Every user-facing capability of the web app and every API endpoint must be reach
 | Edit account: rename, notes, favorite, close/reopen, working balance, type within family, loan terms | `accounts_update`, `loans_save_terms` |
 | Delete account | `accounts_delete` |
 | Account ordering | `accounts_reorder` |
+| Bank linking, consent, connection sync, and import match decisions | Not exposed: initiating or revoking financial-data consent and confirming bank-import matches are security-sensitive external account actions; keep them in the authenticated web flow. |
 | Loan page: details, projection, activity, contract schedule (→ `/loan`) | `loans_get` |
 | Loan payoff simulator (→ `/loan/simulation`) | `loans_simulate` |
 | Loan "Update Balance" (→ `/loan/balance`) | `loans_confirm_balance` |

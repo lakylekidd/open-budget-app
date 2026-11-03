@@ -61,7 +61,7 @@ The Plan screen starts with an empty loading state and renders budget amounts on
 - Sign-in uses ASP.NET Core Identity and an HttpOnly, SameSite=Strict cookie. Authenticated users can manage owned budget identities and use owner-checked monthly Plan, ledger and long-term planning routes. The UI supports budget creation, rename, selection and persisted active-budget choice. Legacy `default` routes remain administrator-only.
 - The Plan API stores versioned editable monthly snapshots per budget. The cash ledger uses replay-safe commands and shared revisions; financial rows and revisions are isolated by budget.
 - Long-Term Planning stores versioned category budget overrides, projects income and expenses from active scheduled ledger transactions, and reads existing actual snapshots without initializing missing months. Its requests are scoped to the selected active budget.
-- Cash account/sidebar balances and monthly activity are ledger-backed; Reflect, credit/debt and linking remain future milestones; scheduling/approval and payee management are implemented register extensions.
+- Cash account/sidebar balances and monthly activity are ledger-backed; Reflect and credit/debt remain future milestones. Enable Banking linking is in progress; see the [milestone 10 implementation and production gates](milestones/milestone-10-linked-accounts.md). Scheduling/approval and payee management are implemented register extensions.
 - Every feature requires unit/integration tests and UI workflow coverage, as specified in `AGENTS.md` and [testing](testing.md).
 
 ## Tests

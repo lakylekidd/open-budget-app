@@ -50,6 +50,10 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
     public DbSet<WishlistItemEntity> WishlistItems => Set<WishlistItemEntity>();
     public DbSet<TransactionImageEntity> TransactionImages => Set<TransactionImageEntity>();
     public DbSet<TransactionImageBlobEntity> TransactionImageBlobs => Set<TransactionImageBlobEntity>();
+    public DbSet<BankConnectionEntity> BankConnections => Set<BankConnectionEntity>();
+    public DbSet<LinkedBankAccountEntity> LinkedBankAccounts => Set<LinkedBankAccountEntity>();
+    public DbSet<BankImportEntity> BankImports => Set<BankImportEntity>();
+    public DbSet<BankAuthorizationStateEntity> BankAuthorizationStates => Set<BankAuthorizationStateEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -57,6 +61,7 @@ public sealed class BudgetDbContext(DbContextOptions<BudgetDbContext> options, B
         LedgerModel.Configure(modelBuilder);
         WishlistModel.Configure(modelBuilder);
         TransactionImageModel.Configure(modelBuilder);
+        EnableBankingModel.Configure(modelBuilder);
         Mcp.AgentAccessModel.Configure(modelBuilder);
         modelBuilder.Entity<ApplicationSettingEntity>(e => { e.HasKey(x => x.Key); e.Property(x => x.Key).HasMaxLength(100); e.Property(x => x.Value).HasMaxLength(500); });
         modelBuilder.Entity<SmtpSettingsEntity>(e => { e.HasKey(x => x.Id); e.Property(x => x.Host).HasMaxLength(255); e.Property(x => x.From).HasMaxLength(256); e.Property(x => x.Username).HasMaxLength(256); e.Property(x => x.EncryptedPassword).HasMaxLength(2000); });

@@ -128,7 +128,7 @@ All planning values share an optimistic `version`. A successful write returns th
 
 ## Boundaries
 
-Cash ledger endpoints use the authenticated user's validated active budget; legacy `/api/budget` identity and month routes remain administrator-only and target `default`. Credit/debt and bank links are future milestones. See [data model](data-model.md) for migration and calculations.
+Cash ledger endpoints use the authenticated user's validated active budget; legacy `/api/budget` identity and month routes remain administrator-only and target `default`. Credit/debt remains a future milestone; bank linking is in progress as described in [optional Enable Banking connections](#optional-enable-banking-connections). See [data model](data-model.md) for migration and calculations.
 
 ## Ledger command protocol
 
@@ -149,7 +149,27 @@ Stale writes return 409 `{ "error": "..." }`; reload and review before sending a
 
 Closed accounts retain history and must be reopened before writes. Reconciliation compares the current cleared ledger balance rather than a date cutoff. There is no automatic adjustment: clear/correct entries until the difference is zero, then explicitly confirm. Reconciled entries cannot be deleted or have their status toggled directly. Transaction/transfer edits require explicit `confirmReconciledEdit=true` when either affected leg is reconciled. Confirmed edits retain the reconciliation row with `isInvalidated=true`, mark reconciled legs cleared, and store before/after audit (including invalidated snapshot IDs). The account reports its latest non-invalidated reconciliation, or null until reconciled again. Closed accounts still require reopening.
 
-Account responses also include `accountType` (`checking`, `savings`, `cash`, `creditCard`, `lineOfCredit`, `trackingAsset`, `trackingLiability`, or a loan type), nullable `paymentCategoryId` (the category payments into a credit or loan account use), `isFavorite`, read-only `connectionStatus`, nullable UTC `lastReconciledAt`, and `needsCategoryCount`. Create requests optionally accept `accountType` (default `checking`). Updates optionally accept `accountType` and `isFavorite`; omission preserves their values. Existing accounts are migrated to checking/nonfavorite without changing ledger balances. Connection status currently returns `unlinked` because automatic provider sync is not implemented; callers cannot mark an account connected through the account-edit API. Last reconciliation time comes from the latest persisted confirmation, and category-attention counts use the complete account ledger.
+Account responses also include `accountType` (`checking`, `savings`, `cash`, `creditCard`, `lineOfCredit`, `trackingAsset`, `trackingLiability`, or a loan type), nullable `paymentCategoryId` (the category payments into a credit or loan account use), `isFavorite`, read-only `connectionStatus`, nullable UTC `lastReconciledAt`, and `needsCategoryCount`. Create requests optionally accept `accountType` (default `checking`). Updates optionally accept `accountType` and `isFavorite`; omission preserves their values. Existing accounts are migrated to checking/nonfavorite without changing ledger balances. `connectionStatus` is `connected` only while the account is mapped to an active Enable Banking session with unexpired consent; it cannot be set through the account-edit API. Last reconciliation time comes from the latest persisted confirmation, and category-attention counts use the complete account ledger.
+
+## Optional Enable Banking connections
+
+The Accounts page includes an optional bank-connection panel. The feature is available only within a selected owned/shared budget and when the API has `EnableBanking:ApplicationId`, `EnableBanking:PrivateKeyPath` and `EnableBanking:RedirectUrl` configured. Register the corresponding public certificate and exact HTTPS callback URL with Enable Banking. The RSA private key and session IDs stay server-side; session IDs are protected with ASP.NET Data Protection. Multiple connections to the same institution and multiple accounts returned by one session are supported.
+
+| Method/path | Behavior |
+|---|---|
+| `GET /api/banking/overview` | Current user's connections in the active budget, pending staged-import count, and provider-configured flag. |
+| `GET /api/banking/banks?country=NL` | Enable Banking ASPSPs supporting personal account information in the requested country. |
+| `POST /api/banking/connections/start` | `{ country, bankName, syncIntervalMinutes }`; records short-lived one-time state and returns `{ authorizationUrl }` for the bank consent redirect. The interval defaults to 60, minimum 15, maximum 1440. |
+| `POST /api/banking/connections/{id}/reauthorize` | Starts consent renewal for the existing owner connection. The callback refreshes session IDs by provider identification hash, keeps mapped OpenBudget accounts and import history, and revokes the previous provider session. |
+| `GET /api/banking/callback?state=…&code=…` | Anonymous provider callback; validates/consumes state, exchanges the code server-side, stores consent and all returned accounts, then redirects to the configured completion path. |
+| `PUT /api/banking/accounts/{id}/map` | `{ accountId }` maps one provider account to one open OpenBudget account; an OpenBudget account can map to one provider account at a time. |
+| `PUT /api/banking/connections/{id}/interval?minutes=60` | Sets that connection's sync interval (15–1440 minutes). |
+| `POST /api/banking/connections/{id}/sync` | Runs a paginated sync immediately. |
+| `DELETE /api/banking/connections/{id}` | Immediately disables local sync, clears the protected session ID, and attempts provider-session revocation. Accepted ledger rows remain. |
+| `GET /api/banking/imports` | Lists up to 500 staged transactions requiring review, possible existing-transaction match, and a similar-payee suggestion. |
+| `POST /api/banking/imports/{id}/review` | `{ action: "verify-match", matchedTransactionId }`, `{ action: "accept", useSuggestedPayee }`, or `{ action: "dismiss" }`. Staged rows never change balances; accepted rows enter through the ledger's imported-transaction command. `useSuggestedPayee` reuses the highest similar existing payee when its score is at least 72%; otherwise the provider payee is retained. |
+
+The hosted worker checks due connections every minute. The saved interval controls when the next sync becomes due, subject to bank/provider freshness and consent limits. Initial sync requests up to 90 days, subsequent runs re-fetch a five-day overlap and page until Enable Banking returns no continuation key. Retry delay backs off exponentially up to six hours. Expired consent moves the connection to `reauthorization_required`; it cannot be silently extended.
 
 Header calculations are `clearedBalance + unclearedBalance = balance` (Working Balance). Cleared includes both cleared and reconciled entries. Filters never alter those account totals.
 

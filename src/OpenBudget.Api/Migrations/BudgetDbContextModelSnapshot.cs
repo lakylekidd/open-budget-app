@@ -194,7 +194,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasIndex("BudgetId", "SortOrder");
 
-                    b.ToTable("Accounts", (string)null);
+                    b.ToTable("Accounts");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.AdminAuditLogEntity", b =>
@@ -225,7 +225,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasIndex("CreatedAt");
 
-                    b.ToTable("AdminAuditLogs", (string)null);
+                    b.ToTable("AdminAuditLogs");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.ApplicationSettingEntity", b =>
@@ -241,7 +241,217 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("Key");
 
-                    b.ToTable("ApplicationSettings", (string)null);
+                    b.ToTable("ApplicationSettings");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.BankAuthorizationStateEntity", b =>
+                {
+                    b.Property<string>("State")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("AspspName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Country")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ReauthorizationConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SyncIntervalMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.HasKey("State");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("ReauthorizationConnectionId");
+
+                    b.ToTable("BankAuthorizationStates");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.BankConnectionEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AccessValidUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AspspName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<DateTimeOffset>("AuthorizedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Country")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<int>("FailureCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateOnly?>("LastImportedDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTimeOffset?>("LastSyncedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("NextSyncAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("ProtectedSessionId")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTimeOffset?>("RetryAfter")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<int>("SyncIntervalMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("SyncLeaseUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.HasIndex("BudgetId", "OwnerUserId");
+
+                    b.HasIndex("BudgetId", "NextSyncAt", "Status");
+
+                    b.ToTable("BankConnections");
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.BankImportEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid?>("CreatedTransactionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<string>("EntryReference")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTimeOffset>("ImportedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("LinkedBankAccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("MatchScore")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("numeric(5,4)");
+
+                    b.Property<Guid?>("MatchedTransactionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Memo")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Payee")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("ProviderStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ProviderTransactionId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ReviewStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LinkedBankAccountId", "ProviderTransactionId")
+                        .IsUnique();
+
+                    b.HasIndex("BudgetId", "ReviewStatus", "Date");
+
+                    b.ToTable("BankImports");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.BudgetEntity", b =>
@@ -277,7 +487,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("BudgetId", "Month");
 
-                    b.ToTable("Budgets", (string)null);
+                    b.ToTable("Budgets");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.BudgetInvitationEntity", b =>
@@ -314,7 +524,7 @@ namespace OpenBudget.Api.Migrations
                     b.HasIndex("BudgetId", "NormalizedEmail")
                         .IsUnique();
 
-                    b.ToTable("BudgetInvitations", (string)null);
+                    b.ToTable("BudgetInvitations");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.BudgetMemberEntity", b =>
@@ -344,7 +554,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("BudgetMembers", (string)null);
+                    b.ToTable("BudgetMembers");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.BudgetPlanEntity", b =>
@@ -384,7 +594,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasIndex("OwnerUserId", "IsArchived");
 
-                    b.ToTable("BudgetPlans", (string)null);
+                    b.ToTable("BudgetPlans");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.CategoryEntity", b =>
@@ -495,7 +705,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasIndex("BudgetId", "CategoryId");
 
-                    b.ToTable("CategoryMonths", (string)null);
+                    b.ToTable("CategoryMonths");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.CategoryTargetEntity", b =>
@@ -561,7 +771,7 @@ namespace OpenBudget.Api.Migrations
                     b.HasIndex("Id")
                         .IsUnique();
 
-                    b.ToTable("CategoryTargets", (string)null);
+                    b.ToTable("CategoryTargets");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.CreditPayoffTargetEntity", b =>
@@ -601,7 +811,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasIndex("BudgetId");
 
-                    b.ToTable("CreditPayoffTargets", (string)null);
+                    b.ToTable("CreditPayoffTargets");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.FlagDefinitionEntity", b =>
@@ -621,7 +831,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("BudgetId", "Color");
 
-                    b.ToTable("FlagDefinitions", (string)null);
+                    b.ToTable("FlagDefinitions");
 
                     b.HasData(
                         new
@@ -704,7 +914,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasIndex("ResourceId", "Version");
 
-                    b.ToTable("LedgerCommands", (string)null);
+                    b.ToTable("LedgerCommands");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.LedgerStateEntity", b =>
@@ -722,7 +932,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("BudgetId", "Id");
 
-                    b.ToTable("LedgerStates", (string)null);
+                    b.ToTable("LedgerStates");
 
                     b.HasData(
                         new
@@ -731,6 +941,64 @@ namespace OpenBudget.Api.Migrations
                             Id = 1,
                             Version = 1L
                         });
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.LinkedBankAccountEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BudgetId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<string>("IdentificationHash")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<bool>("IsAvailable")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("ProviderAccountUid")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("BudgetId", "AccountId")
+                        .IsUnique()
+                        .HasFilter("\"AccountId\" IS NOT NULL");
+
+                    b.HasIndex("BudgetId", "IdentificationHash");
+
+                    b.HasIndex("ConnectionId", "ProviderAccountUid")
+                        .IsUnique();
+
+                    b.ToTable("LinkedBankAccounts");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.LoanTermsEntity", b =>
@@ -817,7 +1085,7 @@ namespace OpenBudget.Api.Migrations
                         .IsUnique()
                         .HasFilter("\"PairedCategoryId\" IS NOT NULL");
 
-                    b.ToTable("LoanTerms", (string)null);
+                    b.ToTable("LoanTerms");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.LongTermPlanningCategoryEntity", b =>
@@ -844,7 +1112,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("BudgetId", "Month", "CategoryId");
 
-                    b.ToTable("LongTermPlanningCategories", (string)null);
+                    b.ToTable("LongTermPlanningCategories");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.LongTermPlanningIncomeEntity", b =>
@@ -863,7 +1131,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("BudgetId", "Month");
 
-                    b.ToTable("LongTermPlanningIncomes", (string)null);
+                    b.ToTable("LongTermPlanningIncomes");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.LongTermPlanningStateEntity", b =>
@@ -882,7 +1150,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("BudgetId", "Id");
 
-                    b.ToTable("LongTermPlanningStates", (string)null);
+                    b.ToTable("LongTermPlanningStates");
 
                     b.HasData(
                         new
@@ -1026,7 +1294,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("MembershipPlanId", "EntitlementKey");
 
-                    b.ToTable("MembershipPlanEntitlements", (string)null);
+                    b.ToTable("MembershipPlanEntitlements");
 
                     b.HasData(
                         new
@@ -1065,7 +1333,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("MembershipPlans", (string)null);
+                    b.ToTable("MembershipPlans");
 
                     b.HasData(
                         new
@@ -1212,7 +1480,7 @@ namespace OpenBudget.Api.Migrations
                     b.HasIndex("BudgetId", "NormalizedName")
                         .IsUnique();
 
-                    b.ToTable("Payees", (string)null);
+                    b.ToTable("Payees");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.PlanActionEntity", b =>
@@ -1260,7 +1528,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasIndex("BudgetId", "CreatedAt");
 
-                    b.ToTable("PlanActions", (string)null);
+                    b.ToTable("PlanActions");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.ReconciliationEntity", b =>
@@ -1291,7 +1559,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasIndex("AccountId");
 
-                    b.ToTable("Reconciliations", (string)null);
+                    b.ToTable("Reconciliations");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.RegisterViewEntity", b =>
@@ -1339,7 +1607,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("BudgetId", "Scope");
 
-                    b.ToTable("RegisterViews", (string)null);
+                    b.ToTable("RegisterViews");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.ScheduleEntity", b =>
@@ -1405,7 +1673,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasIndex("BudgetId", "AccountId", "NextDate");
 
-                    b.ToTable("Schedules", (string)null);
+                    b.ToTable("Schedules");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.ScheduleOccurrenceEntity", b =>
@@ -1448,7 +1716,7 @@ namespace OpenBudget.Api.Migrations
                     b.HasIndex("BudgetId", "ScheduleId", "Sequence")
                         .IsUnique();
 
-                    b.ToTable("ScheduleOccurrences", (string)null);
+                    b.ToTable("ScheduleOccurrences");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.SmtpSettingsEntity", b =>
@@ -1488,7 +1756,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("SmtpSettings", (string)null);
+                    b.ToTable("SmtpSettings");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.SplitEntity", b =>
@@ -1520,7 +1788,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("TransactionId", "Position");
 
-                    b.ToTable("SplitEntity", (string)null);
+                    b.ToTable("SplitEntity");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.TransactionEntity", b =>
@@ -1535,6 +1803,9 @@ namespace OpenBudget.Api.Migrations
                     b.Property<decimal>("Amount")
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)");
+
+                    b.Property<Guid?>("BankImportId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("BudgetId")
                         .IsRequired()
@@ -1583,6 +1854,10 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BankImportId")
+                        .IsUnique()
+                        .HasFilter("\"BankImportId\" IS NOT NULL");
+
                     b.HasIndex("Date");
 
                     b.HasIndex("PayeeId");
@@ -1591,7 +1866,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasIndex("AccountId", "Date", "Id");
 
-                    b.ToTable("Transactions", (string)null);
+                    b.ToTable("Transactions");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.TransactionImageBlobEntity", b =>
@@ -1610,7 +1885,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("ImageId");
 
-                    b.ToTable("TransactionImageBlobs", (string)null);
+                    b.ToTable("TransactionImageBlobs");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.TransactionImageEntity", b =>
@@ -1669,7 +1944,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasIndex("BudgetId", "TransactionId", "CreatedAt");
 
-                    b.ToTable("TransactionImages", (string)null);
+                    b.ToTable("TransactionImages");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.UserEntitlementOverrideEntity", b =>
@@ -1687,7 +1962,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("UserId", "EntitlementKey");
 
-                    b.ToTable("UserEntitlementOverrides", (string)null);
+                    b.ToTable("UserEntitlementOverrides");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.UserMembershipEntity", b =>
@@ -1726,7 +2001,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasIndex("MembershipPlanId");
 
-                    b.ToTable("UserMemberships", (string)null);
+                    b.ToTable("UserMemberships");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.UserPreferenceEntity", b =>
@@ -1745,7 +2020,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("UserId");
 
-                    b.ToTable("UserPreferences", (string)null);
+                    b.ToTable("UserPreferences");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.WishlistBucketEntity", b =>
@@ -1780,7 +2055,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasIndex("BudgetId", "IsDeleted", "SortOrder");
 
-                    b.ToTable("WishlistBuckets", (string)null);
+                    b.ToTable("WishlistBuckets");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.WishlistItemEntity", b =>
@@ -1846,7 +2121,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasIndex("BucketId", "Status", "SortOrder");
 
-                    b.ToTable("WishlistItems", (string)null);
+                    b.ToTable("WishlistItems");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.WishlistSettingsEntity", b =>
@@ -1867,7 +2142,7 @@ namespace OpenBudget.Api.Migrations
 
                     b.HasKey("BudgetId");
 
-                    b.ToTable("WishlistSettings", (string)null);
+                    b.ToTable("WishlistSettings");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -1919,6 +2194,34 @@ namespace OpenBudget.Api.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.BankAuthorizationStateEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.BankConnectionEntity", null)
+                        .WithMany()
+                        .HasForeignKey("ReauthorizationConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.BankConnectionEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.OpenBudgetUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.BankImportEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.LinkedBankAccountEntity", "LinkedBankAccount")
+                        .WithMany()
+                        .HasForeignKey("LinkedBankAccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LinkedBankAccount");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.BudgetEntity", b =>
@@ -2021,6 +2324,22 @@ namespace OpenBudget.Api.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("OpenBudget.Api.LinkedBankAccountEntity", b =>
+                {
+                    b.HasOne("OpenBudget.Api.AccountEntity", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("OpenBudget.Api.BankConnectionEntity", "Connection")
+                        .WithMany("Accounts")
+                        .HasForeignKey("ConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Connection");
+                });
+
             modelBuilder.Entity("OpenBudget.Api.LoanTermsEntity", b =>
                 {
                     b.HasOne("OpenBudget.Api.AccountEntity", null)
@@ -2121,6 +2440,11 @@ namespace OpenBudget.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("OpenBudget.Api.BankImportEntity", null)
+                        .WithOne()
+                        .HasForeignKey("OpenBudget.Api.TransactionEntity", "BankImportId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("OpenBudget.Api.PayeeEntity", "Payee")
                         .WithMany()
                         .HasForeignKey("PayeeId")
@@ -2207,6 +2531,11 @@ namespace OpenBudget.Api.Migrations
                         .HasForeignKey("BudgetId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("OpenBudget.Api.BankConnectionEntity", b =>
+                {
+                    b.Navigation("Accounts");
                 });
 
             modelBuilder.Entity("OpenBudget.Api.BudgetEntity", b =>

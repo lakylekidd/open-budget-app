@@ -25,6 +25,8 @@ In the Compose resource:
 6. Keep the `openbudget-data` volume.
 7. Confirm the Compose file is saved and deploy once manually.
 
+For optional bank linking, configure `EnableBanking__ApplicationId`, `EnableBanking__PrivateKeyPath` and `EnableBanking__RedirectUrl` on the API service. Mount the registered RSA private key as a read-only secret file, and set the exact HTTPS callback URL registered for the Enable Banking application (ending in `/api/banking/callback`). Persist the ASP.NET Data Protection key volume; stored session IDs cannot be decrypted after key loss. Production use additionally requires Enable Banking to activate the application for production and the operator to complete the required legal/privacy onboarding. Keep the feature unconfigured until those steps are done.
+
 The Compose file contains health checks for PostgreSQL, the API, and the UI. The API check calls `/health`, which verifies database connectivity. The UI check reaches the same endpoint through nginx.
 
 `deploy/nginx.conf` serves the UI as a single-page app: `/api/`, `/mcp` and `/health` go to the API, other API-shaped paths return 404, and every other path (for example `/{budget-slug}/plan/2026-11` or `/{budget-slug}/account/visa`) falls back to `index.html` so deep links and refreshes work. Keep that fallback when changing the proxy; see [URL routing](architecture.md#url-routing).

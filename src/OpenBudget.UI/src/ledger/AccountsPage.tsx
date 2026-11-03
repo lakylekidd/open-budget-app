@@ -16,6 +16,7 @@ import { ManagePayees } from './Payees';
 import { TransactionSelectionBar } from './TransactionSelectionBar';
 import { wishlistPurchasePath, type WishlistContext } from './WishlistPurchase';
 import { ReconcileAdjustmentBanner, ReconcilePopover, type ReconcileStep } from './ReconcileFlow';
+import { BankConnectionsPanel } from './BankConnectionsPanel';
 import './ledger.css';
 
 type Dialog = { kind: 'account'; account?: Account; accountType?: AccountType } | { kind: 'transaction'; entry?: Entry; wishlistItemId?: string } | { kind: 'transfer'; entry?: Entry; from?: string; to?: string }
@@ -331,7 +332,7 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     {!dialog && feedback}{notice && <p className="sr-only" role="status">{notice}</p>}
     <div className="register-toolbar">
       <button aria-label="Add Transaction" className="register-add" disabled={disabled || !openAccounts.length} onClick={() => {setInline({key:crypto.randomUUID()});setSelectedIds([]);setViewOpen(false);setMoreOpen(false);}}><span className="register-plus">+</span>Add Transaction</button>
-      <button disabled title="File import is planned for a later milestone"><RegisterIcon name="import"/>File Import</button>
+      <BankConnectionsPanel accounts={accounts.accounts} onChanged={() => { setRefresh(value => value + 1); onChanged(); }}/>
       {isCreditAccount(current)&&!current?.isClosed&&<button className="register-record-payment" disabled={disabled||openAccounts.length<2} onClick={()=>{setSelectedIds([]);setViewOpen(false);setMoreOpen(false);open({kind:'transfer',to:current!.id,from:openAccounts.find(a=>!isLoanAccount(a)&&!isCreditAccount(a)&&!isTrackingAccount(a))?.id});}}><RegisterIcon name="transfer"/>Record Payment</button>}
       <span className="register-toolbar-divider"/>
       <button disabled title="Ledger changes are recorded in Audit history"><span className="register-history-icon">↶</span>Undo</button>

@@ -34,6 +34,9 @@ public sealed partial class LedgerService
                 removedCategories = ownedDefinitions.Select(x => x.Id).ToList()
             };
 
+            // Preserve the provider connection and staged review rows, but release this account mapping.
+            foreach (var linked in await db.LinkedBankAccounts.Where(x => x.AccountId == id).ToListAsync(ct)) linked.AccountId = null;
+
             // Rows that exist only for this account and would otherwise block the account row's foreign keys.
             // Soft-deleted entries and the opening balance entry (and their splits/images by cascade) are removed with the account; their receipts stay in the audit log.
             db.Transactions.RemoveRange(await db.Transactions.Where(t => t.AccountId == id && (t.IsDeleted || t.IsOpening)).ToListAsync(ct));

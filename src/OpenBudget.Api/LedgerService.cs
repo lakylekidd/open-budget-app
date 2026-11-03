@@ -19,12 +19,15 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
                 NeedsCategory = g.Count(t => t.TransferId == null && !t.IsOpening && t.Amount < 0 && t.CategoryId == null && !t.Splits.Any() && !LoanRules.LoanTypes.Contains(t.Account.AccountType) && !LedgerRules.TrackingTypes.Contains(t.Account.AccountType)) }).ToDictionaryAsync(x => x.Id, ct);
         var reconciledAt = await db.Reconciliations.Where(r => !r.IsInvalidated).GroupBy(r => r.AccountId)
             .Select(g => new { Id = g.Key, At = g.Max(r => r.CreatedAt) }).ToDictionaryAsync(r => r.Id, r => r.At, ct);
+        var connectedAccountIds = await db.LinkedBankAccounts.Where(link => link.AccountId != null && link.Connection.Status == "active"
+                && link.Connection.AccessValidUntil > clock.GetUtcNow())
+            .Select(link => link.AccountId!.Value).ToHashSetAsync(ct);
         var loanTerms = await db.LoanTerms.ToDictionaryAsync(t => t.AccountId, ct);
         return new(version, accounts.Select(a =>
         {
             balances.TryGetValue(a.Id, out var b);
             return new AccountDto(a.Id, a.Name, a.IsClosed, b?.Balance ?? 0, b?.Cleared ?? 0, (b?.Balance ?? 0) - (b?.Cleared ?? 0),
-                a.AccountType, a.IsFavorite, "unlinked", reconciledAt.TryGetValue(a.Id, out var at) ? at : null, b?.NeedsCategory ?? 0, a.Notes, b?.Unapproved ?? 0, b?.Attention ?? 0, (b?.Real ?? 0) > 0,
+                a.AccountType, a.IsFavorite, connectedAccountIds.Contains(a.Id) ? "connected" : "unlinked", reconciledAt.TryGetValue(a.Id, out var at) ? at : null, b?.NeedsCategory ?? 0, a.Notes, b?.Unapproved ?? 0, b?.Attention ?? 0, (b?.Real ?? 0) > 0,
                 PaymentPresentation.IsDebt(a.AccountType) ? PaymentPresentation.CategoryId(a, loanTerms.GetValueOrDefault(a.Id)) : null);
         }).ToList());
     }
@@ -57,6 +60,10 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
         var items = await query.OrderByDescending(t => t.Date).ThenBy(t => t.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
         var accounts = await GetAccountsAsync(ct);
         var ids = items.Select(t => t.Id).ToArray();
+        var bankMatchedIds = await db.BankImports.AsNoTracking().Where(x => x.BudgetId == db.ActiveBudgetId
+                && x.MatchedTransactionId != null && ids.Contains(x.MatchedTransactionId.Value)
+                && x.ReviewStatus == "pending")
+            .Select(x => x.MatchedTransactionId!.Value).Distinct().ToHashSetAsync(ct);
         // Compute the full account history BEFORE filtering/page selection. Reverse display
         // ordering within a date so the first displayed row has the latest running balance.
         var running = await db.Database.SqlQuery<LedgerBalanceRow>($"""
@@ -89,7 +96,8 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
                     : other is null ? ToDto(entry).Payee : PaymentPresentation.CashTransferPayee(ownAccount.AccountType, entry.Amount, accounts.Accounts.Single(a => a.Id == other.AccountId).AccountType, other.Name) ?? ToDto(entry).Payee, IsPayment = payment is not null && !overridden, 
                 CategoryName = categoryId is null ? null : labels.GetValueOrDefault(categoryId),
                 CanEdit = !accounts.Accounts.Single(a => a.Id == entry.AccountId).IsClosed && other?.IsClosed != true,
-                IsLocked = entry.Status == "reconciled" || accounts.Accounts.Single(a => a.Id == entry.AccountId).IsClosed || other?.Status == "reconciled" || other?.IsClosed == true };
+                IsLocked = entry.Status == "reconciled" || accounts.Accounts.Single(a => a.Id == entry.AccountId).IsClosed || other?.Status == "reconciled" || other?.IsClosed == true,
+                BankMatchToVerify = bankMatchedIds.Contains(entry.Id) };
         }).ToList(), accounts);
     }
 
@@ -199,7 +207,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
         }, ct);
 
     // wishlistItemId (Record purchase, WishlistPurchases.cs) also marks that Wishlist item purchased in the same command.
-    public Task<MutationDto> SaveTransactionAsync(Guid? id, TransactionRequest request, CancellationToken ct, bool imported = false, Guid? wishlistItemId = null) =>
+    public Task<MutationDto> SaveTransactionAsync(Guid? id, TransactionRequest request, CancellationToken ct, bool imported = false, Guid? wishlistItemId = null, Guid? bankImportId = null) =>
         ExecuteAsync(request.CommandId, request.Version, wishlistItemId is not null ? $"wishlist.purchase/{wishlistItemId}" : imported ? "transaction.import" : id is null ? "transaction.create" : $"transaction.update/{id}", request, async () =>
         {
             if (imported && (id is not null || request.Repeat != "never")) throw new LedgerException("Imported rows cannot edit entries or create schedules.");
@@ -208,6 +216,14 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             var error = LedgerRules.Validate(openingZero ? request with { Amount = 0.01m } : request);
             if (error is not null) throw new LedgerException(error);
             var account = await OpenAccountAsync(request.AccountId, ct);
+            BankImportEntity? bankImport = null;
+            if (bankImportId is not null)
+            {
+                if (!imported || id is not null) throw new LedgerException("A bank import can only create a new imported transaction.");
+                bankImport = await db.BankImports.Include(x => x.LinkedBankAccount).SingleOrDefaultAsync(x => x.Id == bankImportId && x.BudgetId == db.ActiveBudgetId, ct);
+                if (bankImport is null || bankImport.ReviewStatus != "pending" || bankImport.LinkedBankAccount.AccountId != request.AccountId)
+                    throw new LedgerException("This bank import is no longer available for acceptance.", 409);
+            }
             var month = await budgets.GetMonthAsync(db.ActiveBudgetId, Month(request.Date), ct);
             var resolvedPayee = imported ? await ResolveImportedPayeeAsync(request.Payee, ct) : await GetPayeeAsync(request.Payee, ct);
             if (imported && request.CategoryId is null && request.Splits?.Count is not > 0)
@@ -239,6 +255,7 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
             if (entry.IsOpening && (request.AccountId != entry.AccountId || request.CategoryId is not null || request.Splits?.Count > 0))
                 throw new LedgerException("An opening entry must remain in its original account and cannot have categories.");
             entry.AccountId = request.AccountId;
+            entry.BankImportId = bankImportId;
             entry.Date = request.Date;
             entry.Amount = request.Amount;
             entry.CategoryId = request.CategoryId;
@@ -260,6 +277,12 @@ public sealed partial class LedgerService(BudgetDbContext db, BudgetService budg
                 split.Memo = splits[position].Memo?.Trim() ?? "";
             }
             if (id is null) db.Transactions.Add(entry);
+            if (bankImport is not null)
+            {
+                bankImport.ReviewStatus = "accepted";
+                bankImport.CreatedTransactionId = entry.Id;
+                bankImport.UpdatedAt = clock.GetUtcNow();
+            }
             if (wishlistItem is not null) await MarkWishlistPurchasedAsync(wishlistItem, entry, ct);
             if (request.Repeat != "never" && !entry.IsOpening)
                 await CreateNextScheduleAsync(entry, request.Repeat, ct);

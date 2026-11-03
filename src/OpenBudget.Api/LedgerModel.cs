@@ -32,6 +32,7 @@ public sealed class TransactionEntity
     public string BudgetId { get; set; } = BudgetRequestContext.DefaultBudgetId;
     public bool IsApproved { get; set; } = true;
     public Guid? ScheduleId { get; set; }
+    public Guid? BankImportId { get; set; }
     public string? FlagColor { get; set; }
     public Guid Id { get; set; }
     public Guid AccountId { get; set; }
@@ -120,9 +121,11 @@ public static class LedgerModel
             e.Property(x => x.Status).HasMaxLength(12);
             e.HasOne(x => x.Account).WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Payee).WithMany().HasForeignKey(x => x.PayeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<BankImportEntity>().WithOne().HasForeignKey<TransactionEntity>(x => x.BankImportId).OnDelete(DeleteBehavior.SetNull);
             e.HasMany(x => x.Splits).WithOne().HasForeignKey(x => x.TransactionId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => new { x.AccountId, x.Date, x.Id });
             e.HasIndex(x => x.TransferId);
+            e.HasIndex(x => x.BankImportId).IsUnique().HasFilter("\"BankImportId\" IS NOT NULL");
             e.HasIndex(x => x.Date);
         });
         model.Entity<SplitEntity>(e =>
