@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, it, vi } from 'vitest';
-import { AccountHeader, ClearedIndicator, balanceSummary, reconciliationText } from './AccountRegister';
+import { AccountHeader, ClearedIndicator, TransactionRow, balanceSummary, reconciliationText } from './AccountRegister';
 import { type Account, type Entry } from './api';
 
 const account: Account = { id:'cash', name:'Salary', isClosed:false, balance:-500, clearedBalance:0, unclearedBalance:-500,
@@ -42,4 +42,11 @@ it('describes reconciliation age without inventing a date', () => {
   expect(reconciliationText(null,now)).toBe('Not reconciled');
   expect(reconciliationText('2026-10-20T12:00:00Z',now)).toBe('Reconciled yesterday');
   expect(reconciliationText('2026-09-20T12:00:00Z',now)).toBe('Reconciled a month ago');
+});
+
+it('shows a link marker beside a ledger row when a bank import match needs verification', () => {
+  render(<table><tbody><TransactionRow entry={{...entry,bankMatchToVerify:true}} categories={[]} selected={false} disabled={false}
+    onSelect={vi.fn()} onEdit={vi.fn()} onToggle={vi.fn()}/></tbody></table>);
+  expect(screen.getByLabelText('Possible bank match to verify')).toBeInTheDocument();
+  expect(screen.getByTitle('Possible bank match — verify in bank imports')).toBeInTheDocument();
 });

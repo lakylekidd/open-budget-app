@@ -1,5 +1,9 @@
 # Testing and acceptance coverage
 
+## Enable Banking vertical slice
+
+`BankMatchingRulesTests` cover normalized payee similarity, exact signed-amount and date-window constraints, and rejection of unrelated payees. `EnableBankingApiTests` use the real HTTP API and isolated PostgreSQL migrations with a deterministic provider fake to cover one-time callback state, multiple sessions for one institution, several accounts in a session, scheduled/manual sync, staged import idempotency, consent reauthorization with mapping preservation, match verification without a second ledger entry, suggested payee reuse, and imported balance changes only after acceptance. `BankConnectionsPanel.test.tsx` and `AccountRegister.test.tsx` cover the match icon, verify action and payee choice UI. Provider sandbox and production calls remain unverified until registered Enable Banking credentials are configured.
+
 Every feature or behavior change includes automated tests in the same change, as required by `AGENTS.md`. Assert observable rules, responses, persisted state and user workflows. Do not substitute an in-memory database for PostgreSQL integration coverage.
 
 ## Commands and isolation

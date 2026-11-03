@@ -26,6 +26,7 @@ OpenBudget is a budgeting app with a React UI, .NET API, and PostgreSQL database
 - Category targets (weekly, monthly, yearly or custom with repeat) with server-calculated "more needed this month" progress in Plan
 - Scheduled transactions, payee management, and audit history
 - Receipt images on transactions: drag and drop, paste, upload or import from a link, with a full-screen viewer; files are type-checked by content and stripped of location metadata
+- Optional Enable Banking connections with per-connection sync intervals, multiple linked accounts, staged transaction imports, and user-verified possible matches (see [setup and current limits](docs/enable-banking-investigation.md))
 - Long-Term view with annual forecasts, monthly actuals and planned amounts shown in Plan
 - Wishlist (Plus/Pro): a Plan-style table where buckets are collapsible groups and ranked items sit beneath them, funded from Plan with "ready to buy" progress and purchase recording
 - Five colour themes (Midnight, Ocean, Forest, Rosewood, Graphite), switchable in Account Settings and saved to your account

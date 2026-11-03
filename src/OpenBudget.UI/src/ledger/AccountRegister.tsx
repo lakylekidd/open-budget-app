@@ -27,6 +27,7 @@ export function RegisterIcon({ name, size = 16 }: { name: string; size?: number 
     import: <><path d="M5 2h10l4 4v16H5V2Z"/><path d="M15 2v5h4M8 14h8m-3-3 3 3-3 3"/></>,
     check: <path d="m4 12 5 5L20 5"/>,
     bank: <><rect x="3" y="7" width="18" height="10"/><circle cx="12" cy="12" r="3"/></>,
+    link: <><path d="M10 13a5 5 0 0 0 7.1 0l3-3A5 5 0 0 0 13 2.9l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/></>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
@@ -87,7 +88,7 @@ export function TransactionRow({ view = defaultView, entry, account, categories,
   const [splitsExpanded, setSplitsExpanded] = useState(true);
   return <><tr data-transaction-id={entry.id} tabIndex={0} aria-selected={selected} onClick={event => { if (!(event.target as HTMLElement).closest('button,input,select,a')) { if (selected && !locked) onEdit(); else (onRowSelect??onSelect)(); } }} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); if (selected && !locked) onEdit(); else (onRowSelect??onSelect)(); } }} className={`${scheduled ? 'register-scheduled-row' : ''} ${selected ? 'register-row-selected' : ''} ${entry.status === 'reconciled' ? 'register-row-reconciled' : ''}`}>
     <td className="register-check-cell"><input type="checkbox" checked={selected} aria-label={`Select transaction ${entry.id}`} onChange={onSelect}/></td>
-    <td className="register-info-cell">{entry.isApproved === false && onReview && <ApprovalButton disabled={disabled} onReview={onReview}/>}</td>
+    <td className="register-info-cell">{entry.bankMatchToVerify && <span className="bank-match-marker" title="Possible bank match — verify in bank imports" aria-label="Possible bank match to verify"><RegisterIcon name="link" size={14}/></span>}{entry.isApproved === false && onReview && <ApprovalButton disabled={disabled} onReview={onReview}/>}</td>
     {view.showFlags && <td className="register-decoration">{onFlag&&onRenameFlags?<FlagButton color={entry.flagColor} flags={flags} disabled={disabled} onSet={onFlag} onRename={onRenameFlags}/>:<RegisterIcon name="flag" size={15}/>}</td>}{view.showImages && <td className="register-decoration">{scheduled ? <RegisterIcon name="image" size={15}/> : <TransactionImagesButton entry={entry}/>}</td>}
     <td className="register-date">{entry.date.split('-').reverse().join('-')}{scheduled && <span className="schedule-repeat-icon" title="Scheduled transaction">↻</span>}</td>
     <td className="register-payee"><button disabled={locked} aria-label={`Edit ${entry.payee || (entry.transferId ? 'transfer' : 'transaction')} ${entry.date}`} onClick={() => selected ? onEdit() : (onRowSelect??onSelect)()} title={account?.name}>{name}{paused && <small className="schedule-paused">Paused</small>}</button></td>

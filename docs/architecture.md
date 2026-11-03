@@ -42,6 +42,8 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 
 ## Current feature inventory
 
+Optional Enable Banking integration is in progress: account linking, multiple accounts per institution/session, configurable background sync, staged imports, similarity-based payee suggestions, and user confirmation of likely existing transactions are implemented behind server configuration. Sandbox validation, export/deletion integration, and production onboarding remain. See [the milestone](milestones/milestone-10-linked-accounts.md) and [provider investigation](enable-banking-investigation.md).
+
 | Capability | Status |
 |---|---|
 | Plan screen layout and category table | Implemented; API initializes a blank starter structure |
@@ -63,7 +65,7 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Credit accounts | Implemented: Credit Card and Line of Credit types, a CREDIT sidebar section, required categories on card transactions, an automatic Credit Card Payments group a payment details panel and debt payoff targets (Pay Off Balance by Date / Pay Specific Amount Monthly) with server-calculated monthly progress. Loans and the payoff planner remain planned. |
 | Wishlist | Implemented: entitlement-gated (`wishlist`, Plus/Pro by default), per-budget enable/disable, ranked buckets and items with drag/keyboard ordering, a server-owned Wishlist Plan group with one category per bucket, server-calculated next-item progress on the Wishlist screen and Plan rows, ready-to-buy nav badge and purchase/removal history. See [Milestone 13](milestones/milestone-13-wishlist.md). |
 | Mortgages, loans and contracts | Implemented: seven loan types in a Mortgages and Loans picker section, an "Add Unlinked Account" form, a LOANS sidebar section, versioned `LoanTerms`, an optional "Pair a Category" step (existing category or a new category/group created atomically with the account; separate contract/device categories for contracts with a device), a loan account page (stats, SVG progress chart, paired category, monthly activity with estimated interest), Update Balance, a read-only payoff simulator and contract schedules. |
-| Bank linking | Future milestones |
+| Bank linking | Enable Banking consent, per-connection background sync, account mapping and staged import review are implemented; sandbox verification, export/deletion integration and production onboarding remain |
 | Targets and assignment recommendations | Category targets (Weekly, Monthly, Yearly, Custom with optional repeat; set aside or refill/fill up) are stored per budget and logical category with their own version and command receipts; the server calculates each month's needed/more-needed amount, bar segments and funded fraction on the month DTO. Auto-Assign Underfunded assigns the larger of a category's target need and its current-month scheduled-outflow shortfall; with no category selection it covers all active subcategories, otherwise only selected subcategories. Other actions use last month and trailing 12-month actual assignments/spending; manual assignment and reset actions use the existing versioned Plan save. Target pause/snooze, templates and preview/apply workflows remain planned. |
 | Reflect reports | Not implemented; entry remains a placeholder |
 | Identity sign-in with optional passkeys, bootstrap administrators, verified registration/recovery, admin-managed encrypted SMTP settings and audited account lifecycle administration | Implemented |

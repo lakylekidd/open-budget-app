@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
@@ -39,9 +40,16 @@ public sealed class TestApp(string connectionString) : WebApplicationFactory<Pro
     public FailureInjector Failure { get; } = new();
     public TestClock Clock { get; } = new();
     public TestAccountEmailSender Email { get; } = new();
+    public FakeEnableBankingClient EnableBanking { get; } = new();
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["EnableBanking:ApplicationId"] = "integration-test-app",
+            ["EnableBanking:PrivateKeyPath"] = "/not-read-by-fake-client.pem",
+            ["EnableBanking:RedirectUrl"] = "https://budget.example.test/api/banking/callback"
+        }));
         builder.ConfigureLogging(logging => logging.ClearProviders());
         builder.ConfigureServices(services =>
         {
@@ -51,6 +59,8 @@ public sealed class TestApp(string connectionString) : WebApplicationFactory<Pro
             services.AddSingleton<TimeProvider>(Clock);
             services.RemoveAll<IAccountEmailSender>();
             services.AddSingleton<IAccountEmailSender>(Email);
+            services.RemoveAll<IEnableBankingClient>();
+            services.AddSingleton<IEnableBankingClient>(EnableBanking);
             services.AddDbContext<BudgetDbContext>(options => options.UseNpgsql(ConnectionString).AddInterceptors(Failure));
         });
     }
@@ -58,6 +68,27 @@ public sealed class TestApp(string connectionString) : WebApplicationFactory<Pro
         .UseApplicationServiceProvider(identitySchemaServices)
         .UseNpgsql(ConnectionString)
         .Options);
+}
+
+public sealed class FakeEnableBankingClient : IEnableBankingClient
+{
+    public List<EnableTransaction> Transactions { get; set; } = [];
+    public List<string> StartedStates { get; } = [];
+    public Task<IReadOnlyList<EnableBank>> GetBanksAsync(string country, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<EnableBank>>([new EnableBank("Test Bank", country, null, null, 60 * 60 * 24 * 90)]);
+    public Task<string> StartAuthorizationAsync(string country, string bankName, string state, string redirectUrl, string psuId, DateTimeOffset validUntil, CancellationToken ct)
+    {
+        StartedStates.Add(state);
+        return Task.FromResult($"https://provider.example.test/authorize?state={Uri.EscapeDataString(state)}");
+    }
+    public Task<EnableSession> CreateSessionAsync(string code, CancellationToken ct) => Task.FromResult(new EnableSession(
+        "session-" + code, DateTimeOffset.UtcNow.AddDays(60), [
+            new EnableAccount("provider-account-1", "Checking", "EUR", "identity-1"),
+            new EnableAccount("provider-account-2", "Savings", "EUR", "identity-2")
+        ]));
+    public Task<EnableTransactionPage> GetTransactionsAsync(string sessionId, string accountUid, DateOnly dateFrom, string? continuationKey, CancellationToken ct) =>
+        Task.FromResult(new EnableTransactionPage(Transactions, null));
+    public Task RevokeSessionAsync(string sessionId, CancellationToken ct) => Task.CompletedTask;
 }
 
 public sealed class TestAccountEmailSender : IAccountEmailSender
