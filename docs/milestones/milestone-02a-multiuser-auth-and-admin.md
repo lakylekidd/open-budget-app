@@ -22,6 +22,7 @@ Implement authentication for all application users.
 - [x] Password reset and recovery are supported through secure, expiring, single-use tokens.
 - [x] Suspended accounts cannot authenticate.
 - [x] Authentication works independently for multiple concurrent users.
+- [x] Users may optionally register one or more WebAuthn passkeys, sign in with a discoverable passkey, and remove a passkey while password sign-in and recovery remain available.
 
 ## 2. Permanent Administrator Accounts
 
@@ -244,6 +245,7 @@ Existing categories and groups must be updated to reference the appropriate budg
 - [x] Automated tests verify membership limits, concurrent creation and budget restoration.
 - [x] Production and development bootstrap configurations are verified; production provisioning is covered by integration tests and development bootstrap has been smoke-checked through Aspire.
 - [x] Security-sensitive actions are logged without exposing passwords or financial data.
+- [x] Passkey registration is authenticated, bound to its single-use server-protected challenge, and audited; passkey sign-in is rate-limited and rejects suspended, unverified or locked accounts.
 - [x] Existing planning functionality continues to work after the schema migrations.
 
 ## 9. Out of Scope

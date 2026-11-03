@@ -257,6 +257,7 @@ Every user-facing capability of the web app and every API endpoint must be reach
 | Register view options and column widths (→ `/api/register-views`) | Not exposed: per-user display preferences |
 | Theme (→ `/api/me/preferences`) | Not exposed: per-user display preference |
 | Sign in/out, register, confirm email, forgot/reset password, session (→ `/api/auth/*`) | Not exposed: authentication flows |
+| Passkey registration, removal and sign-in (→ `/api/auth/passkeys/*`) | Not exposed: passkeys are account authentication credentials; an MCP token must not register, remove or exercise sign-in credentials |
 | Profile, username and password change (→ `/api/auth/profile`, `/change-password`) | Not exposed: account credential changes |
 | Agent tokens: create, list, revoke, activity (→ `/api/auth/agent-tokens`) | Not exposed: an agent must not mint, extend or revoke credentials (renewal and non-expiring tokens (issue #15) are likewise not exposed to MCP) |
 | Admin: dashboard, audit, users (invite/approve/reject/suspend/reactivate/unlock/password reset/history/membership), entitlement overrides, tier entitlements, registration mode, email settings | `admin_*`, `users_*`, `membership_plan*` tools (Admin tokens of administrators only) — **security decision needed**, see below |
