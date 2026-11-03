@@ -16,7 +16,7 @@ var dataProtectionKeyPath = builder.Configuration["DataProtection:KeyPath"];
 if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
     dataProtection.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeyPath));
 builder.Services.AddScoped<BudgetRequestContext>();
-builder.Services.AddOpenBudgetIdentity(builder.Environment);
+builder.Services.AddOpenBudgetIdentity(builder.Environment, builder.Configuration);
 builder.Services.AddOpenBudgetAgentAccess();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {

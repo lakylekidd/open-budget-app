@@ -18,6 +18,9 @@ public sealed class OpenBudgetUser : IdentityUser
 }
 
 public sealed record LoginRequest(string UserNameOrEmail, string Password, bool RememberMe = false);
+public sealed record PasskeyCredentialRequest(string CredentialJson, string? Name = null);
+public sealed record PasskeyAssertionRequest(string CredentialJson);
+public sealed record PasskeyDto(string Id, string Name, DateTimeOffset CreatedAt);
 public sealed record UserSessionDto(string Id, string UserName, string? Email, bool IsAdministrator);
 public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 public sealed record UpdateProfileRequest(string UserName);
@@ -48,7 +51,7 @@ public static class AuthenticationSetup
 {
     public const string AdministratorRole = "Administrator";
 
-    public static IServiceCollection AddOpenBudgetIdentity(this IServiceCollection services, IWebHostEnvironment environment)
+    public static IServiceCollection AddOpenBudgetIdentity(this IServiceCollection services, IWebHostEnvironment environment, IConfiguration configuration)
     {
         services.AddRateLimiter(options => options.AddPolicy("login", context =>
             RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
@@ -70,6 +73,7 @@ public static class AuthenticationSetup
         services.AddScoped<IAccountEmailSender, SmtpAccountEmailSender>();
         services.AddIdentity<OpenBudgetUser, IdentityRole>(options =>
         {
+            options.Stores.SchemaVersion = IdentitySchemaVersions.Version3;
             options.User.RequireUniqueEmail = true;
             options.Password.RequiredLength = environment.IsDevelopment() ? 5 : 8;
             options.Password.RequireDigit = !environment.IsDevelopment();
@@ -83,6 +87,12 @@ public static class AuthenticationSetup
         .AddEntityFrameworkStores<BudgetDbContext>()
         .AddDefaultTokenProviders();
         services.Configure<DataProtectionTokenProviderOptions>(options => options.TokenLifespan = TimeSpan.FromHours(2));
+        services.Configure<IdentityPasskeyOptions>(options =>
+        {
+            options.ServerDomain = configuration["Passkeys:ServerDomain"];
+            options.UserVerificationRequirement = "required";
+            options.ResidentKeyRequirement = "required";
+        });
 
         services.ConfigureApplicationCookie(options =>
         {
@@ -178,6 +188,83 @@ public static class AuthenticationSetup
     public static void MapAuthenticationEndpoints(this WebApplication app)
     {
         var auth = app.MapGroup("/api/auth").AllowAnonymous();
+        auth.MapPost("/passkeys/sign-in/options", async (SignInManager<OpenBudgetUser> signIn) =>
+        {
+            var options = await signIn.MakePasskeyRequestOptionsAsync(null);
+            return Results.Content(options, "application/json");
+        }).RequireRateLimiting("login");
+        auth.MapPost("/passkeys/sign-in", async (PasskeyAssertionRequest request, SignInManager<OpenBudgetUser> signIn, UserManager<OpenBudgetUser> users, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.CredentialJson) || request.CredentialJson.Length > 64_000)
+                return Results.BadRequest(new { error = "Passkey response is invalid." });
+            var assertion = await signIn.PerformPasskeyAssertionAsync(request.CredentialJson);
+            var user = assertion.Succeeded ? assertion.User : null;
+            if (user is null || user.IsSuspended || user.RequiresApproval || !user.EmailConfirmed || await users.IsLockedOutAsync(user))
+                return Results.Unauthorized();
+            if (assertion.Passkey is null) return Results.Unauthorized();
+            var update = await users.AddOrUpdatePasskeyAsync(user, assertion.Passkey);
+            if (!update.Succeeded) return Results.Unauthorized();
+            user.LastLoginAt = DateTimeOffset.UtcNow;
+            await users.UpdateAsync(user);
+            await signIn.SignInAsync(user, isPersistent: false);
+            var roles = await users.GetRolesAsync(user);
+            return Results.Ok(new UserSessionDto(user.Id, user.UserName!, user.Email, roles.Contains(AdministratorRole)));
+        }).RequireRateLimiting("login");
+        auth.MapGet("/passkeys", async (ClaimsPrincipal principal, UserManager<OpenBudgetUser> users) =>
+        {
+            var user = await users.GetUserAsync(principal);
+            if (user is null) return Results.Unauthorized();
+            var passkeys = await users.GetPasskeysAsync(user);
+            return Results.Ok(passkeys.Select(key => new PasskeyDto(WebEncoders.Base64UrlEncode(key.CredentialId), key.Name ?? "Passkey", key.CreatedAt)));
+        }).RequireAuthorization();
+        auth.MapPost("/passkeys/registration-options", async (ClaimsPrincipal principal, UserManager<OpenBudgetUser> users, SignInManager<OpenBudgetUser> signIn) =>
+        {
+            var user = await users.GetUserAsync(principal);
+            if (user is null) return Results.Unauthorized();
+            if ((await users.GetPasskeysAsync(user)).Count >= 10)
+                return Results.Conflict(new { error = "An account can have up to 10 passkeys." });
+            var userName = await users.GetUserNameAsync(user) ?? "OpenBudget user";
+            var options = await signIn.MakePasskeyCreationOptionsAsync(new PasskeyUserEntity { Id = user.Id, Name = userName, DisplayName = userName });
+            return Results.Content(options, "application/json");
+        }).RequireAuthorization();
+        auth.MapPost("/passkeys", async (PasskeyCredentialRequest request, ClaimsPrincipal principal, UserManager<OpenBudgetUser> users, SignInManager<OpenBudgetUser> signIn, BudgetDbContext db, CancellationToken ct) =>
+        {
+            var user = await users.GetUserAsync(principal);
+            if (user is null) return Results.Unauthorized();
+            if (string.IsNullOrWhiteSpace(request.CredentialJson) || request.CredentialJson.Length > 64_000)
+                return Results.BadRequest(new { error = "Passkey response is invalid." });
+            if ((await users.GetPasskeysAsync(user)).Count >= 10)
+                return Results.Conflict(new { error = "An account can have up to 10 passkeys." });
+            var name = request.Name?.Trim();
+            if (string.IsNullOrWhiteSpace(name) || name.Length > 60)
+                return Results.BadRequest(new { error = "Passkey name is required and must be no longer than 60 characters." });
+            var attestation = await signIn.PerformPasskeyAttestationAsync(request.CredentialJson);
+            if (!attestation.Succeeded || !string.Equals(attestation.UserEntity.Id, user.Id, StringComparison.Ordinal))
+                return Results.BadRequest(new { error = "Passkey registration could not be verified. Start again and retry." });
+            attestation.Passkey.Name = name;
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            var result = await users.AddOrUpdatePasskeyAsync(user, attestation.Passkey);
+            if (!result.Succeeded) return Results.BadRequest(new { errors = result.Errors.Select(error => error.Code) });
+            await AddAdminAuditAsync(db, principal, user.Id, "user.passkey.add", ct);
+            await transaction.CommitAsync(ct);
+            return Results.Ok(new PasskeyDto(WebEncoders.Base64UrlEncode(attestation.Passkey.CredentialId), attestation.Passkey.Name, attestation.Passkey.CreatedAt));
+        }).RequireAuthorization();
+        auth.MapDelete("/passkeys/{credentialId}", async (string credentialId, ClaimsPrincipal principal, UserManager<OpenBudgetUser> users, BudgetDbContext db, CancellationToken ct) =>
+        {
+            var user = await users.GetUserAsync(principal);
+            if (user is null) return Results.Unauthorized();
+            byte[] id;
+            try { id = WebEncoders.Base64UrlDecode(credentialId); }
+            catch (FormatException) { return Results.NotFound(); }
+            var passkey = await users.GetPasskeyAsync(user, id);
+            if (passkey is null) return Results.NotFound();
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            var result = await users.RemovePasskeyAsync(user, id);
+            if (!result.Succeeded) return Results.BadRequest(new { errors = result.Errors.Select(error => error.Code) });
+            await AddAdminAuditAsync(db, principal, user.Id, "user.passkey.remove", ct);
+            await transaction.CommitAsync(ct);
+            return Results.NoContent();
+        }).RequireAuthorization();
         auth.MapPost("/login", async (LoginRequest request, UserManager<OpenBudgetUser> users, SignInManager<OpenBudgetUser> signIn, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(request.UserNameOrEmail) || string.IsNullOrEmpty(request.Password))

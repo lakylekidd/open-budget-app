@@ -36,6 +36,12 @@ it('shows a recoverable error when login fails', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('Sign-in failed');
 });
 
+it('offers passkey sign-in as an optional alternative', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response(null, { status: 401 })).mockResolvedValueOnce(Response.json({ mode: 'Disabled' })));
+  render(<AuthGate><div>Budget application</div></AuthGate>);
+  expect(await screen.findByRole('button', { name: 'Sign in with a passkey' })).toBeInTheDocument();
+});
+
 it('keeps authenticated users out of the shared legacy budget until ownership exists', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(Response.json({ id: 'u2', userName: 'bob', email: 'bob@example.test', isAdministrator: false })));
   render(<AuthGate><div>Shared financial data</div></AuthGate>);

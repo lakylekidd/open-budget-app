@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { publicPaths, rememberReturnPath, takeReturnPath } from './routing/routes';
+import { credentialToJson, parseRequestOptions } from './passkeys';
 
 type Session = { id: string; userName: string; email: string | null; isAdministrator: boolean };
 
@@ -62,6 +63,22 @@ export function AuthGate({ children }: { children: ReactNode }) {
     finally { setBusy(false); }
   }
 
+  async function loginWithPasskey() {
+    setBusy(true); setError('');
+    try {
+      if (!window.PublicKeyCredential || !navigator.credentials) throw new Error('Passkeys are not supported by this browser.');
+      const optionsResponse = await fetch('/api/auth/passkeys/sign-in/options', { method: 'POST', credentials: 'same-origin' });
+      if (!optionsResponse.ok) throw new Error('Passkey sign-in could not be started.');
+      const credential = await navigator.credentials.get({ publicKey: parseRequestOptions(await optionsResponse.json()) });
+      if (!(credential instanceof PublicKeyCredential)) throw new Error('Passkey sign-in was canceled.');
+      const response = await fetch('/api/auth/passkeys/sign-in', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ credentialJson: credentialToJson(credential) }) });
+      if (!response.ok) throw new Error(response.status === 429 ? 'Too many attempts. Try again later.' : 'Passkey sign-in failed. Try again or use your password.');
+      setSession(await response.json() as Session);
+      if (window.location.pathname === '/login') window.history.replaceState(null, '', takeReturnPath() ?? '/');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not sign in with a passkey.'); }
+    finally { setBusy(false); }
+  }
+
   async function submitPublicForm(event: FormEvent<HTMLFormElement>, endpoint: string, body: Record<string, string>) {
     event.preventDefault(); setBusy(true); setError(''); setNotice('');
     try {
@@ -91,7 +108,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     <label>Username or email<input name="username" autoComplete="username" required /></label>
     <label>Password<input name="password" type="password" autoComplete="current-password" required /></label>
     {error && <p role="alert" className="auth-error">{error}</p>}
-    {notice && <p role="status">{notice}</p>}<button className="button button-primary" type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button><div className="auth-links"><a className="auth-recovery-link" href="/forgot-password">Forgot password?</a>{registrationMode !== 'Disabled' && <a className="auth-secondary-link" href="/register">Create an account</a>}</div>
+    {notice && <p role="status">{notice}</p>}<button className="button button-primary" type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button><button className="button" type="button" onClick={() => void loginWithPasskey()} disabled={busy}>{busy ? 'Waiting for passkey…' : 'Sign in with a passkey'}</button><div className="auth-links"><a className="auth-recovery-link" href="/forgot-password">Forgot password?</a>{registrationMode !== 'Disabled' && <a className="auth-secondary-link" href="/register">Create an account</a>}</div>
   </form></main>;
   return <>{children}</>;
 }

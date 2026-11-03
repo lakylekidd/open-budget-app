@@ -25,7 +25,7 @@ The Aspire AppHost is the local system composition root. It starts PostgreSQL wi
 | Persistence | EF Core 10, Npgsql EF provider, PostgreSQL 17 |
 | Local orchestration | .NET Aspire 13.6.2 AppHost, PostgreSQL and JavaScript/Vite integrations |
 | API contract | Budget identity plus versioned monthly snapshot |
-| Authentication | ASP.NET Core Identity with cookie sessions, verified registration, branded SMTP email, password recovery and administrator role; hashed personal agent tokens (bearer) for the MCP endpoint only |
+| Authentication | ASP.NET Core Identity with cookie sessions, optional WebAuthn passkeys, verified registration, branded SMTP email, password recovery and administrator role; hashed personal agent tokens (bearer) for the MCP endpoint only |
 | Agent integration | MCP server via `ModelContextProtocol.AspNetCore` 2.2.0 (Streamable HTTP, stateless) hosted in the API process |
 | Real-time updates | In-process change hub fed by an EF Core commit interceptor; server-sent events to the browser |
 
@@ -68,7 +68,7 @@ Optional Enable Banking integration is in progress: account linking, multiple ac
 | Bank linking | Enable Banking consent, per-connection background sync, account mapping and staged import review are implemented; sandbox verification, export/deletion integration and production onboarding remain |
 | Targets and assignment recommendations | Category targets (Weekly, Monthly, Yearly, Custom with optional repeat; set aside or refill/fill up) are stored per budget and logical category with their own version and command receipts; the server calculates each month's needed/more-needed amount, bar segments and funded fraction on the month DTO. Auto-Assign Underfunded assigns the larger of a category's target need and its current-month scheduled-outflow shortfall; with no category selection it covers all active subcategories, otherwise only selected subcategories. Other actions use last month and trailing 12-month actual assignments/spending; manual assignment and reset actions use the existing versioned Plan save. Target pause/snooze, templates and preview/apply workflows remain planned. |
 | Reflect reports | Not implemented; entry remains a placeholder |
-| Identity sign-in, bootstrap administrators, verified registration/recovery, admin-managed encrypted SMTP settings and audited account lifecycle administration | Implemented |
+| Identity sign-in with optional passkeys, bootstrap administrators, verified registration/recovery, admin-managed encrypted SMTP settings and audited account lifecycle administration | Implemented |
 | Owner-scoped budget identity, archive/restore, membership limits, monthly Plan snapshots, ledger/planning isolation and active budget selection | Implemented |
 
 The sidebar budget header highlights on hover and shows the signed-in email under the active budget name. Clicking it opens a menu with New Plan (create budget), plan/account entries, administrator-only Admin navigation, and Sign Out. Hovering Open Plan fades in an adjacent Recent Plans panel with a View All Plans option; it fades out when the pointer leaves both the item and panel. Selecting a budget switches the active budget. Rename, archive, delete, and restore controls are not exposed in this sidebar menu.

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
@@ -32,6 +33,9 @@ public sealed class PostgresFixture : IAsyncLifetime
 
 public sealed class TestApp(string connectionString) : WebApplicationFactory<Program>
 {
+    private static readonly IServiceProvider identitySchemaServices = new ServiceCollection()
+        .Configure<IdentityOptions>(options => options.Stores.SchemaVersion = IdentitySchemaVersions.Version3)
+        .BuildServiceProvider();
     public string ConnectionString { get; } = connectionString;
     public FailureInjector Failure { get; } = new();
     public TestClock Clock { get; } = new();
@@ -60,7 +64,10 @@ public sealed class TestApp(string connectionString) : WebApplicationFactory<Pro
             services.AddDbContext<BudgetDbContext>(options => options.UseNpgsql(ConnectionString).AddInterceptors(Failure));
         });
     }
-    public BudgetDbContext CreateDb() => new(new DbContextOptionsBuilder<BudgetDbContext>().UseNpgsql(ConnectionString).Options);
+    public BudgetDbContext CreateDb() => new(new DbContextOptionsBuilder<BudgetDbContext>()
+        .UseApplicationServiceProvider(identitySchemaServices)
+        .UseNpgsql(ConnectionString)
+        .Options);
 }
 
 public sealed class FakeEnableBankingClient : IEnableBankingClient
