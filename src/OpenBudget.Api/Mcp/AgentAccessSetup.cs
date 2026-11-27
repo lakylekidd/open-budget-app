@@ -285,7 +285,7 @@ public static class McpToolHandlers
         Name = definition.Name,
         Title = definition.Title,
         Description = definition.Description,
-        InputSchema = JsonSerializer.SerializeToElement(definition.InputSchema),
+        InputSchema = JsonSerializer.SerializeToElement(S.ForClients(definition.InputSchema)),
         Annotations = new ToolAnnotations
         {
             Title = definition.Title,

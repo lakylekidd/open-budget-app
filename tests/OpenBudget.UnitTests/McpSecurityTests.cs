@@ -238,6 +238,28 @@ public class McpArgumentValidatorTests
     }
 
     [Fact]
+    public void Published_schemas_never_contain_multipleOf_or_internal_markers()
+    {
+        // Clients validate with binary doubles, where 0.07 / 0.01 != 7, so multipleOf would reject valid amounts.
+        foreach (var tool in McpToolCatalog.All)
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(S.ForClients(tool.InputSchema));
+            Assert.DoesNotContain("multipleOf", json);
+            Assert.DoesNotContain(S.MoneyKey, json);
+        }
+    }
+
+    [Theory]
+    [InlineData("0.07")]
+    [InlineData("0.29")]
+    [InlineData("1.15")]
+    [InlineData("4.35")]
+    [InlineData("19.99")]
+    public void Valid_two_decimal_amounts_pass_server_validation(string amount) =>
+        Assert.Null(McpArgumentValidator.Validate(Schema,
+            JsonDocument.Parse($$"""{"budgetId":"b","month":"2026-10","amount":{{amount}}}""").RootElement));
+
+    [Fact]
     public void Missing_required_enum_arguments_list_the_valid_values() =>
         Assert.Equal("arguments.kind is required; use one of: a, b.",
             McpArgumentValidator.Validate(Obj(R("kind", Enum("Kind.", "a", "b"))), JsonDocument.Parse("{}").RootElement));
