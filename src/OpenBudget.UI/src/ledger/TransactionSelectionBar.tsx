@@ -28,7 +28,7 @@ export function TransactionSelectionBar({entries,accounts,flags,disabled,schedul
   function closeDialog(){if(!disabled){setDialog(null);setDestination(null);setError('');}}
   useEffect(()=>{function shortcut(event:KeyboardEvent){
     if(disabled||dialog||destination||document.querySelector('[role=dialog],.transaction-calendar,.flag-picker,.payee-picker,.category-picker'))return;
-    if((event.target as HTMLElement).closest('input,textarea,select,[contenteditable=true]')||event.ctrlKey||event.metaKey||event.altKey)return;
+    if((event.target as HTMLElement).closest('input:not([type=checkbox]):not([type=radio]):not([type=button]),textarea,select,[contenteditable=true]')||event.ctrlKey||event.metaKey||event.altKey)return;
     if(event.key==='Escape'){if(open){setOpen(false);setMove(false);trigger.current?.focus();}else onClear();return;}
     if(event.key==='Delete'&&canDelete){event.preventDefault();showDialog('delete');return;}
     if(blocked)return;
