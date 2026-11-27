@@ -409,6 +409,15 @@ it('blocks default options after a failed preference load and recovers through R
   expect(screen.getByRole('button',{name:'View options'})).toBeEnabled();
 });
 
+it('keeps the chosen date on the next transaction after Save and add another',async()=>{
+ show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Add Transaction'}));
+ const date=screen.getByRole('textbox',{name:'Date'});await userEvent.clear(date);await userEvent.type(date,'01-03-2020');
+ await userEvent.type(screen.getByRole('textbox',{name:'Outflow'}),'5');await userEvent.click(screen.getByRole('button',{name:'Save and add another'}));
+ await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0].body).toMatchObject({date:'2020-03-01'});
+ await waitFor(()=>expect(screen.getByRole('textbox',{name:'Outflow'})).toHaveValue(''));
+ expect(screen.getByRole('textbox',{name:'Date'})).toHaveValue('01-03-2020');
+});
+
 it('inserts Add Transaction directly in the table, cancels without saving, and supports Save and add another',async()=>{
  show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Add Transaction'}));
  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();expect(screen.getByRole('row',{name:'New transaction'})).toBeInTheDocument();

@@ -35,7 +35,7 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
 }) {
   const [managePayees,setManagePayees]=useState(false);
   const [payeePending,setPayeePending]=useState(false);const [payeeFilter,setPayeeFilter]=useState<string|null>(null);
-  const [inline, setInline] = useState<{key:string;entry?:Entry;schedule?:ScheduledItem;transferAccountId?:string} | null>(null);
+  const [inline, setInline] = useState<{key:string;date?:string;entry?:Entry;schedule?:ScheduledItem;transferAccountId?:string} | null>(null);
   const [flags,setFlags]=useState(defaultFlags);const [flagVersion,setFlagVersion]=useState(1);
   const [schedules, setSchedules] = useState<Schedules | null>(null);
   const [schedulePage, setSchedulePage] = useState(1);
@@ -302,11 +302,11 @@ export function AccountsPage({ selectedAccount, onSelectAccount, onChanged, onMe
     else if(transfer){path=inline?.entry?`/api/transfers/${inline.entry.id}`:'/api/transfers';method=inline?.entry?'PUT':'POST';payload={fromAccountId:fields.amount<0?fields.accountId:transfer,toAccountId:fields.amount<0?transfer:fields.accountId,date:fields.date,amount:Math.abs(fields.amount),memo:fields.memo,repeat:fields.repeat,confirmReconciledEdit:fields.confirmReconciledEdit};}
     else {if(inline?.entry){path+=`/${inline.entry.id}`;method='PUT';}}
     const saved=await mutate(path,method,payload);
-    if(saved)setInline(another?{key:crypto.randomUUID()}:null);
+    if(saved)setInline(another?{key:crypto.randomUUID(),date:fields.date}:null);
     return saved;
   }
   async function renameFlags(next:Flag[]){return mutate('/api/flags','PUT',{flags:next});}
-  function editor() {return inline&&<InlineTransactionEditor key={inline.key} entry={inline.entry} selectedAccount={selectedAccount} accounts={accounts.accounts} view={view} busy={disabled} onSave={saveInline} onCancel={()=>setInline(null)} repeat={inline.schedule?.repeat} transferAccountId={inline.transferAccountId} scheduled={Boolean(inline.schedule)} onShowPayeeTransactions={payee=>{setPayeeFilter(payee.id);setSearch('');setCategory('');setStatus('');setReviewFilter(false);setInline(null);setPage(1);}} onCategoriesChanged={()=>{void loadCategories(today()).then(setCategories).catch(()=>setError('Could not refresh category filters. Reload to retry.'));onChanged();}} onPayeesPending={setPayeePending} onPayeesChanged={()=>{setRefresh(n=>n+1);onChanged();}} postingError={inline.schedule?.postingError} requiresConfirmation={!inline.schedule&&Boolean(inline.entry?.isLocked||inline.entry?.status==='reconciled')} wishlist={wishlist}/>;}
+  function editor() {return inline&&<InlineTransactionEditor key={inline.key} initialDate={inline.date} entry={inline.entry} selectedAccount={selectedAccount} accounts={accounts.accounts} view={view} busy={disabled} onSave={saveInline} onCancel={()=>setInline(null)} repeat={inline.schedule?.repeat} transferAccountId={inline.transferAccountId} scheduled={Boolean(inline.schedule)} onShowPayeeTransactions={payee=>{setPayeeFilter(payee.id);setSearch('');setCategory('');setStatus('');setReviewFilter(false);setInline(null);setPage(1);}} onCategoriesChanged={()=>{void loadCategories(today()).then(setCategories).catch(()=>setError('Could not refresh category filters. Reload to retry.'));onChanged();}} onPayeesPending={setPayeePending} onPayeesChanged={()=>{setRefresh(n=>n+1);onChanged();}} postingError={inline.schedule?.postingError} requiresConfirmation={!inline.schedule&&Boolean(inline.entry?.isLocked||inline.entry?.status==='reconciled')} wishlist={wishlist}/>;}
   function clearFilters() {
     setPayeeFilter(null);setReviewFilter(false);setSearch(''); setCategory(''); setStatus(''); setPage(1);
     if (from || to || !view.showReconciled) void applyView({ ...view, datePreset:'allDates', showReconciled:true }).catch(err => setError(err.message));
