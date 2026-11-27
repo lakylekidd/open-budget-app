@@ -12,8 +12,9 @@ import { WishlistLinkButton, wishlistLinkFill, type WishlistChoice, type Wishlis
 export type InlineFields = { accountId:string;date:string;amount:number;payee:string;memo:string;categoryId:string|null;splits:Split[];status:string;repeat:string;toAccountId:string|null;confirmReconciledEdit:boolean;onlyOnce:boolean;wishlistItemId?:string };
 export function parseRegisterMoney(value:string) { return parseMoney(value); }
 type DraftSplit = { categoryId:string; payee:string; memo:string; outflow:string; inflow:string };
-export function InlineTransactionEditor({ entry, selectedAccount, accounts, view, busy, onSave, onCancel, repeat:initialRepeat='never', transferAccountId, scheduled=false, requiresConfirmation=false, postingError, onPayeesChanged=()=>{}, onCategoriesChanged=()=>{}, onPayeesPending,onShowPayeeTransactions,wishlist }: {
-  entry?:Entry;selectedAccount:string;accounts:Account[];view:ViewOptions;busy:boolean;onSave:(fields:InlineFields,another:boolean)=>Promise<boolean>;onCancel:()=>void;repeat?:string;transferAccountId?:string;scheduled?:boolean;requiresConfirmation?:boolean; postingError?:string|null;onPayeesChanged?:()=>void;onCategoriesChanged?:()=>void;onPayeesPending?:(pending:boolean)=>void;onShowPayeeTransactions?:(payee:SavedPayee)=>void;
+export function InlineTransactionEditor({ initialDate, entry, selectedAccount, accounts, view, busy, onSave, onCancel, repeat:initialRepeat='never', transferAccountId, scheduled=false, requiresConfirmation=false, postingError, onPayeesChanged=()=>{}, onCategoriesChanged=()=>{}, onPayeesPending,onShowPayeeTransactions,wishlist }: {
+  /** Date a new transaction starts with (the previous one's date after Save and add another); defaults to today. */
+  initialDate?:string;entry?:Entry;selectedAccount:string;accounts:Account[];view:ViewOptions;busy:boolean;onSave:(fields:InlineFields,another:boolean)=>Promise<boolean>;onCancel:()=>void;repeat?:string;transferAccountId?:string;scheduled?:boolean;requiresConfirmation?:boolean; postingError?:string|null;onPayeesChanged?:()=>void;onCategoriesChanged?:()=>void;onPayeesPending?:(pending:boolean)=>void;onShowPayeeTransactions?:(payee:SavedPayee)=>void;
   /** Entitled + enabled Wishlist for this budget; shows the "Link wishlist item" button beside Memo on new transactions. */
   wishlist?:WishlistContext|null;
 }) {
@@ -24,7 +25,7 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
     function outside(event:MouseEvent){const target=event.target;if(busyRef.current||!(target instanceof Element)||!target.isConnected||target.closest(inside))return;cancelRef.current();}
     document.addEventListener('mousedown',outside);return()=>document.removeEventListener('mousedown',outside);
   },[]);
-  const formId=useId(); const [date,setDate]=useState(entry?.date??today());const [dateValid,setDateValid]=useState(true);const [repeat,setRepeat]=useState(initialRepeat);
+  const formId=useId(); const [date,setDate]=useState(entry?.date??initialDate??today());const [dateValid,setDateValid]=useState(true);const [repeat,setRepeat]=useState(initialRepeat);
   const [accountId,setAccountId]=useState(entry?.accountId??(selectedAccount||accounts.find(a=>!a.isClosed)?.id||''));
   const [payee,setPayee]=useState(entry?.transferId?'':entry?.payee??'');const [chosenTransfer,setChosenTransfer]=useState(transferAccountId);const [memo,setMemo]=useState(entry?.memo??'');const [categoryId,setCategory]=useState(entry?.categoryId??(entry&&entry.amount>0&&!entry.transferId&&!entry.isOpening&&!entry.splits.length?inflowCategoryId:''));
   const [outflow,setOutflow]=useState(entry&&entry.amount<0?Math.abs(entry.amount).toFixed(2):'');const [inflow,setInflow]=useState(entry&&entry.amount>0?entry.amount.toFixed(2):'');
@@ -76,7 +77,7 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
   const splitTotals=splits.reduce((totals,s)=>{const out=s.outflow.trim()?parseRegisterMoney(s.outflow):0;const income=s.inflow.trim()?parseRegisterMoney(s.inflow):0;return {out:totals.out+(out!==null&&out>0?out:0),income:totals.income+(income!==null&&income>0?income:0)};},{out:0,income:0});
   const parentOutflow=outflow.trim()?parseRegisterMoney(outflow):0;const parentInflow=inflow.trim()?parseRegisterMoney(inflow):0;
   const remainingOut=Number((Math.abs(parentOutflow??0)-splitTotals.out).toFixed(2));const remainingIn=Number(((parentInflow??0)-splitTotals.income).toFixed(2));
-  return <><tr className="register-inline-row" onKeyDown={e=>{if(e.key==='Escape'&&!busy)onCancel();}} aria-label={entry?'Edit transaction inline':'New transaction'}>
+  return <><tr className={entry?"register-inline-row":"register-inline-row register-inline-new"} onKeyDown={e=>{if(e.key==='Escape'&&!busy)onCancel();}} aria-label={entry?'Edit transaction inline':'New transaction'}>
     <td className="register-check-cell"><input type="checkbox" aria-label="Editing transaction" checked readOnly/></td><td/>{view.showFlags&&<td className="register-decoration"><RegisterIcon name="flag" size={15}/></td>}{view.showImages&&<td className="register-decoration"><RegisterIcon name="image" size={15}/></td>}
     <td className="inline-date-cell"><TransactionDatePicker date={date} repeat={repeat} onDate={setDate} onRepeat={setRepeat} initiallyOpen={!entry} disabled={busy} onValid={setDateValid}/></td>
     <td><PayeePicker paymentsRequest={paymentsRequest} transferLabel={transferLabel} form={formId} value={transferPayee} disabled={busy||entry?.isOpening} accountId={accountId} accounts={accounts} categories={categories} onShowTransactions={onShowPayeeTransactions} onChanged={onPayeesChanged} onPendingChange={onPayeesPending} onChange={(name,id,suggested)=>{setPayee(name);setChosenTransfer(id);if(id)setCategory('');if(!categoryId&&!splits.length&&suggested&&categories.some(c=>c.id===suggested&&!c.isArchived))setCategory(suggested);}}/></td>
@@ -94,7 +95,7 @@ export function InlineTransactionEditor({ entry, selectedAccount, accounts, view
     <td><MoneyInput form={formId} aria-label={`Split ${i+1} outflow`} disabled={busy} value={s.outflow} placeholder="outflow" onChange={raw => setSplits(items=>items.map((item,index)=>index===i?{...item,outflow:raw,inflow:''}:item))}/></td>
     <td><MoneyInput form={formId} aria-label={`Split ${i+1} inflow`} disabled={busy} value={s.inflow} placeholder="inflow" onChange={raw => setSplits(items=>items.map((item,index)=>index===i?{...item,inflow:raw,outflow:''}:item))}/></td>
     {view.showRunningBalance&&<td/>}<td/>
-  </tr>)}<tr className="register-inline-footer"><td colSpan={columns}>
+  </tr>)}<tr className={entry?"register-inline-footer":"register-inline-footer register-inline-new"}><td colSpan={columns}>
     <form id={formId} onSubmit={e=>{e.preventDefault();void save(false);}}>
       {link&&<span className="inline-wishlist-link" role="status">Linked to Wishlist item {link.item.name}. Saving marks it purchased.</span>}
       {!selectedAccount&&!entry&&<label>Account<select aria-label="Transaction account" value={accountId} disabled={busy} onChange={e=>setAccountId(e.target.value)}>{accounts.filter(a=>!a.isClosed).map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>}

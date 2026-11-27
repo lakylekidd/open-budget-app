@@ -231,3 +231,8 @@
 .delete-category-form{display:grid;gap:16px;font-size:14px;line-height:1.5}.delete-category-form p{margin:0;color:#d6d6ea}.delete-category-form label{display:grid;gap:8px;font-weight:600}.delete-category-form select{width:100%;min-height:32px;background:#414154;color:#f5f4ff;border:1px solid #777485;border-radius:3px;padding:6px;font:inherit}
 .delete-category-form h3{font-size:14px;margin:0 0 6px}.delete-category-form ul{margin:0;padding-left:20px;display:grid;gap:4px;color:#d6d6ea}.delete-category-count{display:inline-block;margin-left:6px;padding:0 7px;border-radius:9px;background:#414154;font-size:12px;font-weight:600}
 .delete-category-form [role=alert]{color:#ffc1ce}.delete-category-form [role=alert] button{margin-left:8px}.delete-category-actions{display:flex;justify-content:flex-end;gap:8px}.ledger-dialog .button-danger{background:#d23f5b;color:#fff;font-weight:600}
+
+/* A new transaction stays pinned directly under the sticky column headers (33px) while the register scrolls. The footer (Save buttons)
+   pins under the entry row (36px) when there are no split rows between them. */
+.register-table .register-inline-row.register-inline-new td{position:sticky;top:33px;z-index:4}
+.register-table .register-inline-row.register-inline-new + .register-inline-footer td{position:sticky;top:69px;z-index:3}

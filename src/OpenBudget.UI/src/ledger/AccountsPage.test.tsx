@@ -90,6 +90,15 @@ it('shows and selects a later projected occurrence opened from annual planning',
   expect(row).toHaveAttribute('data-transaction-id', 'future-occurrence');
 });
 
+it('duplicates the selection with Shift+D and keeps the original selected',async()=>{
+  show('checking');await ready();
+  await userEvent.click(screen.getByRole('checkbox',{name:'Select visible transactions'}));
+  expect(screen.getByRole('region',{name:'Selected transactions'})).toHaveTextContent('1 Transaction');
+  await userEvent.keyboard('{Shift>}D{/Shift}');
+  await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0]).toMatchObject({path:'/api/transactions/selection',body:{ids:['transaction'],action:'duplicate'}});
+  expect(await screen.findByRole('region',{name:'Selected transactions'})).toHaveTextContent('1 Transaction');
+});
+
 it('shows the bottom bar on selection and applies one action to the selected ids',async()=>{
   register.items.push({...register.items[0],id:'second',payee:'Cafe'});register.total=2;
   show('checking');await ready();expect(screen.queryByRole('region',{name:'Selected transactions'})).not.toBeInTheDocument();
@@ -407,6 +416,15 @@ it('blocks default options after a failed preference load and recovers through R
   failViewRead=false;
   await userEvent.click(screen.getByRole('button',{name:'Reload'})); await ready();
   expect(screen.getByRole('button',{name:'View options'})).toBeEnabled();
+});
+
+it('keeps the chosen date on the next transaction after Save and add another',async()=>{
+ show('checking');await ready();await userEvent.click(screen.getByRole('button',{name:'Add Transaction'}));
+ const date=screen.getByRole('textbox',{name:'Date'});await userEvent.clear(date);await userEvent.type(date,'01-03-2020');
+ await userEvent.type(screen.getByRole('textbox',{name:'Outflow'}),'5');await userEvent.click(screen.getByRole('button',{name:'Save and add another'}));
+ await waitFor(()=>expect(mutations).toHaveLength(1));expect(mutations[0].body).toMatchObject({date:'2020-03-01'});
+ await waitFor(()=>expect(screen.getByRole('textbox',{name:'Outflow'})).toHaveValue(''));
+ expect(screen.getByRole('textbox',{name:'Date'})).toHaveValue('01-03-2020');
 });
 
 it('inserts Add Transaction directly in the table, cancels without saving, and supports Save and add another',async()=>{
