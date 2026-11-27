@@ -40,8 +40,37 @@ public static class S
     public static JsonObject Money(string description, decimal minimum = -MaxMoney, decimal maximum = MaxMoney) => new()
     {
         ["type"] = "number", ["description"] = description + " At most two decimal places.", ["minimum"] = minimum, ["maximum"] = maximum,
-        ["multipleOf"] = 0.01
+        [MoneyKey] = true
     };
+
+    /// <summary>
+    /// Internal marker for the server-side two-decimal check. It is deliberately not the JSON Schema <c>multipleOf</c> keyword: clients validate
+    /// with binary doubles, where valid amounts such as 0.07 are not an exact multiple of 0.01 and are rejected before reaching the server.
+    /// The marker is removed from the published schema by <see cref="ForClients"/>.
+    /// </summary>
+    public const string MoneyKey = "x-money";
+
+    /// <summary>A copy of the schema without server-internal markers, safe to publish to MCP clients.</summary>
+    public static JsonNode ForClients(JsonNode schema)
+    {
+        var copy = schema.DeepClone();
+        Strip(copy);
+        return copy;
+
+        static void Strip(JsonNode? node)
+        {
+            switch (node)
+            {
+                case JsonObject obj:
+                    obj.Remove(MoneyKey);
+                    foreach (var child in obj.Select(p => p.Value).ToList()) Strip(child);
+                    break;
+                case JsonArray array:
+                    foreach (var child in array) Strip(child);
+                    break;
+            }
+        }
+    }
 
     /// <summary>A decimal number within bounds without the money precision rule (for example an interest rate); services check precision.</summary>
     public static JsonObject Decimal(string description, decimal minimum, decimal maximum) => new()
@@ -169,7 +198,7 @@ public static class McpArgumentValidator
                 if (value.ValueKind != JsonValueKind.Number || !value.TryGetDecimal(out var number)) return $"{path} must be a number.";
                 if (schema["minimum"] is JsonValue numberMin && number < numberMin.GetValue<decimal>()) return $"{path} is below the allowed minimum.";
                 if (schema["maximum"] is JsonValue numberMax && number > numberMax.GetValue<decimal>()) return $"{path} is above the allowed maximum.";
-                if (schema["multipleOf"] is not null && decimal.Round(number, 2) != number) return $"{path} must have at most two decimal places.";
+                if (schema[S.MoneyKey] is not null && decimal.Round(number, 2) != number) return $"{path} must have at most two decimal places.";
                 return null;
             case "boolean":
                 return value.ValueKind is JsonValueKind.True or JsonValueKind.False ? null : $"{path} must be true or false.";
